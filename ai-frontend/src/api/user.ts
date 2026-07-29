@@ -1,0 +1,79 @@
+import { interviewMode } from '../config/api'
+
+export interface LoginRequest {
+  email: string
+  password: string
+}
+
+export interface RegisterRequest {
+  email: string
+  nickName: string
+  registerPassword: string
+  checkCodeKey: string
+  checkCode: string
+}
+
+export interface AuthResponse {
+  user: {
+    userId: string
+    nickname: string
+    avatar: string
+    token: string
+    tokenExpiresAt: number
+    fansCount: number
+    currentCoinCount: number
+    focusCount: number
+  }
+}
+
+function getBaseUrl(): string {
+  return interviewMode.enabled
+    ? interviewMode.pythonApi
+    : ''  // 相对路径 → 经由 proxy/nginx 转发
+}
+
+export async function login(data: LoginRequest): Promise<AuthResponse> {
+  const response = await fetch(`${getBaseUrl()}/ai/login`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(data),
+  })
+
+  if (!response.ok) {
+    // 当后端返回非 2xx 时，body 可能为空或非 JSON（如 502 代理错误）
+    try {
+      const error = await response.json()
+      throw new Error(error.detail || '登录失败')
+    } catch {
+      const text = await response.text().catch(() => '')
+      throw new Error(`登录失败 (${response.status})${text ? ': ' + text.slice(0, 100) : ''}`)
+    }
+  }
+
+  interface LoginRawResponse {
+    user: AuthResponse['user']
+  }
+
+  let result: LoginRawResponse
+  try {
+    result = await response.json() as LoginRawResponse
+  } catch {
+    const text = await response.text().catch(() => '')
+    throw new Error(`服务器返回了非 JSON 响应${text ? ': ' + text.slice(0, 120) : ''}`)
+  }
+
+  return {
+    user: {
+      ...result.user,
+      fansCount: result.user.fansCount ?? 0,
+      currentCoinCount: result.user.currentCoinCount ?? 0,
+      focusCount: result.user.focusCount ?? 0,
+    },
+  }
+}
+
+export async function register(_data: RegisterRequest): Promise<AuthResponse> {
+  throw new Error('注册功能未实现，请联系管理员')
+}

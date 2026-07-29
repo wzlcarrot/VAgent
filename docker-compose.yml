@@ -1,0 +1,87 @@
+version: "3.8"
+
+services:
+  ai-agent:
+    build: ./ai-end
+    ports:
+      - "9090:8001"
+    environment:
+      - PG_HOST=postgres
+      - PG_PORT=5432
+      - PG_USER=postgres
+      - PG_PASSWORD=postgres
+      - PG_DATABASE=viewhub
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:?请设置 DEEPSEEK_API_KEY 环境变量}
+      - DEEPSEEK_BASE_URL=${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
+      - DEEPSEEK_MODEL=${DEEPSEEK_MODEL:-deepseek-chat}
+      - MINIMAX_API_KEY=${MINIMAX_API_KEY}
+      - MINIMAX_BASE_URL=${MINIMAX_BASE_URL:-https://api.minimax.chat/v1}
+      - MINIMAX_MODEL=${MINIMAX_MODEL:-MiniMax-M3}
+      - LLM_PROVIDER=${LLM_PROVIDER:-minimax}
+      - VIDEO_SERVICE_URL=${VIDEO_SERVICE_URL:-http://video-service:7071}
+      - PUBLIC_VIDEO_URL=${PUBLIC_VIDEO_URL:-}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - TEST_ACCOUNT_ENABLED=true
+      - TEST_ACCOUNT_EMAIL=test@viewhub.com
+      - TEST_ACCOUNT_PASSWORD_MD5=e10adc3949ba59abbe56e057f20f883e
+      - TEST_ACCOUNT_USER_ID=test_user_001
+      - TEST_ACCOUNT_NICKNAME=测试用户
+      - TEST_ACCOUNT_AVATAR=
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    restart: unless-stopped
+
+  ai-frontend:
+    build: ./ai-frontend
+    ports:
+      - "4091:80"
+    depends_on:
+      - ai-agent
+    restart: unless-stopped
+
+  postgres:
+    image: paradedb/paradedb:latest
+    ports:
+      - "9091:5432"
+    environment:
+      POSTGRES_DB: viewhub
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - pg_data:/var/lib/postgresql
+      - ./ai-end/scripts/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6380:6379"
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9093:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=7d'
+    depends_on:
+      - ai-agent
+    restart: unless-stopped
+
+volumes:
+  pg_data:
+  prometheus_data:

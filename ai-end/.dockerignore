@@ -1,0 +1,15 @@
+.git
+.env
+.env.*
+__pycache__
+*.pyc
+.pytest_cache
+tests/
+scripts/
+.vscode
+.idea
+*.log
+dump.rdb
+Dockerfile
+docker-compose*.yml
+README.md
