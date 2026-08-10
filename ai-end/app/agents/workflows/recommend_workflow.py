@@ -3,7 +3,6 @@ from typing import Dict, Any, List, TypedDict, Literal
 from langgraph.graph import StateGraph
 from langgraph.constants import START, END
 from app.tools import UserTools, VideoTools
-from app.tools.llm_tools import LLM_tools
 from app.agents.supervisor import Supervisor
 from app.tools.output_guard import NO_RECOMMENDATION_MSG
 from app.config import build_cover_url
@@ -158,7 +157,12 @@ def reason_node(state: RecommendState) -> dict:
                 parts.append(f"发布于 {dt}")
             except Exception:
                 pass
-        reasons.append("  ".join(parts) if parts else "")
+        if parts:
+            reasons.append("  ".join(parts))
+        elif title:
+            reasons.append(f"《{title}》值得一看")
+        else:
+            reasons.append("")
 
     return {
         "recommended_videos": candidate_videos[:top_k],
@@ -271,7 +275,12 @@ def cold_start_node(state: RecommendState) -> dict:
                 parts.append(f"发布于 {dt}")
             except Exception:
                 pass
-        reasons.append("  ".join(parts) if parts else "")
+        if parts:
+            reasons.append("  ".join(parts))
+        elif title:
+            reasons.append(f"《{title}》值得一看")
+        else:
+            reasons.append("")
     summary = "欢迎新用户！以下是最新热门视频推荐：\n\n"
     for i, v in enumerate(recommended[:top_k]):
         summary += f"{i+1}. {v['title']}\n"

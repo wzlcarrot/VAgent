@@ -73,7 +73,7 @@ class ChatTools:
             return []
 
     @staticmethod
-    def get_chat_sessions(user_id: str = None, limit: int = 20) -> List[dict]:
+    def get_chat_sessions(user_id: str = None, limit: int = 20, offset: int = 0) -> List[dict]:
         try:
             with get_cursor() as cursor:
                 if cursor is None:
@@ -86,8 +86,8 @@ class ChatTools:
                         WHERE user_id = %s AND session_id IS NOT NULL
                         GROUP BY session_id, user_id
                         ORDER BY first_message_at DESC
-                        LIMIT %s
-                    """, (user_id, limit))
+                        LIMIT %s OFFSET %s
+                    """, (user_id, limit, offset))
                 else:
                     cursor.execute("""
                         SELECT session_id, user_id, MIN(created_at) as first_message_at,
@@ -96,8 +96,8 @@ class ChatTools:
                         WHERE session_id IS NOT NULL
                         GROUP BY session_id, user_id
                         ORDER BY first_message_at DESC
-                        LIMIT %s
-                    """, (limit,))
+                        LIMIT %s OFFSET %s
+                    """, (limit, offset))
                 rows = cursor.fetchall()
             return rows
         except Exception as e:
@@ -105,15 +105,18 @@ class ChatTools:
             return []
 
     @staticmethod
-    def delete_chat_session(session_id: str) -> bool:
+    def delete_chat_session(user_id: str, session_id: str) -> bool:
         try:
             with get_cursor(commit=True) as cursor:
                 if cursor is None:
                     return False
-                cursor.execute("DELETE FROM chat_history WHERE session_id = %s", (session_id,))
+                cursor.execute(
+                    "DELETE FROM chat_history WHERE session_id = %s AND user_id = %s",
+                    (session_id, user_id),
+                )
                 affected = cursor.rowcount
-            logger.info(f"Deleted {affected} rows for session_id: {session_id}")
-            return True
+            logger.info(f"Deleted {affected} rows for session_id: {session_id} (user={user_id})")
+            return affected > 0
         except Exception as e:
             logger.error(f"删除会话失败: {e}")
             return False

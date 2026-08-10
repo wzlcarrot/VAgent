@@ -1,6 +1,6 @@
 import logging
 import json
-from typing import Dict, Any, List, TypedDict
+from typing import Dict, Any, TypedDict
 from langgraph.graph import StateGraph
 from langgraph.constants import START, END
 from app.tools import UserTools

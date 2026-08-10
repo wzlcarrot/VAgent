@@ -100,9 +100,14 @@ def init_agent_tables():
                 answer TEXT,
                 session_id VARCHAR(64),
                 image_urls TEXT[] DEFAULT '{}',
+                videos JSONB DEFAULT '[]',
+                reasons JSONB DEFAULT '[]',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
+        # 兼容已存在但缺列的旧表（幂等）
+        cursor.execute("ALTER TABLE chat_history ADD COLUMN IF NOT EXISTS videos JSONB DEFAULT '[]'")
+        cursor.execute("ALTER TABLE chat_history ADD COLUMN IF NOT EXISTS reasons JSONB DEFAULT '[]'")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_chat_user_id ON chat_history(user_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_chat_session_id ON chat_history(session_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_chat_created_at ON chat_history(created_at DESC)")
