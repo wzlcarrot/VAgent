@@ -63,9 +63,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onBeforeUnmount } from 'vue'
-import MarkdownIt from 'markdown-it'
-import DOMPurify from 'dompurify'
-import hljs from 'highlight.js'
+import { renderMarkdown } from '@/utils/markdown'
 import type { Message } from '@/types'
 
 const props = defineProps<{
@@ -89,20 +87,6 @@ onBeforeUnmount(() => {
 function handleRetry() {
   emit('retry', props.message.id)
 }
-
-const md = new MarkdownIt({
-  html: true,
-  breaks: true,
-  linkify: true,
-  highlight: (str: string, lang: string) => {
-    if (lang && hljs.getLanguage(lang)) {
-      try {
-        return `<pre class="hljs"><code>${hljs.highlight(str, { language: lang, ignoreIllegals: true }).value}</code></pre>`
-      } catch (__) {}
-    }
-    return `<pre class="hljs"><code>${md.utils.escapeHtml(str)}</code></pre>`
-  }
-})
 
 interface VideoLink {
   url: string
@@ -162,8 +146,7 @@ const renderedContent = computed(() => {
     }
   }
   content = content.replace(/\[([^\]]+)\]\(([^)]+\.(?:mp4|webm|mov|avi))\)/gi, '<a href="$2" target="_blank" class="video-link">[$1]</a>')
-  const html = md.render(content)
-  return DOMPurify.sanitize(html)
+  return renderMarkdown(content)
 })
 
 function formatTime(date: Date): string {

@@ -80,6 +80,10 @@
         </div>
       </div>
 
+      <button v-if="hasMore && !searchQuery" class="load-more-btn" @click="loadMoreSessions" :disabled="loadingMore">
+        {{ loadingMore ? '加载中...' : '加载更多' }}
+      </button>
+
       <div class="empty-state" v-else>
         <template v-if="searchQuery">
           <div class="empty-icon">🔍</div>
@@ -130,6 +134,9 @@ const openExportMenu = ref<string | null>(null)
 const exporting = ref(false)
 const showCheckpoints = ref(false)
 const checkpointSessionId = ref<string | null>(null)
+const hasMore = ref(false)
+const loadingMore = ref(false)
+const PAGE_SIZE = 50
 
 function openCheckpoints(sessionId: string) {
   checkpointSessionId.value = sessionId
@@ -292,7 +299,7 @@ async function loadSessionsFromDB() {
   }
 
   try {
-    const loaded = await getChatSessions(100)
+    const loaded = await getChatSessions(PAGE_SIZE, 0)
     dbSessions.value = loaded.map((s: DbSession) => ({
       id: s.session_id,
       title: s.first_question?.substring(0, 50) || '新对话',
@@ -300,8 +307,32 @@ async function loadSessionsFromDB() {
       updatedAt: new Date(s.first_message_at),
       messageCount: s.message_count
     }))
+    hasMore.value = loaded.length >= PAGE_SIZE
   } catch (error) {
     console.error('Failed to load sessions:', error)
+  }
+}
+
+async function loadMoreSessions() {
+  if (loadingMore.value || !hasMore.value) return
+  loadingMore.value = true
+  try {
+    const loaded = await getChatSessions(PAGE_SIZE, dbSessions.value.length)
+    if (loaded.length > 0) {
+      const mapped = loaded.map((s: DbSession) => ({
+        id: s.session_id,
+        title: s.first_question?.substring(0, 50) || '新对话',
+        createdAt: new Date(s.first_message_at),
+        updatedAt: new Date(s.first_message_at),
+        messageCount: s.message_count
+      }))
+      dbSessions.value = [...dbSessions.value, ...mapped]
+    }
+    hasMore.value = loaded.length >= PAGE_SIZE
+  } catch (error) {
+    console.error('Failed to load more sessions:', error)
+  } finally {
+    loadingMore.value = false
   }
 }
 
@@ -597,6 +628,30 @@ onUnmounted(() => {
   text-align: center;
   padding: var(--space-2xl);
   color: var(--color-text-secondary);
+}
+
+.load-more-btn {
+  display: block;
+  width: 100%;
+  padding: var(--space-sm);
+  margin-top: var(--space-md);
+  background: var(--color-bg-card);
+  color: var(--color-text-secondary);
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-btn);
+  cursor: pointer;
+  font-size: 14px;
+  transition: all var(--transition-fast);
+}
+
+.load-more-btn:hover:not(:disabled) {
+  color: var(--color-primary);
+  border-color: var(--color-primary);
+}
+
+.load-more-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
 }
 
 .back-btn {

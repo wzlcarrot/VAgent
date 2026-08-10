@@ -59,10 +59,15 @@ const emit = defineEmits<{
 const inputText = ref('')
 const isSending = ref(false)
 const previewUrls = ref<string[]>([])
+const imageSizes = ref<number[]>([])
 const fileInputRef = ref<HTMLInputElement>()
 const inputRef = ref<HTMLTextAreaElement>()
 const showToast = ref(false)
 const toastMessage = ref('')
+
+// nginx client_max_body_size=8m；base64 编码放大 ~4/3，
+// 所以总原始图片大小上限 5MB（对应 base64 ~6.7MB，含 JSON 结构仍 < 8MB）
+const MAX_TOTAL_IMAGE_BYTES = 5 * 1024 * 1024
 
 // 按钮禁用条件：本地未发送中 + 全局流式未进行 + 有内容
 const isDisabled = computed(() => {
@@ -95,6 +100,7 @@ onBeforeUnmount(() => {
     }
   }
   previewUrls.value = []
+  imageSizes.value = []
 })
 
 function triggerUpload() {
@@ -104,6 +110,7 @@ function triggerUpload() {
 function onFileSelected(e: Event) {
   const files = (e.target as HTMLInputElement).files
   if (!files) return
+  const currentTotal = imageSizes.value.reduce((a, b) => a + b, 0)
   for (const file of Array.from(files)) {
     if (!file.type.startsWith('image/')) {
       showToastMsg(`不支持的文件类型：${file.type || '未知'}`)
@@ -113,10 +120,15 @@ function onFileSelected(e: Event) {
       showToastMsg(`文件过大：${file.name}（超过 5MB 限制）`)
       continue
     }
+    if (currentTotal + file.size > MAX_TOTAL_IMAGE_BYTES) {
+      showToastMsg('图片总大小超过 5MB 限制，请减少图片数量或压缩后重试')
+      continue
+    }
     const reader = new FileReader()
     reader.onload = () => {
       const dataUrl = reader.result as string
       previewUrls.value.push(dataUrl)
+      imageSizes.value.push(file.size)
     }
     reader.readAsDataURL(file)
   }
@@ -125,6 +137,7 @@ function onFileSelected(e: Event) {
 
 function removeImage(i: number) {
   previewUrls.value.splice(i, 1)
+  imageSizes.value.splice(i, 1)
 }
 
 function handleKeydown(e: KeyboardEvent) {
@@ -144,6 +157,7 @@ function handleSend() {
   emit('send', text, urls)
   inputText.value = ''
   previewUrls.value = []
+  imageSizes.value = []
 
   if (inputRef.value) {
     inputRef.value.style.height = 'auto'

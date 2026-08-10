@@ -40,10 +40,12 @@ export async function getChatHistory(
 }
 
 export async function getChatSessions(
-  limit: number = 20
+  limit: number = 20,
+  offset: number = 0
 ): Promise<{ session_id: string; user_id: string; first_message_at: string; message_count: number; first_question: string }[]> {
   const params = new URLSearchParams()
   params.append('limit', limit.toString())
+  params.append('offset', offset.toString())
 
   const url = `${getStreamUrl('/ai/chat/sessions')}?${params.toString()}`
   const response = await http.get(url)
@@ -159,6 +161,8 @@ export async function* smartChatStream(
     headers,
     body: JSON.stringify(body),
     signal,
+    // 携带 httpOnly auth_token cookie（同源默认带；include 兼容跨源直连）
+    credentials: 'include',
   })
 
   if (!response.ok) {

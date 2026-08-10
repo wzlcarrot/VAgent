@@ -19,4 +19,15 @@ export default defineConfig({
       },
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'vue-vendor': ['vue', 'vue-router', 'pinia'],
+          'http-vendor': ['axios'],
+          'markdown-vendor': ['markdown-it', 'highlight.js', 'dompurify'],
+        },
+      },
+    },
+  },
 })

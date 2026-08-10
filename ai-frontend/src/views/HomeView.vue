@@ -94,6 +94,9 @@ const workflowLabel = ref('')
 const recommendationReasons = ref<Record<string, string>>({})
 const videoServiceAvailable = ref(true)
 
+// 当前进行中的流式请求控制器（session 切换 / 卸载时 abort，避免浪费 LLM token）
+let activeStreamController: AbortController | null = null
+
 const _videoIdPatterns = [
   /(?:视频)?id[号是:：\s]*([\w-]+)/i,
   /video[_-]?id[号是:：\s]*([\w-]+)/i,
@@ -141,6 +144,7 @@ function _createBatchedUpdater<T extends object>(apply: (next: T) => void) {
 const _onSessionSwitched = (e: Event) => {
   const detail = (e as CustomEvent<{ sessionId: string }>).detail
   if (detail?.sessionId) {
+    activeStreamController?.abort()  // 切换会话：取消进行中的流，避免浪费 LLM token
     loadSessionHistory(detail.sessionId)
   }
 }
@@ -165,6 +169,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   window.removeEventListener('session-switched', _onSessionSwitched)
+  activeStreamController?.abort()
 })
 
 async function loadSessionHistory(sessionId: string) {
@@ -273,6 +278,7 @@ async function handleRetry(messageId: string) {
   await streamAiResponse(text, messageId, _extractVideoId(text), imgUrls)
 }
 
+// 当前进行中的流式请求控制器（session 切换 / 卸载时 abort，避免浪费 LLM token）
 async function streamAiResponse(text: string, aiMessageId: string, extractedVideoId: string | null = null, imgUrls: string[] = []) {
   chatStore.isStreaming = true
 
@@ -280,12 +286,15 @@ async function streamAiResponse(text: string, aiMessageId: string, extractedVide
   workflowStage.value = ''
   workflowLabel.value = ''
 
+  const controller = new AbortController()
+  activeStreamController = controller
+
   const batchedUpdateContent = _createBatchedUpdater<Partial<Message>>(
     (next) => chatStore.updateMessage(aiMessageId, next)
   )
 
   try {
-    for await (const event of smartChatStream(text, currentSessionId.value || undefined, extractedVideoId || undefined, userStore.user?.userId, userStore.user?.token, imgUrls.length > 0 ? imgUrls : undefined)) {
+    for await (const event of smartChatStream(text, currentSessionId.value || undefined, extractedVideoId || undefined, userStore.user?.userId, userStore.user?.token, imgUrls.length > 0 ? imgUrls : undefined, controller.signal)) {
       if (event.type === 'status') {
         workflowStage.value = event.stage
         workflowLabel.value = event.label
@@ -307,12 +316,20 @@ async function streamAiResponse(text: string, aiMessageId: string, extractedVide
       status: 'success',
     })
   } catch (error: unknown) {
+    // abort 属于主动取消（切 session / 卸载），不显示错误
+    if (controller.signal.aborted) {
+      chatStore.updateMessage(aiMessageId, { status: 'success' })
+      return
+    }
     const msg = error instanceof Error ? error.message : '请求失败，请稍后重试'
     chatStore.updateMessage(aiMessageId, {
       content: fullContent + (fullContent ? '\n\n' : '') + '⚠️ ' + msg,
       status: 'error',
     })
   } finally {
+    if (activeStreamController === controller) {
+      activeStreamController = null
+    }
     chatStore.isStreaming = false
     chatStore.finalizeStreaming()
     showWorkflow.value = false
