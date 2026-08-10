@@ -74,41 +74,29 @@ def _get_tools_client() -> httpx.Client:
     return _tools_client
 
 
+async def aclose_async_client():
+    """异步关闭复用 AsyncClient（main.py lifespan 里 await 调用，避免新起线程）。"""
+    global _async_client, _async_client_loop_id
+    if _async_client is not None:
+        try:
+            await _async_client.aclose()
+        except Exception as e:
+            logger.debug(f"AsyncClient 关闭异常: {e}")
+    _async_client = None
+    _async_client_loop_id = None
+
+
 def close_http_clients():
-    """Graceful shutdown：关闭复用连接池。main.py lifespan 调用。"""
-    global _sync_client, _tools_client, _async_client
+    """Graceful shutdown：关闭同步复用连接池（AsyncClient 由 aclose_async_client 处理）。"""
+    global _sync_client, _tools_client
     for c in (_sync_client, _tools_client):
         if c is not None:
             try:
                 c.close()
             except Exception:
                 pass
-    # AsyncClient.aclose() 是 coroutine。当前 lifespan 可能在 running loop 里，
-    # 用独立 daemon loop 跑 aclose，避免 "loop is running" 错误和 task 不执行的隐患。
-    if _async_client is not None:
-        try:
-            async_client_ref = _async_client
-            errors: list = []
-
-            def _closer():
-                try:
-                    asyncio.run(async_client_ref.aclose())
-                except Exception as e:
-                    errors.append(e)
-
-            t = threading.Thread(target=_closer, daemon=True)
-            t.start()
-            t.join(timeout=2.0)
-            if t.is_alive():
-                logger.debug("AsyncClient aclose 超时（daemon 线程将随进程退出）")
-            if errors:
-                logger.debug(f"AsyncClient aclose 异常: {errors[0]}")
-        except Exception as e:
-            logger.debug(f"AsyncClient 关闭异常: {e}")
     _sync_client = None
     _tools_client = None
-    _async_client = None
-    _async_client_loop_id = None
 
 try:
     from app.utils.metrics import llm_token_usage, llm_requests_total

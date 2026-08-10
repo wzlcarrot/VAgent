@@ -2,7 +2,7 @@ import json
 import logging
 import threading
 import time
-from typing import List, Dict
+from typing import List, Dict, Optional
 from app.config import settings
 
 logger = logging.getLogger(__name__)
@@ -271,33 +271,29 @@ def get_compact_stats() -> Dict:
         return dict(_compact_stats)
 
 
-async def async_summarize_context(session_id: str):
-    with _compact_lock:
-        if session_id in _compact_in_progress:
-            return
-        _compact_in_progress.add(session_id)
-
-    def _release():
-        with _compact_lock:
-            _compact_in_progress.discard(session_id)
-
+def _compact_probe(session_id: str) -> Optional[tuple]:
+    """
+    同步 Redis 探活：返回是否需要压缩。
+    全部在 executor 线程执行，避免阻塞 event loop。
+    需要压缩时返回 (client, cooldown_key)，否则返回 None。
+    """
     client = _get_redis()
     if not client:
-        _release()
-        return
+        return None
 
     key = _messages_key(session_id)
-    msg_count = client.llen(key)
+    try:
+        msg_count = client.llen(key)
+    except Exception:
+        return None
     if msg_count <= settings.context_max_rounds * 3:
-        _release()
-        return
+        return None
 
     cooldown_key = f"session:{session_id}:last_compact"
     try:
         last_ts = client.get(cooldown_key)
         if last_ts and (time.time() - float(last_ts)) < _COMPACT_COOLDOWN_SECONDS:
-            _release()
-            return
+            return None
     except Exception:
         pass
 
@@ -307,10 +303,29 @@ async def async_summarize_context(session_id: str):
         # tiktoken 不可用时按中文字符估算（中文 ~0.7 token/char）
         estimated_tokens = _estimate_tokens_for_sample(raw_sample, msg_count)
         if estimated_tokens < _COMPACT_TOKEN_THRESHOLD:
-            _release()
-            return
+            return None
     except Exception as e:
         logger.debug(f"Token 估算失败，跳过阈值检查: {e}")
+
+    return (client, cooldown_key)
+
+
+async def async_summarize_context(session_id: str):
+    import asyncio
+    with _compact_lock:
+        if session_id in _compact_in_progress:
+            return
+        _compact_in_progress.add(session_id)
+
+    def _release():
+        with _compact_lock:
+            _compact_in_progress.discard(session_id)
+
+    loop = asyncio.get_running_loop()
+    probe = await loop.run_in_executor(None, _compact_probe, session_id)
+    if probe is None:
+        _release()
+        return
 
     try:
         from app.tools.compact_service import compact_conversation
@@ -342,10 +357,11 @@ async def async_summarize_context(session_id: str):
                 f"节省: {result['tokens_saved']} "
                 f"消息: {result['pre_count']}→{result['post_count']}"
             )
-            try:
-                client.setex(cooldown_key, _COMPACT_COOLDOWN_SECONDS, str(time.time()))
-            except Exception:
-                pass
+            client, cooldown_key = probe
+            await loop.run_in_executor(
+                None,
+                lambda: client.setex(cooldown_key, _COMPACT_COOLDOWN_SECONDS, str(time.time())),
+            )
     except Exception as e:
         logger.warning(f"Compact失败: {e}")
     finally:

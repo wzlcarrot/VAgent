@@ -147,12 +147,21 @@ async def compact_conversation(session_id: str) -> Dict:
     from app.tools.llm_tools import LLM_tools
     from app.tools.context_tools import _get_redis, _messages_key
 
-    client = _get_redis()
-    if not client:
+    loop = asyncio.get_running_loop()
+
+    def _read_redis():
+        client = _get_redis()
+        if not client:
+            return None
+        key = _messages_key(session_id)
+        raw = client.lrange(key, 0, -1)
+        return client, key, raw
+
+    read_result = await loop.run_in_executor(None, _read_redis)
+    if read_result is None:
         return {"success": False, "reason": "Redis不可用"}
 
-    key = _messages_key(session_id)
-    raw = client.lrange(key, 0, -1)
+    client, key, raw = read_result
     if not raw or len(raw) < 4:
         return {"success": False, "reason": "消息太少"}
 
@@ -217,12 +226,14 @@ async def compact_conversation(session_id: str) -> Dict:
     new_messages.extend(recent_messages)
 
     try:
-        pipe = client.pipeline(transaction=True)
-        pipe.delete(key)
-        for msg in new_messages:
-            pipe.rpush(key, json.dumps(msg))
-        pipe.expire(key, settings.context_ttl)
-        pipe.execute()
+        def _write_redis():
+            pipe = client.pipeline(transaction=True)
+            pipe.delete(key)
+            for msg in new_messages:
+                pipe.rpush(key, json.dumps(msg))
+            pipe.expire(key, settings.context_ttl)
+            pipe.execute()
+        await loop.run_in_executor(None, _write_redis)
     except Exception as e:
         logger.error(f"Compact写回Redis失败: {e}")
         _record_compact_metric("failed")

@@ -47,6 +47,9 @@ def get_global_pool() -> Optional[pool.ThreadedConnectionPool]:
             user=settings.pg_user,
             password=settings.pg_password,
             dbname=settings.pg_database,
+            # connect_timeout 秒级：DB 长时间故障时避免连接卡死等待 TCP 超时（可达数十秒）
+            connect_timeout=5,
+            options="-c statement_timeout=15000",
         )
         _last_health_check = time.time()
         return _global_pool

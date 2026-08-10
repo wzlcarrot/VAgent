@@ -6,7 +6,7 @@ import asyncio
 import re
 import time
 import uuid
-from typing import Optional, List, Dict, Any
+from typing import List, Dict, Any
 from fastapi import APIRouter, HTTPException, Request, Depends
 from fastapi.responses import StreamingResponse
 from app.models import ChatRequest
@@ -16,8 +16,9 @@ from app.agents.supervisor import Supervisor
 from app.agents.workflows.video_qa_workflow import run_video_qa_workflow, resume_video_qa_workflow
 from app.agents.workflows.recommend_workflow import run_recommend_workflow, resume_recommend_workflow
 from app.agents.workflows.chat_graph import run_chat_workflow, resume_chat_workflow
+from app.agents.workflows.user_data_workflow import run_user_data_workflow, resume_user_data_workflow
 
-_CHINESE_NUM = {"一": 1, "二": 2, "两": 2, "三": 3, "四": 4, "五": 5, "六": 6, "七": 7, "八": 8, "九": 9, "几": 3}
+_CHINESE_NUM = {"一": 1, "二": 2, "两": 2, "三": 3, "四": 4, "五": 5, "六": 6, "七": 7, "八": 8, "九": 9, "几": 3}  # "几"→默认按 3 个理解
 
 
 def _parse_recommend_count(text: str) -> int:
@@ -29,7 +30,8 @@ def _parse_recommend_count(text: str) -> int:
     if num_str.isdigit():
         return max(1, min(int(num_str), 5))
     return _CHINESE_NUM.get(num_str, 5)
-from app.agents.workflows.user_data_workflow import run_user_data_workflow, resume_user_data_workflow
+
+
 from app.tools import ChatTools
 from app.tools.db import get_global_pool
 from app.routers._shared import require_auth, _json_dumps
@@ -48,9 +50,12 @@ router = APIRouter()
 
 
 @router.get("/chat/sessions")
-async def get_chat_sessions(limit: int = 20, authed_user_id: str = Depends(require_auth)):
+async def get_chat_sessions(limit: int = 20, offset: int = 0, authed_user_id: str = Depends(require_auth)):
     try:
-        sessions = ChatTools.get_chat_sessions(authed_user_id, limit)
+        limit = max(1, min(limit, 100))
+        offset = max(0, offset)
+        from app.agents.workflows import run_sync_in_executor
+        sessions = await run_sync_in_executor(ChatTools.get_chat_sessions, authed_user_id, limit, offset)
         return {"sessions": sessions}
     except Exception as e:
         logger.error(f"获取会话列表失败: {e}", exc_info=True)
@@ -60,7 +65,8 @@ async def get_chat_sessions(limit: int = 20, authed_user_id: str = Depends(requi
 @router.get("/chat/history")
 async def get_chat_history(session_id: str = None, limit: int = 50, authed_user_id: str = Depends(require_auth)):
     try:
-        records = ChatTools.get_chat_history(authed_user_id, session_id, limit)
+        from app.agents.workflows import run_sync_in_executor
+        records = await run_sync_in_executor(ChatTools.get_chat_history, authed_user_id, session_id, limit)
         import json as _json
         messages = []
         for r in records:
@@ -115,70 +121,68 @@ async def search_chat_content(q: str = "", limit: int = 50, authed_user_id: str 
         q = sanitize_search_input(q)
         if not q:
             return {"results": []}
-        pool = get_global_pool()
-        if pool is None:
-            return {"results": []}
-        conn = pool.getconn()
-        try:
-            cursor = conn.cursor(cursor_factory=RealDictCursor)
-            like_pattern = f"%{escape_like_pattern(q)}%"
-            if authed_user_id:
-                cursor.execute("""
-                    SELECT DISTINCT ch.session_id, ch.question, ch.answer, ch.created_at,
-                           MIN(ch.created_at) OVER (PARTITION BY ch.session_id) as session_start
-                    FROM chat_history ch
-                    WHERE ch.user_id = %s
-                      AND (ch.question ILIKE %s OR ch.answer ILIKE %s)
-                    ORDER BY ch.created_at DESC
-                    LIMIT %s
-                """, (authed_user_id, like_pattern, like_pattern, limit))
-            else:
-                cursor.execute("""
-                    SELECT DISTINCT ch.session_id, ch.question, ch.answer, ch.created_at,
-                           MIN(ch.created_at) OVER (PARTITION BY ch.session_id) as session_start
-                    FROM chat_history ch
-                    WHERE ch.question ILIKE %s OR ch.answer ILIKE %s
-                    ORDER BY ch.created_at DESC
-                    LIMIT %s
-                """, (like_pattern, like_pattern, limit))
-            rows = cursor.fetchall()
-            cursor.close()
-            seen = set()
-            results = []
-            for r in rows:
-                sid = r["session_id"]
-                if sid in seen:
-                    continue
-                seen.add(sid)
-                snippet = r["answer"] or r["question"] or ""
-                idx = snippet.lower().find(q.lower())
-                if idx > 0:
-                    start = max(0, idx - 40)
-                    end = min(len(snippet), idx + len(q) + 60)
-                    snippet = ("..." if start > 0 else "") + snippet[start:end] + ("..." if end < len(snippet) else "")
-                results.append({
-                    "session_id": sid,
-                    "title": (r["question"] or "")[:60],
-                    "snippet": snippet,
-                    "matched_in": "question" if q.lower() in (r["question"] or "").lower() else "answer",
-                    "created_at": str(r.get("created_at") or ""),
-                })
-            return {"results": results[:limit]}
-        finally:
-            pool.putconn(conn)
+        from app.agents.workflows import run_sync_in_executor
+        results = await run_sync_in_executor(_search_chat_db, authed_user_id, q, limit)
+        return {"results": results}
     except Exception as e:
         logger.error(f"搜索聊天内容失败: {e}")
         return {"results": []}
 
 
+def _search_chat_db(user_id: str, q: str, limit: int) -> List[Dict[str, Any]]:
+    from app.utils.security import escape_like_pattern
+    pool = get_global_pool()
+    if pool is None:
+        return []
+    conn = pool.getconn()
+    try:
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        like_pattern = f"%{escape_like_pattern(q)}%"
+        cursor.execute("""
+            SELECT DISTINCT ch.session_id, ch.question, ch.answer, ch.created_at,
+                   MIN(ch.created_at) OVER (PARTITION BY ch.session_id) as session_start
+            FROM chat_history ch
+            WHERE ch.user_id = %s
+              AND (ch.question ILIKE %s OR ch.answer ILIKE %s)
+            ORDER BY ch.created_at DESC
+            LIMIT %s
+        """, (user_id, like_pattern, like_pattern, limit))
+        rows = cursor.fetchall()
+        cursor.close()
+        seen = set()
+        results = []
+        for r in rows:
+            sid = r["session_id"]
+            if sid in seen:
+                continue
+            seen.add(sid)
+            snippet = r["answer"] or r["question"] or ""
+            idx = snippet.lower().find(q.lower())
+            if idx > 0:
+                start = max(0, idx - 40)
+                end = min(len(snippet), idx + len(q) + 60)
+                snippet = ("..." if start > 0 else "") + snippet[start:end] + ("..." if end < len(snippet) else "")
+            results.append({
+                "session_id": sid,
+                "title": (r["question"] or "")[:60],
+                "snippet": snippet,
+                "matched_in": "question" if q.lower() in (r["question"] or "").lower() else "answer",
+                "created_at": str(r.get("created_at") or ""),
+            })
+        return results[:limit]
+    finally:
+        pool.putconn(conn)
+
+
 @router.delete("/chat/session/{session_id}")
 async def delete_chat_session(session_id: str, authed_user_id: str = Depends(require_auth)):
     try:
-        existing = ChatTools.get_chat_history(authed_user_id, session_id, limit=1)
+        from app.agents.workflows import run_sync_in_executor
+        existing = await run_sync_in_executor(ChatTools.get_chat_history, authed_user_id, session_id, 1)
         if not existing:
             logger.warning(f"删除会话越权拦截: user={authed_user_id} 试图删除 session={session_id}")
             raise HTTPException(status_code=404, detail="会话不存在")
-        success = ChatTools.delete_chat_session(session_id)
+        success = await run_sync_in_executor(ChatTools.delete_chat_session, authed_user_id, session_id)
         return {"success": success}
     except HTTPException:
         raise
@@ -189,7 +193,8 @@ async def delete_chat_session(session_id: str, authed_user_id: str = Depends(req
 @router.get("/chat/checkpoints")
 async def get_checkpoints(session_id: str, authed_user_id: str = Depends(require_auth)):
     try:
-        owner_check = ChatTools.get_chat_history(authed_user_id, session_id, limit=1)
+        from app.agents.workflows import run_sync_in_executor
+        owner_check = await run_sync_in_executor(ChatTools.get_chat_history, authed_user_id, session_id, 1)
         if not owner_check:
             logger.warning(f"checkpoints 越权拦截: user={authed_user_id} 试图查 session={session_id}")
             raise HTTPException(status_code=404, detail="会话不存在")
@@ -244,7 +249,8 @@ async def chat_stream(request: ChatRequest, http_request: Request, authed_user_i
         conversation_history: list = []
         if session_id:
             try:
-                ctx_messages = build_context(session_id)
+                from app.agents.workflows import run_sync_in_executor as _rse
+                ctx_messages = await _rse(build_context, session_id)
                 pairs = []
                 for m in ctx_messages:
                     if m.get("role") == "user":
@@ -257,7 +263,8 @@ async def chat_stream(request: ChatRequest, http_request: Request, authed_user_i
             except Exception as e:
                 logger.warning(f"从Redis获取上下文失败: {e}")
                 try:
-                    records = ChatTools.get_chat_history(user_id, session_id, limit=20)
+                    from app.agents.workflows import run_sync_in_executor as _rse
+                    records = await _rse(ChatTools.get_chat_history, user_id, session_id, 20)
                     pairs = []
                     for r in records:
                         if r.question and r.answer:
@@ -269,7 +276,8 @@ async def chat_stream(request: ChatRequest, http_request: Request, authed_user_i
         memory_context = ""
         if user_id:
             try:
-                memories = MemoryTools.recall_memories(user_id, question, top_k=3)
+                from app.agents.workflows import run_sync_in_executor as _rse
+                memories = await _rse(MemoryTools.recall_memories, user_id, question, 3)
                 if memories:
                     memory_lines = [f"- (置信度{m.score:.1f}) {m.content}" for m in memories]
                     memory_context = "关于该用户，AI已知的信息：\n" + "\n".join(memory_lines)
@@ -282,7 +290,8 @@ async def chat_stream(request: ChatRequest, http_request: Request, authed_user_i
             conversation_history.insert(0, {"system_memory": f"用户上传了 {len(image_urls)} 张图片，请结合图片内容回答。"})
         ctx = {}
         try:
-            ctx = get_context_for_query(session_id, question)
+            from app.agents.workflows import run_sync_in_executor as _rse
+            ctx = await _rse(get_context_for_query, session_id, question)
             resolved_question = ctx["resolved_question"]
             referenced_video = ctx["referenced_video"]
             if ctx["resolved"]:
@@ -295,7 +304,8 @@ async def chat_stream(request: ChatRequest, http_request: Request, authed_user_i
         user_pref: dict = {}
         if user_id:
             try:
-                pref_mems = MemoryTools.recall_memories(user_id, query="", top_k=20)
+                from app.agents.workflows import run_sync_in_executor as _rse
+                pref_mems = await _rse(MemoryTools.recall_memories, user_id, "", 20)
                 tags = []
                 for m in pref_mems:
                     if m.type in ("preference", "activity"):
@@ -368,24 +378,26 @@ async def chat_stream(request: ChatRequest, http_request: Request, authed_user_i
                 yield "data: [DONE]\n\n"
             finally:
                 try:
+                    from app.agents.workflows import run_sync_in_executor as _rse
                     if recommended_videos:
                         from app.conversation.context_manager import update_recommendations
-                        update_recommendations(session_id, recommended_videos)
+                        await _rse(update_recommendations, session_id, recommended_videos)
                     if winner_type_meta == "video_qa" and video_id:
                         from app.conversation.context_manager import update_video_qa
                         from app.tools import VideoTools
-                        _video = VideoTools.get_video_info(video_id)
+                        _video = await _rse(VideoTools.get_video_info, video_id)
                         _title = _video.videoName if _video else ""
                         _author = _video.nickName if _video else ""
-                        update_video_qa(session_id, {"video_id": video_id, "title": _title, "author": _author})
+                        await _rse(update_video_qa, session_id, {"video_id": video_id, "title": _title, "author": _author})
                 except Exception as e:
                     logger.warning(f"写入指代上下文失败(不影响响应): {e}")
                 # 即使 full_response 为空（仅 videos 事件），也要保存（否则刷新后丢失视频推荐）
                 has_anything = bool(full_response and full_response.strip()) or bool(recommended_videos)
                 if has_anything:
                     try:
-                        save_message(session_id, "user", question)
-                        save_message(session_id, "assistant", full_response)
+                        from app.agents.workflows import run_sync_in_executor as _rse
+                        await _rse(save_message, session_id, "user", question)
+                        await _rse(save_message, session_id, "assistant", full_response)
                         from app.tools.context_tools import async_summarize_context
                         await async_summarize_context(session_id)
                     except Exception as e:
@@ -421,7 +433,8 @@ async def resume_workflow(request: Request, authed_user_id: str = Depends(requir
         session_id = body.get("session_id")
         if not session_id:
             raise HTTPException(status_code=400, detail="session_id 不能为空")
-        owner_check = ChatTools.get_chat_history(authed_user_id, session_id, limit=1)
+        from app.agents.workflows import run_sync_in_executor
+        owner_check = await run_sync_in_executor(ChatTools.get_chat_history, authed_user_id, session_id, 1)
         if not owner_check:
             logger.warning(f"resume 越权拦截: user={authed_user_id} 试图恢复 session={session_id}")
             raise HTTPException(status_code=404, detail="会话不存在")
@@ -572,23 +585,28 @@ async def _run_workflow_to_result(wf_type: str, question: str, video_id: str = N
                             session_id: str = None, recommend_count: int = 5) -> dict:
     try:
         from app.agents.workflows import run_sync_in_executor
+        # 单 workflow 超时保护：防止卡死的 LLM/DB 调用永久占用线程池线程
+        WORKFLOW_TIMEOUT = 120.0
         if wf_type == WorkflowType.VIDEO_QA:
             if not video_id:
                 return {"workflow_type": wf_type, "answer": "", "confidence": 0.0, "recommended_videos": [], "reasons": []}
-            result = await run_sync_in_executor(run_video_qa_workflow, question, video_id, user_id, session_id)
+            result = await run_sync_in_executor(run_video_qa_workflow, question, video_id, user_id, session_id, timeout=WORKFLOW_TIMEOUT)
             return {"workflow_type": wf_type, "answer": result.get("answer", ""), "confidence": 0.9, "recommended_videos": [], "reasons": []}
         if wf_type == WorkflowType.RECOMMEND:
             if not user_id:
                 return {"workflow_type": wf_type, "answer": "", "confidence": 0.0, "recommended_videos": [], "reasons": []}
-            result = await run_sync_in_executor(run_recommend_workflow, user_id, question, session_id, recommend_count)
+            result = await run_sync_in_executor(run_recommend_workflow, user_id, question, session_id, recommend_count, timeout=WORKFLOW_TIMEOUT)
             return {"workflow_type": wf_type, "answer": result.get("answer", ""), "confidence": 0.8, "recommended_videos": result.get("recommended_videos", []), "reasons": result.get("reasons", [])}
         if wf_type == WorkflowType.USER_DATA:
             if not user_id:
                 return {"workflow_type": wf_type, "answer": "", "confidence": 0.0, "recommended_videos": [], "reasons": []}
-            result = await run_sync_in_executor(run_user_data_workflow, question, user_id, session_id)
+            result = await run_sync_in_executor(run_user_data_workflow, question, user_id, session_id, timeout=WORKFLOW_TIMEOUT)
             return {"workflow_type": wf_type, "answer": result.get("answer", ""), "confidence": 0.85, "recommended_videos": [], "reasons": []}
-        result = await run_sync_in_executor(run_chat_workflow, question, conversation_history or [], session_id, True)
+        result = await run_sync_in_executor(run_chat_workflow, question, conversation_history or [], session_id, True, timeout=WORKFLOW_TIMEOUT)
         return {"workflow_type": WorkflowType.CHAT, "answer": result.get("answer", ""), "confidence": 0.7, "recommended_videos": [], "reasons": [], "llm_messages": result.get("llm_messages")}
+    except asyncio.TimeoutError:
+        logger.error(f"workflow {wf_type} 执行超时（>120s）")
+        return {"workflow_type": wf_type, "answer": "", "confidence": 0.0, "recommended_videos": [], "reasons": []}
     except Exception as e:
         logger.error(f"并行workflow {wf_type} 执行失败: {e}")
         return {"workflow_type": wf_type, "answer": "", "confidence": 0.0, "recommended_videos": [], "reasons": []}

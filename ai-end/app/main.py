@@ -6,7 +6,7 @@ from fastapi.responses import Response
 from starlette.middleware.base import BaseHTTPMiddleware
 from app.routers import router, start_token_cleanup_task, stop_token_cleanup_task
 from app.config import settings
-from app.tools.db import get_global_pool, close_global_pool, get_cursor
+from app.tools.db import close_global_pool, get_cursor
 import logging
 import uuid
 
@@ -99,7 +99,8 @@ async def lifespan(app: FastAPI):
     except Exception:
         pass
     try:
-        from app.tools.llm_tools import close_http_clients
+        from app.tools.llm_tools import aclose_async_client, close_http_clients
+        await aclose_async_client()
         close_http_clients()
     except Exception:
         pass
@@ -115,6 +116,11 @@ async def lifespan(app: FastAPI):
     try:
         from app.tools.ranker import shutdown as shutdown_ranker
         shutdown_ranker()
+    except Exception:
+        pass
+    try:
+        from app.agents.workflows.chat_graph import shutdown_recall_executor
+        shutdown_recall_executor()
     except Exception:
         pass
     logger.info("服务已关闭")
@@ -197,30 +203,35 @@ async def health():
 @app.get("/ready")
 async def ready():
     """Readiness: 依赖（DB、Redis、LLM provider）是否健康"""
+    from fastapi.concurrency import run_in_threadpool
+
     checks = {"db": False, "redis": False, "llm": False}
 
-    # DB
-    with get_cursor(cursor_factory=None) as cursor:
-        if cursor is not None:
+    # DB（同步 psycopg2 走线程池，避免阻塞 event loop）
+    def _check_db() -> bool:
+        with get_cursor(cursor_factory=None) as cursor:
+            if cursor is None:
+                return False
             try:
                 cursor.execute("SELECT 1")
-                checks["db"] = True
+                return True
             except Exception:
-                pass
+                return False
+    checks["db"] = await run_in_threadpool(_check_db)
 
     # Redis
-    try:
-        from app.tools.context_tools import _get_redis
-        r = _get_redis()
-        if r is not None:
-            try:
+    def _check_redis() -> bool:
+        try:
+            from app.tools.context_tools import _get_redis
+            r = _get_redis()
+            if r is not None:
                 r.ping()
-                checks["redis"] = True
-            except Exception:
-                # ping 失败（熔断或连接异常），不冒到顶层
-                pass
-    except Exception:
-        pass
+                return True
+        except Exception:
+            # ping 失败（熔断或连接异常），不冒到顶层
+            pass
+        return False
+    checks["redis"] = await run_in_threadpool(_check_redis)
 
     # LLM provider
     if settings.deepseek_api_key or settings.minimax_api_key:

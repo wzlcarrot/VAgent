@@ -29,7 +29,9 @@ async def submit_feedback(request: Request, authed_user_id: str = Depends(requir
             logger.warning(f"feedback 非法 message_index: {message_index}")
             raise HTTPException(status_code=400, detail="message_index 必须为 0-1000 的整数")
         content = f"用户认为第{message_index + 1}轮回复{'有用' if feedback == 'helpful' else '没用'}"
-        MemoryTools.save_memory(
+        from app.agents.workflows import run_sync_in_executor
+        await run_sync_in_executor(
+            MemoryTools.save_memory,
             user_id=user_id, type="feedback", content=content, source="feedback",
             score=1.0 if feedback == "helpful" else 0.3, tags=[feedback, session_id],
         )
