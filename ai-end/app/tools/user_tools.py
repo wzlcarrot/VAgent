@@ -27,6 +27,22 @@ class UserTools:
             return None
 
     @staticmethod
+    def update_user_password(user_id: str, password_hash: str) -> bool:
+        """更新用户密码哈希（用于旧 MD5 → bcrypt 透明升级）"""
+        try:
+            with get_cursor(commit=True) as cursor:
+                if cursor is None:
+                    return False
+                cursor.execute(
+                    "UPDATE user_info SET password = %s WHERE user_id = %s",
+                    (password_hash, user_id),
+                )
+                return cursor.rowcount > 0
+        except Exception as e:
+            logger.error(f"更新用户密码失败: {e}")
+            return False
+
+    @staticmethod
     def get_play_history(user_id: str, limit: int = 50) -> List[VideoPlayHistory]:
         try:
             with get_cursor() as cursor:

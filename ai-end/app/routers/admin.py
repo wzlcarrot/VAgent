@@ -3,7 +3,9 @@
 鉴权：X-Admin-Key header
 """
 import logging
+import hmac
 from fastapi import APIRouter, HTTPException, Request
+from fastapi.concurrency import run_in_threadpool
 from app.config import settings
 from app.tools.db import get_cursor
 
@@ -21,11 +23,16 @@ async def admin_stats(request: Request):
         raise HTTPException(status_code=503, detail="admin_api_key 未配置")
 
     provided_key = request.headers.get("X-Admin-Key", "")
-    if provided_key != expected_key:
+    if not hmac.compare_digest(provided_key, expected_key):
         client = request.client.host if request.client else "unknown"
         logger.warning(f"admin/stats 鉴权失败: remote={client}")
         raise HTTPException(status_code=403, detail="Forbidden")
 
+    return await run_in_threadpool(_query_stats)
+
+
+def _query_stats() -> dict:
+    """同步 DB 统计查询（在 executor 线程执行，避免阻塞 event loop）"""
     stats: dict = {
         "service": settings.app_name,
         "version": "1.0.0",

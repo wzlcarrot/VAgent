@@ -50,7 +50,9 @@ const router = useRouter()
 const userStore = useUserStore()
 const showUserMenu = ref(false)
 
-function handleLogout() {
+async function handleLogout() {
+  const { logout: apiLogout } = await import('@/api/user')
+  await apiLogout()  // 清 httpOnly cookie
   userStore.logout()
   showUserMenu.value = false
   router.push('/login')

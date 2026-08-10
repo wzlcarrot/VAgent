@@ -16,9 +16,11 @@ import axios from 'axios'
 export const http = axios.create({
   baseURL: '',
   timeout: 30000,
+  // 同源请求默认携带 cookie（httpOnly auth_token）；跨源时也显式带上
+  withCredentials: true,
 })
 
-// 请求拦截器：自动从 localStorage 注入 Authorization 头
+// 请求拦截器：优先从 httpOnly cookie 自动鉴权；localStorage 中的旧 token 作为兜底
 http.interceptors.request.use(
   (config) => {
     try {

@@ -77,3 +77,14 @@ export async function login(data: LoginRequest): Promise<AuthResponse> {
 export async function register(_data: RegisterRequest): Promise<AuthResponse> {
   throw new Error('注册功能未实现，请联系管理员')
 }
+
+export async function logout(): Promise<void> {
+  try {
+    await fetch(`${getBaseUrl()}/ai/logout`, {
+      method: 'POST',
+      credentials: 'include',  // 携带/清除 httpOnly cookie
+    })
+  } catch {
+    /* 网络异常时本地状态仍会清理，后端 cookie 靠 TTL 过期 */
+  }
+}

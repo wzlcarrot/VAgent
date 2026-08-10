@@ -590,14 +590,11 @@ async function handleLogin() {
       router.push('/')
     }, 2000)
   } catch (error: unknown) {
-    const err = error as { message?: string }
     const msg = error instanceof Error ? error.message : '登录失败，请重试。'
     errorMessage.value = msg
-    if (err.message?.includes('邮箱')) {
-      emailError.value = true
-    } else {
-      passwordError.value = true
-    }
+    // 后端已统一"邮箱或密码错误"消息（防用户枚举），无法区分具体字段，两个字段都高亮
+    emailError.value = true
+    passwordError.value = true
     triggerLoginError()
   } finally {
     isLoading.value = false

@@ -23,8 +23,7 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-# 测试账户从配置读取
-TEST_ACCOUNT = None  # 延迟初始化，避免循环导入
+# token 有效期 7 天（登录时写入内存/Redis + httpOnly cookie）
 TOKEN_TTL = 7 * 24 * 3600
 
 _token_store: Dict[str, Tuple[str, float]] = {}
@@ -48,7 +47,7 @@ def _token_set(token: str, user_id: str, expiry: float):
     if r is not None:
         try:
             ttl = max(int(expiry - time.time()), 1)
-            r.setex(f"{_token_redis_prefix}{token}", ttl, user_id)
+            r.set(f"{_token_redis_prefix}{token}", user_id, ex=ttl)
             return
         except Exception as e:
             logger.warning(f"Token 写 Redis 失败，降级到内存: {e}")
@@ -125,18 +124,29 @@ def stop_token_cleanup_task():
         _token_store_bg_task = None
 
 
+AUTH_COOKIE_NAME = "auth_token"
+
+
 def get_current_user(request: Request) -> str:
-    """从 Authorization header 解析已认证的 user_id。"""
+    """从 Authorization header 或 httpOnly cookie 解析已认证的 user_id。
+
+    token 存放策略：登录时写入 httpOnly cookie（XSS 不可读取），
+    Authorization header 保留用于非浏览器客户端（API/测试）。
+    """
     auth = request.headers.get("Authorization", "")
+    token = None
     if auth.startswith("Bearer "):
         token = auth[7:]
+    if not token:
+        token = request.cookies.get(AUTH_COOKIE_NAME)
+    if token:
         user_id = _token_get(token)
         if user_id:
             return user_id
     # 401 时记录指标
     try:
         from app.utils.metrics import auth_failures_total
-        reason = "no_token" if not auth else "invalid_or_expired"
+        reason = "no_token" if not auth and not token else "invalid_or_expired"
         auth_failures_total.labels(reason=reason).inc()
     except Exception:
         pass

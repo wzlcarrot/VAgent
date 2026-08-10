@@ -33,8 +33,11 @@
             </svg>
           </button>
         </div>
+        <button v-if="hasMore" class="load-more-btn" @click="loadMoreSessions" :disabled="loadingMore">
+          {{ loadingMore ? '加载中...' : '加载更多' }}
+        </button>
       </div>
-      <div class="empty-state" v-else>
+      <div class="empty-state" v-else-if="!loadingMore">
         <p>暂无历史会话</p>
       </div>
     </div>
@@ -77,6 +80,9 @@ const { showToast, showConfirm } = useNotify()
 
 const dbSessions = ref<SessionView[]>([])
 const needsRefresh = ref(false)
+const loadingMore = ref(false)
+const hasMore = ref(false)
+const PAGE_SIZE = 50
 
 watch(() => chatStore.needsSidebarRefresh, (val) => {
   if (val) {
@@ -85,22 +91,43 @@ watch(() => chatStore.needsSidebarRefresh, (val) => {
   }
 })
 
+function mapDbSessions(loaded: DbSession[]): SessionView[] {
+  return loaded.map((s: DbSession) => ({
+    id: s.session_id,
+    title: s.first_question?.substring(0, 20) || '新对话',
+    createdAt: new Date(s.first_message_at),
+    updatedAt: new Date(s.first_message_at),
+    messageCount: s.message_count
+  }))
+}
+
 async function loadSessionsFromDB() {
   if (!userStore.user?.userId) {
     return
   }
 
   try {
-    const loaded = await getChatSessions(50)
-    dbSessions.value = loaded.map((s: DbSession) => ({
-      id: s.session_id,
-      title: s.first_question?.substring(0, 20) || '新对话',
-      createdAt: new Date(s.first_message_at),
-      updatedAt: new Date(s.first_message_at),
-      messageCount: s.message_count
-    }))
+    const loaded = await getChatSessions(PAGE_SIZE, 0)
+    dbSessions.value = mapDbSessions(loaded)
+    hasMore.value = loaded.length >= PAGE_SIZE
   } catch (error) {
     console.error('Failed to load sessions:', error)
+  }
+}
+
+async function loadMoreSessions() {
+  if (loadingMore.value || !hasMore.value) return
+  loadingMore.value = true
+  try {
+    const loaded = await getChatSessions(PAGE_SIZE, dbSessions.value.length)
+    if (loaded.length > 0) {
+      dbSessions.value = [...dbSessions.value, ...mapDbSessions(loaded)]
+    }
+    hasMore.value = loaded.length >= PAGE_SIZE
+  } catch (error) {
+    console.error('Failed to load more sessions:', error)
+  } finally {
+    loadingMore.value = false
   }
 }
 
@@ -145,7 +172,9 @@ async function handleDelete(sessionId: string) {
   }
 }
 
-function handleLogout() {
+async function handleLogout() {
+  const { logout: apiLogout } = await import('@/api/user')
+  await apiLogout()  // 清 httpOnly cookie
   userStore.logout()
   router.push('/login')
 }
@@ -335,5 +364,28 @@ onMounted(() => {
   padding: var(--space-xl);
   color: var(--color-text-secondary);
   font-size: 14px;
+}
+
+.load-more-btn {
+  width: 100%;
+  padding: var(--space-sm);
+  margin-top: var(--space-sm);
+  background: transparent;
+  color: var(--color-text-secondary);
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-btn);
+  cursor: pointer;
+  font-size: 13px;
+  transition: all var(--transition-fast);
+}
+
+.load-more-btn:hover:not(:disabled) {
+  color: var(--color-primary);
+  border-color: var(--color-primary);
+}
+
+.load-more-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
 }
 </style>

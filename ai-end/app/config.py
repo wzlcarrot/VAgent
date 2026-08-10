@@ -19,7 +19,7 @@ except ImportError:
 
 class Settings(BaseSettings):
     app_name: str = "ViewHub AI Agent"
-    debug: bool = True
+    debug: bool = False
 
     # ─── 数据库 ───
     pg_host: str = "127.0.0.1"
@@ -71,6 +71,8 @@ class Settings(BaseSettings):
 
     # ─── Auth ───
     token_ttl_seconds: int = 7 * 24 * 3600
+    # 登录 cookie 是否要求 HTTPS（生产环境设 True；本地 http 开发保持 False）
+    cookie_secure: bool = False
 
     # ─── 测试账户（从环境变量读取，避免硬编码） ───
     test_account_enabled: bool = False
@@ -88,9 +90,13 @@ class Settings(BaseSettings):
     # ─── Harness ───
     harness_enabled: bool = True
 
+    # 同步 workflow 执行的线程池并发数（每请求并行 2 路 workflow，建议 ≥ 4 的倍数）
+    agent_async_max_workers: int = 8
+
     # ─── Admin ───
     # 运营看板的访问控制：简单 API Key（生产建议改 OIDC/JWT）
-    admin_api_key: str = "viewhub-admin-secret-2026"
+    # 必须通过环境变量 ADMIN_API_KEY 配置，未配置时 /admin/* 拒绝访问（fail-closed）
+    admin_api_key: str = ""
 
     # ─── Input limits ───
     max_question_length: int = 2000
