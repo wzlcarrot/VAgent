@@ -74,6 +74,8 @@
 
 **设计思想：** Router 只负责分发、不负责纠错——判断错误时 workflow 会因缺少参数返回空结果，Supervisor 自动降级到下一优先级。
 
+> 关键架构决策（线程池 vs 全异步、cookie 会话、防枚举、注入防护）记录在 [`ai-end/docs/architecture-decisions.md`](ai-end/docs/architecture-decisions.md)。
+
 ### 4 个 Workflow
 
 | Workflow | 职责 | 关键节点 |

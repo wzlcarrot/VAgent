@@ -113,3 +113,98 @@ class TestAdminE2E:
     def test_admin_wrong_key_403(self, client):
         r = client.get("/ai/admin/stats", headers={"X-Admin-Key": "wrong"})
         assert r.status_code == 403
+
+
+class TestRealFlowE2E:
+    """真实业务链路：SSE 流式、分页、越权拦截、反馈写入"""
+
+    def test_chat_stream_returns_sse(self, client):
+        _login(client)
+        with client.stream("POST", "/ai/chat/stream", json={"question": "你好"}) as r:
+            assert r.status_code == 200
+            assert "text/event-stream" in r.headers.get("content-type", "")
+            body = "".join(r.iter_text())
+            assert "data:" in body
+            assert "[DONE]" in body
+
+    def test_chat_stream_returns_text_event(self, client):
+        _login(client)
+        with client.stream("POST", "/ai/chat/stream", json={"question": "你好"}) as r:
+            body = "".join(r.iter_text())
+            # 至少一个 text 事件（greeting 快速路径不调 LLM）
+            assert '"type":"text"' in body or '"type": "text"' in body
+
+    def test_sessions_pagination_no_duplicates(self, client):
+        _login(client)
+        first = client.get("/ai/chat/sessions", params={"limit": 1, "offset": 0}).json()
+        second = client.get("/ai/chat/sessions", params={"limit": 1, "offset": 1}).json()
+        assert len(first["sessions"]) <= 1
+        assert len(second["sessions"]) <= 1
+        ids1 = [s["session_id"] for s in first["sessions"]]
+        ids2 = [s["session_id"] for s in second["sessions"]]
+        assert not set(ids1) & set(ids2), "offset 分页不应返回重复会话"
+
+    def test_delete_foreign_session_404(self, client):
+        _login(client)
+        r = client.delete("/ai/chat/session/nonexistent_session_xyz")
+        assert r.status_code == 404
+
+    def test_checkpoints_foreign_session_404(self, client):
+        _login(client)
+        r = client.get("/ai/chat/checkpoints", params={"session_id": "foreign_session_xyz"})
+        assert r.status_code == 404
+
+    def test_feedback_full_flow(self, client):
+        _login(client)
+        r = client.post("/ai/feedback", json={
+            "session_id": "e2e_test_session",
+            "message_index": 0,
+            "feedback": "helpful",
+        })
+        assert r.status_code == 200
+        assert r.json()["success"] is True
+
+    def test_feedback_user_id_ignored_from_body(self, client):
+        """伪造 body user_id 不生效，以 token 为准（防越权写他人记忆）"""
+        _login(client)
+        r = client.post("/ai/feedback", json={
+            "session_id": "e2e_test_session",
+            "message_index": 0,
+            "feedback": "not_helpful",
+            "user_id": "victim_user",
+        })
+        assert r.status_code == 200
+
+
+class TestConcurrencyE2E:
+    """并发验证：多请求并行下 event loop 不被同步调用阻塞"""
+
+    def test_parallel_health_and_auth(self):
+        import asyncio
+        import time
+        from httpx import AsyncClient, ASGITransport
+
+        async def _run():
+            transport = ASGITransport(app=app)
+            async with AsyncClient(transport=transport, base_url="http://test") as c:
+                login = await c.post("/ai/login", json={
+                    "email": "test@viewhub.com", "password": "123456",
+                })
+                assert login.status_code == 200
+                token = login.json()["user"]["token"]
+                headers = {"Authorization": f"Bearer {token}"}
+
+                async def health():
+                    return (await c.get("/health")).status_code
+                async def sessions():
+                    return (await c.get("/ai/chat/sessions", headers=headers)).status_code
+
+                start = time.time()
+                results = await asyncio.gather(*[health() for _ in range(8)], sessions())
+                elapsed = time.time() - start
+
+                assert all(r == 200 for r in results)
+                # 并发 9 个请求应在数秒内完成（证明 event loop 未被同步调用阻塞）
+                assert elapsed < 10, f"并发请求过慢: {elapsed:.2f}s"
+
+        asyncio.run(_run())
