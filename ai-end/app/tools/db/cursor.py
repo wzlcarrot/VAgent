@@ -14,7 +14,6 @@
 """
 import logging
 from contextlib import contextmanager
-from typing import Optional, Any
 from psycopg2.extras import RealDictCursor
 from app.tools.db.pool import get_global_pool
 

@@ -42,8 +42,12 @@ class Tool:
         }
 
     def execute(self, **kwargs) -> Any:
-        if self.execute_fn:
-            return self.execute_fn(**kwargs)
+        # 本注册表不承载执行逻辑（见 init_registry 注释）。
+        # 若未来需要统一执行入口，应在此绑定真实工具函数而非 stub。
+        logger.warning(
+            f"Tool.execute 被调用但未绑定执行函数: {self.name} "
+            f"（真实执行应在 workflow 内直接调用工具类）"
+        )
         return None
 
 
@@ -125,16 +129,6 @@ class ToolSandbox:
             and ToolSandbox.validate_call(s["function"]["name"], caller)
         ]
 
-
-_STUB_RESULTS = {
-    "get_video_info": lambda **kw: {"video_id": kw.get("video_id"), "title": "示例视频", "status": "stub"},
-    "query_user_data": lambda **kw: {"data_type": kw.get("data_type"), "count": 0, "status": "stub"},
-    "retrieve_knowledge": lambda **kw: {"query": kw.get("query"), "results": [], "status": "stub"},
-    "recommend_videos": lambda **kw: {"user_id": kw.get("user_id"), "videos": [], "status": "stub"},
-    "intent_classify": lambda **kw: {"query": kw.get("query"), "intent": "list", "status": "stub"},
-    "vector_search": lambda **kw: {"query_vector": kw.get("query_vector"), "results": [], "status": "stub"},
-    "user_data_query": lambda **kw: {"user_id": kw.get("user_id"), "data_type": kw.get("data_type"), "count": 0, "status": "stub"},
-}
 
 _SPECS = [
     {
@@ -262,16 +256,19 @@ _SPECS = [
 
 
 def init_registry():
-    """初始化并注册所有内置工具"""
+    """初始化并注册所有内置工具。
+
+    本注册表只负责工具 schema 暴露（给 LLM function calling）和权限校验，
+    不承担实际执行——真实执行在各 workflow 内直接调用工具类（VideoTools 等），
+    避免 schema 与执行逻辑耦合导致的两处漂移。
+    """
     registry = ToolRegistry()
     for spec in _SPECS:
         name = spec["name"]
-        stub_fn = _STUB_RESULTS.get(name)
         tool = Tool(
             name=name,
             description=spec["description"],
             parameters=spec["parameters"],
-            execute_fn=stub_fn,
             allowed_agents=spec.get("allowed_agents", []),
         )
         registry.register(tool)

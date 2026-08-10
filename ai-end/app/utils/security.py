@@ -5,7 +5,6 @@
 """
 
 import re
-from typing import Optional
 
 
 # 控制字符正则（防止 ANSI escape / 换行符伪造等）

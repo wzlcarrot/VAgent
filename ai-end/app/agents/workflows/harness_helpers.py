@@ -6,7 +6,6 @@ Harness helpers —— 各 workflow 共用的 checkpoint + governor 入口
 - invoke_with_governor：工具调用 + 限流 + 超时
 """
 import logging
-import inspect
 from functools import wraps
 from typing import Dict, Any, Callable
 

@@ -21,8 +21,6 @@ try:
         Counter,
         Histogram,
         Gauge,
-        Summary,
-        Info,
         generate_latest,
         CONTENT_TYPE_LATEST,
         REGISTRY,

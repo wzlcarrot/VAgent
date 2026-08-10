@@ -1,4 +1,3 @@
-from app.config import settings
 from app.tools.db import get_global_pool
 from typing import List, Dict, Any, Optional
 from psycopg2.extras import RealDictCursor

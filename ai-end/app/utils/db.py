@@ -5,7 +5,7 @@ DB 工具函数
 """
 
 from contextlib import contextmanager
-from typing import Generator, Optional
+from typing import Generator
 import psycopg2
 from psycopg2.extras import RealDictCursor
 

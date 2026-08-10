@@ -2,12 +2,10 @@
 AI 路由模块（兼容层）
 
 实际路由已拆分为：
-- auth.py        — 登录
-- chat.py        — 会话/历史/stream/resume/checkpoints
-- memory.py      — 记忆
-- admin.py       — 运营统计
-- feedback.py    — 反馈
-- tools.py       — 工具列表
+- auth.py      — 登录
+- chat.py      — 会话/历史/stream/resume/checkpoints/search
+- feedback.py  — 反馈
+- admin.py     — 运营统计
 
 共享依赖（token 管理、认证）移至 _shared.py
 """
@@ -19,7 +17,6 @@ from app.routers._shared import (
     _token_delete,
     start_token_cleanup_task,
     stop_token_cleanup_task,
-    TEST_ACCOUNT,
     TOKEN_TTL,
 )
 from app.routers import router
@@ -33,6 +30,5 @@ __all__ = [
     "_token_delete",
     "start_token_cleanup_task",
     "stop_token_cleanup_task",
-    "TEST_ACCOUNT",
     "TOKEN_TTL",
 ]
