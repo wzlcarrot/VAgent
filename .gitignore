@@ -3,8 +3,10 @@
 # =====================================================
 .env
 .env.*
+!**/.env.example
 ai-end/.env
 ai-end/.env.*
+!ai-end/.env.example
 *.env.local
 *.env.production
 *.env.development
