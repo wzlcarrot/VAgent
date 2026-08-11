@@ -11,7 +11,6 @@ Agent Harness —— 把"可靠性"做成基础设施
 模块划分：
 - checkpoint.py   状态持久化 + 断点恢复
 - tool_governor.py  工具调用治理
-- session.py      Session 抽象 + 状态隔离
 """
 
 from app.harness.checkpoint import Checkpoint, CheckpointManager

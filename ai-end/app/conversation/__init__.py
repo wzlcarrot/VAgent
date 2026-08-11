@@ -9,7 +9,6 @@ from app.conversation.context_manager import (
     get_context_for_query,
     update_recommendations,
     update_video_qa,
-    clear_session,
 )
 from app.conversation.intent_clarifier import IntentClarifier
 
@@ -18,6 +17,5 @@ __all__ = [
     "get_context_for_query",
     "update_recommendations",
     "update_video_qa",
-    "clear_session",
     "IntentClarifier",
 ]

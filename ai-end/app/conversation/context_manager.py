@@ -316,32 +316,3 @@ def get_context_for_query(session_id: str, question: str) -> Dict[str, Any]:
         "last_video_qa": ctx.get("last_video_qa", {}),
         "intent_chain": ctx.get("intent_chain", []),
     }
-
-
-def clear_session(session_id: str) -> None:
-    """清理 session 的上下文（注销/重置时调用）"""
-    r = _get_redis()
-    if r is not None:
-        try:
-            r.delete(_redis_key(session_id))
-        except Exception:
-            pass
-    with _memory_lock:
-        _memory_store.pop(session_id, None)
-
-
-def refresh_memory_after_redis_up():
-    """Redis 恢复后把内存数据 flush 进 Redis（可选优化）"""
-    if not _memory_store:
-        return
-    r = _get_redis()
-    if r is None:
-        return
-    with _memory_lock:
-        items = list(_memory_store.items())
-    for sid, ctx in items:
-        try:
-            from app.config import settings
-            r.setex(_redis_key(sid), settings.context_ttl, json.dumps(ctx, ensure_ascii=False, default=str))
-        except Exception:
-            pass
