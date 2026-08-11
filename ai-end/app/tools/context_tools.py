@@ -266,11 +266,6 @@ def _chars_to_tokens(text: str) -> int:
     return int(cn * 0.7 + en * 0.25)
 
 
-def get_compact_stats() -> Dict:
-    with _compact_stats_lock:
-        return dict(_compact_stats)
-
-
 def _compact_probe(session_id: str) -> Optional[tuple]:
     """
     同步 Redis 探活：返回是否需要压缩。

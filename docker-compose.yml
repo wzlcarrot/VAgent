@@ -48,7 +48,8 @@ services:
     restart: unless-stopped
 
   postgres:
-    image: paradedb/paradedb:latest
+    # 用 digest 锁定，避免 :latest 漂移导致部署不可复现
+    image: paradedb/paradedb@sha256:371e180894738e563404f10486835bcd86ca08eb36af1005bd69a1b0bedb40fe
     ports:
       - "9091:5432"
     environment:

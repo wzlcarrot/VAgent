@@ -164,9 +164,11 @@ function handleSend() {
   }
 
   // 兜底：500ms 后强制重置 isSending（防止父组件忘记 setReady）
-  setTimeout(() => {
+  const timer = setTimeout(() => {
     isSending.value = false
+    pendingTimers.delete(timer)
   }, 500)
+  pendingTimers.add(timer)
 }
 
 defineExpose({
