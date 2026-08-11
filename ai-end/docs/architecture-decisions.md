@@ -77,3 +77,21 @@ async chat_stream
 **状态**：已采纳（2026）
 
 所有 workflow 将 RAG 召回内容拼入 system prompt 前，复用 `ranker.safe_prompt_escape`（剥离 ``` / --- / <| / ###）+ system prompt 防御指令，缓解检索内容注入（prompt injection）。
+
+## ADR-005：docker-compose 内服务地址不读宿主机 .env
+
+**状态**：已采纳（2026）
+
+### 背景
+
+根 `.env` 同时服务两种运行方式：本地手动启动（`uvicorn` 直连 `127.0.0.1`）与 docker compose 部署。docker 网络内的服务（postgres / redis / video-service）是**服务名**，而本地是 **127.0.0.1**。
+
+### 事故
+
+曾将 compose 的 `REDIS_HOST`/`VIDEO_SERVICE_URL` 改为 `${VAR:-服务名}`，导致根 `.env` 的本地地址（127.0.0.1）污染 docker 容器——容器尝试连自身而非 redis/video-service。由于 Redis 有内存降级兜底，服务"看似正常"实则以降级态运行（token/上下文/限流失效）。
+
+### 决策
+
+- **指向 docker 网络内服务的变量**（`PG_HOST`/`REDIS_*`/`VIDEO_SERVICE_URL`）在 compose 中**硬编码服务名**，不读根 `.env`
+- **凭据类变量**（`DEEPSEEK_API_KEY`/`MINIMAX_API_KEY`/`ADMIN_API_KEY`/测试账户）从根 `.env` 读取
+- 根 `.env` 仅服务于本地手动启动场景

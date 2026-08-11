@@ -16,12 +16,12 @@ services:
       - MINIMAX_BASE_URL=${MINIMAX_BASE_URL:-https://api.minimax.chat/v1}
       - MINIMAX_MODEL=${MINIMAX_MODEL:-MiniMax-M3}
       - LLM_PROVIDER=${LLM_PROVIDER:-minimax}
-      - VIDEO_SERVICE_URL=${VIDEO_SERVICE_URL:-http://video-service:7071}
+      - VIDEO_SERVICE_URL=http://video-service:7071
       - PUBLIC_VIDEO_URL=${PUBLIC_VIDEO_URL:-}
-      - REDIS_HOST=${REDIS_HOST:-redis}
-      - REDIS_PORT=${REDIS_PORT:-6379}
-      - REDIS_DB=${REDIS_DB:-0}
-      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_DB=0
+      - REDIS_PASSWORD=
       - TEST_ACCOUNT_ENABLED=${TEST_ACCOUNT_ENABLED:-true}
       - TEST_ACCOUNT_EMAIL=${TEST_ACCOUNT_EMAIL:-test@viewhub.com}
       - TEST_ACCOUNT_PASSWORD_MD5=${TEST_ACCOUNT_PASSWORD_MD5:-e10adc3949ba59abbe56e057f20f883e}
