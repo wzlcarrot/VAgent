@@ -5,11 +5,13 @@ global:
 scrape_configs:
   - job_name: 'ai-agent'
     static_configs:
-      - targets: ['localhost:9090']
+      # 容器网络内用服务名 + 容器端口（9090 是宿主机映射端口）
+      - targets: ['ai-agent:8001']
     metrics_path: /metrics
     scheme: http
     scrape_interval: 5s
 
   - job_name: 'prometheus'
     static_configs:
+      # prometheus 自身（容器内 9090）
       - targets: ['localhost:9090']
