@@ -26,12 +26,14 @@ import { ref, watch, onErrorCaptured, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useSettingsStore } from '@/stores/settings'
 import { useChatStore } from '@/stores/chat'
+import { useUserStore } from '@/stores/user'
 import { useNotify } from '@/composables/useNotify'
 import Toast from '@/components/common/Toast.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 
 const settingsStore = useSettingsStore()
 const chatStore = useChatStore()
+const userStore = useUserStore()
 const router = useRouter()
 const route = useRoute()
 
@@ -73,6 +75,8 @@ onMounted(() => {
   settingsStore.applyTheme(settingsStore.theme)
   chatStore.loadUserSessions()
   window.addEventListener('auth:unauthorized', () => {
+    // 清除内存+localStorage 登录态，避免 isLoggedIn 仍为 true 导致 login→home 跳转死循环
+    userStore.logout()
     router.push('/login')
   })
 })
