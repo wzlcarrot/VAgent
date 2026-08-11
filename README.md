@@ -152,12 +152,16 @@ npm run dev        # http://localhost:4000
 ## 测试
 
 ```bash
-# 后端
+# 后端（e2e 测试需本地可用的 PostgreSQL/Redis，配置见 ai-end/.env）
 cd ai-end && python -m pytest tests/ -q
 
 # 前端
 cd ai-frontend && npx vitest run
 ```
+
+后端测试分布：
+- `test_routing.py` / `test_workflows.py` / `test_harness.py` / `test_auth_api.py` — 单元测试（mock 外部依赖）
+- `test_api_e2e.py` — 端到端（TestClient 驱动真实 app，覆盖认证/SSE/分页/越权/并发，需 DB）
 
 ## 项目结构
 
