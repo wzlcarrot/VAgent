@@ -230,6 +230,8 @@ def cold_start_node(state: RecommendState) -> dict:
                 intro = rag_intro.get(v["video_id"], "")[:60].replace("\n", " ")
                 if intro and intro != title:
                     reasons.append(f"「{intro}」")
+                elif title:
+                    reasons.append(f"《{title}》值得一看")
                 else:
                     reasons.append("")
             summary = f"为你找到 {len(recommended[:top_k])} 个推荐结果：\n\n"
