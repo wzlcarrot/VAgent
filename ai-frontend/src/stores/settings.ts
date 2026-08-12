@@ -7,7 +7,6 @@ export type FontSize = 'small' | 'medium' | 'large'
 export const useSettingsStore = defineStore('settings', () => {
   const theme = ref<Theme>('light')
   const fontSize = ref<FontSize>('medium')
-  const streamingEnabled = ref(true)
 
   function setTheme(newTheme: Theme) {
     theme.value = newTheme
@@ -42,7 +41,6 @@ export const useSettingsStore = defineStore('settings', () => {
   return {
     theme,
     fontSize,
-    streamingEnabled,
     setTheme,
     setFontSize,
     applyTheme,
