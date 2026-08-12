@@ -162,7 +162,8 @@ def build_context(session_id: str) -> List[Dict[str, str]]:
         except json.JSONDecodeError:
             continue
 
-    from app.tools.compact_service import is_compact_boundary, is_compact_summary, COMPACT_SUMMARY_FLAG
+    from app.tools.compact_service import is_compact_boundary, is_compact_summary
+    from app.tools.message_models import COMPACT_SUMMARY_FLAG
 
     context = []
     summary_found = False
@@ -239,31 +240,23 @@ def _estimate_tokens_for_sample(raw_messages: list, total_count: int) -> int:
     except Exception:
         pass
 
-    # 退化：字符估算（区分中英文）
+    # 退化：字符估算（区分中英文，统一走 token_estimation 的 rough 估算）
+    from app.tools.token_estimation import rough_token_count
     total_tokens = 0
     for raw in raw_messages:
         try:
             msg = json.loads(raw)
             content = msg.get("content", "")
             if isinstance(content, str):
-                total_tokens += _chars_to_tokens(content)
+                total_tokens += rough_token_count(content)
             elif isinstance(content, list):
                 for blk in content:
                     if isinstance(blk, dict) and blk.get("text"):
-                        total_tokens += _chars_to_tokens(blk["text"])
+                        total_tokens += rough_token_count(blk["text"])
         except (json.JSONDecodeError, ValueError):
             continue
     avg = total_tokens / max(sample_size, 1)
     return int(avg * total_count)
-
-
-def _chars_to_tokens(text: str) -> int:
-    """中英文字符 → token 估算（无 tiktoken 时使用）"""
-    if not text:
-        return 0
-    cn = sum(1 for c in text if "一" <= c <= "鿿")
-    en = len(text) - cn
-    return int(cn * 0.7 + en * 0.25)
 
 
 def _compact_probe(session_id: str) -> Optional[tuple]:

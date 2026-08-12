@@ -12,12 +12,9 @@ import json
 import logging
 from typing import List, Dict, Tuple
 from app.config import settings
+from app.tools.message_models import Message
 
 logger = logging.getLogger(__name__)
-
-_TOKENIZER = None
-COMPACT_BOUNDARY_FLAG = "__compact_boundary__"
-COMPACT_SUMMARY_FLAG = "__compact_summary__"
 COMPACT_PROMPT_TEMPLATE = """
 总结以下对话历史的核心内容。
 
@@ -48,95 +45,86 @@ def microcompact_messages(messages: List[Dict]) -> Tuple[List[Dict], int]:
     cleaned = []
 
     for msg in messages:
-        content = msg.get("content", "")
-        role = msg.get("role", "")
+        m = Message.from_dict(msg) if isinstance(msg, dict) else msg
+        content = m.content
+        role = m.role
 
         if role == "assistant" and not content:
             continue
         if role == "system" and not content:
             continue
 
-        cleaned.append(msg)
+        cleaned.append(m)
 
     merged = []
     for msg in cleaned:
-        if merged and merged[-1]["role"] == msg["role"]:
+        if merged and merged[-1].role == msg.role:
             prev = merged[-1]
             # 字符串 content 直接拼；list content（多模态）只保留第一个，后续丢弃避免重复
-            if isinstance(prev["content"], str) and isinstance(msg["content"], str):
+            if isinstance(prev.content, str) and isinstance(msg.content, str):
                 separator = "\n"
-                prev["content"] = (prev["content"] + separator + msg["content"]) if prev["content"] else msg["content"]
+                prev.content = (prev.content + separator + msg.content) if prev.content else msg.content
                 continue
             # 字符串 + list：不合并（避免破坏多模态结构）
         merged.append(msg)
 
-    saved = original_count - len(merged)
-    return merged, saved
+    result = [m.to_dict() for m in merged]
+    saved = original_count - len(result)
+    return result, saved
 
 
 def create_compact_boundary(trigger: str = "auto") -> Dict:
-    return {
-        "role": "system",
-        "content": f"[{COMPACT_BOUNDARY_FLAG}] trigger={trigger}",
-    }
+    """compact 边界标记：用 is_internal 结构化字段替代字符串 flag。"""
+    return Message(
+        role="system",
+        content=f"trigger={trigger}",
+        is_internal=True,
+    ).to_dict()
 
 
 def create_compact_summary(summary_text: str) -> Dict:
-    return {
-        "role": "system",
-        "content": f"[{COMPACT_SUMMARY_FLAG}]\n{summary_text}",
-    }
+    """compact 摘要标记：is_internal 结构化字段。"""
+    return Message(
+        role="system",
+        content=summary_text,
+        is_internal=True,
+    ).to_dict()
 
 
 def is_compact_boundary(msg: Dict) -> bool:
-    return COMPACT_BOUNDARY_FLAG in msg.get("content", "")
+    """兼容式识别：is_internal 字段 或 旧字符串 flag。"""
+    m = Message.from_dict(msg) if isinstance(msg, dict) else msg
+    return m.is_compact_boundary
 
 
 def is_compact_summary(msg: Dict) -> bool:
-    return COMPACT_SUMMARY_FLAG in msg.get("content", "")
+    """兼容式识别：is_internal 字段 或 旧字符串 flag。"""
+    m = Message.from_dict(msg) if isinstance(msg, dict) else msg
+    return m.is_compact_summary
 
 
 def warmup_tokenizer() -> bool:
-    """启动期预热 tiktoken（首次加载需下载 vocab，1-3s）。失败不抛异常。"""
-    global _TOKENIZER
-    if _TOKENIZER is not None:
-        return True
+    """启动期预热 tiktoken（委托 token_estimation 的编码器）。失败不抛异常。"""
     try:
-        import tiktoken
-        _TOKENIZER = tiktoken.encoding_for_model("gpt-4")
-        logger.info("tiktoken 预热完成")
-        return True
+        from app.tools.token_estimation import warmup as _warmup_estimation
+        ok = _warmup_estimation()
+        logger.info("tiktoken 预热完成" if ok else "tiktoken 预热失败（将使用字符估算回退）")
+        return ok
     except Exception as e:
         logger.warning(f"tiktoken 预热失败: {e}")
-        _TOKENIZER = None
         return False
 
 
 def count_tokens(text: str) -> int:
-    """统计 token 数。优先用 tiktoken（精确），降级到字符长度估算。"""
-    global _TOKENIZER
-    if _TOKENIZER is None:
-        # 惰性初始化（首次访问才加载）
-        warmup_tokenizer()
-    if _TOKENIZER is not None:
-        try:
-            return len(_TOKENIZER.encode(text))
-        except Exception:
-            pass
-    return len(text)
+    """统计 token 数。委托 token_estimation（tiktoken 精估 + 中英区分回退）。"""
+    from app.tools.token_estimation import count_tokens as _est
+    return _est(text)
 
 
 def count_messages_tokens(messages: List[Dict]) -> int:
-    total = 0
-    for msg in messages:
-        content = msg.get("content", "")
-        if isinstance(content, str):
-            total += count_tokens(content)
-        elif isinstance(content, list):
-            for block in content:
-                if isinstance(block, dict) and block.get("text"):
-                    total += count_tokens(block["text"])
-    return total
+    """按消息结构估算 token 总数（含 role 开销）。委托 token_estimation。"""
+    from app.tools.token_estimation import count_messages_tokens as _est
+    return _est(messages)
 
 
 async def compact_conversation(session_id: str) -> Dict:
