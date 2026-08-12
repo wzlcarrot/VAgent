@@ -15,6 +15,7 @@ export interface HistoryMessage {
   timestamp: string
   session_id?: string
   imageUrls?: string[]
+  image_urls?: string[]  // 后端历史接口实际返回 snake_case
   videos?: Array<{
     videoId: string
     title: string

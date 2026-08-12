@@ -123,6 +123,18 @@ function _extractVideoId(text: string): string | null {
   return null
 }
 
+function normalizeVideos(videos: any[] | null | undefined): any[] {
+  if (!Array.isArray(videos)) return []
+  // DB 存量存的是 snake_case（video_id），实时流是 camelCase（videoId），统一为 camelCase
+  return videos.map(v => ({
+    videoId: v.videoId ?? v.video_id,
+    title: v.title ?? '',
+    cover: v.cover ?? '',
+    author: v.author ?? '',
+    tags: v.tags ?? [],
+  }))
+}
+
 function _needsWorkflowIndicator(text: string): boolean {
   return /讲解|重点|内容|推荐/.test(text)
 }
@@ -197,14 +209,17 @@ async function loadSessionHistory(sessionId: string) {
         role: msg.role as 'user' | 'assistant',
         content: msg.content,
         status: 'success',
-        videos: msg.videos || undefined,
+        // DB 存的是 snake_case（video_id），实时流是 camelCase（videoId），统一为 camelCase
+        videos: normalizeVideos(msg.videos) || undefined,
         reasons: msg.reasons || undefined,
+        // 后端历史接口返回 image_urls（snake_case）
+        imageUrls: (msg.image_urls || msg.imageUrls) as any,
       } as any)
     }
     // 同步把 reasons 灌进 recommendationReasons（这样历史视频卡也能显示 reason）
     for (const msg of sortedHistory) {
       if (msg.role === 'assistant' && msg.videos && msg.reasons) {
-        msg.videos.forEach((v: any, i: number) => {
+        normalizeVideos(msg.videos).forEach((v: any, i: number) => {
           if (msg.reasons && msg.reasons[i] && v.videoId) {
             recommendationReasons.value[v.videoId] = msg.reasons[i]
           }
