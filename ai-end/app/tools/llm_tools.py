@@ -236,19 +236,8 @@ def _resolve_provider(provider: Optional[str] = None) -> tuple:
     cached = _PROVIDER_CACHE.get(p)
     if cached is not None:
         return cached
-    if p == "minimax":
-        result = (
-            settings.minimax_base_url,
-            settings.minimax_model,
-            settings.minimax_api_key,
-        )
-    else:
-        # default: deepseek
-        result = (
-            settings.deepseek_base_url,
-            settings.deepseek_model,
-            settings.deepseek_api_key,
-        )
+    from app.tools.providers import provider_factory
+    result = provider_factory(p).resolve().as_tuple()
     _PROVIDER_CACHE[p] = result
     return result
 
@@ -280,10 +269,13 @@ def _build_payload(messages: List[Dict[str, str]], model: str, temperature: floa
     if tools:
         payload["tools"] = tools
     if json_mode:
-        # minimax API 不支持 OpenAI 的 response_format 字段（会 400）
-        # 改用 prompt 里加 JSON 指令的方式约束输出
-        if (provider or settings.llm_provider) != "minimax":
+        # 是否支持 OpenAI response_format=json_object 由 provider 决定
+        # （minimax 不支持，改用 prompt 指令约束，见 chat_sync_json）
+        from app.tools.providers import provider_factory
+        prov_obj = provider_factory(provider or settings.llm_provider)
+        if prov_obj.supports_json_mode():
             payload["response_format"] = {"type": "json_object"}
+        payload = prov_obj.build_payload_extra(payload, json_mode=True)
     return payload
 
 
@@ -612,10 +604,14 @@ class LLM_tools:
         base_url, model, api_key = _resolve_provider(provider)
         prov = provider or settings.llm_provider
 
-        # minimax 不支持 response_format，prompt 里追加 JSON 指令
+        # 不支持 response_format 的 provider（如 minimax）在 prompt 里追加 JSON 指令
         msgs = list(messages)
-        if prov == "minimax":
-            msgs = [{"role": "system", "content": "你必须只输出一个合法的 JSON 对象，不要任何解释或 markdown 代码块包裹。"}] + msgs
+        from app.tools.providers import provider_factory
+        prov_obj = provider_factory(prov)
+        if not prov_obj.supports_json_mode():
+            prefix = getattr(prov_obj, "json_mode_prompt_prefix", None)
+            if prefix:
+                msgs = list(prefix()) + msgs
 
         def _do(attempt: int) -> Dict:
             client = _get_sync_client()
