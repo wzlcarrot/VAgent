@@ -114,6 +114,20 @@ class TestAdminE2E:
         r = client.get("/ai/admin/stats", headers={"X-Admin-Key": "wrong"})
         assert r.status_code == 403
 
+    def test_index_video_no_key_403(self, client):
+        r = client.post("/ai/admin/index-video/any_video")
+        assert r.status_code == 403
+
+    def test_index_video_missing_video(self, client):
+        """有 key 但视频不存在 → 200 + success:false（不是 403/404）"""
+        from app.config import settings
+        r = client.post(
+            "/ai/admin/index-video/nonexistent_video_xyz",
+            headers={"X-Admin-Key": settings.admin_api_key},
+        )
+        assert r.status_code == 200
+        assert r.json().get("success") is False
+
 
 class TestRealFlowE2E:
     """真实业务链路：SSE 流式、分页、越权拦截、反馈写入"""
