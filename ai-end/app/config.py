@@ -89,6 +89,8 @@ class Settings(BaseSettings):
 
     # ─── Harness ───
     harness_enabled: bool = True
+    # Hook 引擎开关（before/after 工具调用与消息事件）
+    hooks_enabled: bool = True
 
     # 同步 workflow 执行的线程池并发数（每请求并行 2 路 workflow，建议 ≥ 4 的倍数）
     agent_async_max_workers: int = 8

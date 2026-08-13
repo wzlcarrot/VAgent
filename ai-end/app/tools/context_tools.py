@@ -91,11 +91,28 @@ def save_message(session_id: str, role: str, content: str) -> bool:
     client = _get_redis()
     if not client:
         return False
+    # Hook：before_message（可拦截）
+    try:
+        from app.harness.hooks import hooks_manager, HookEvent
+        if not hooks_manager.trigger_intercept(
+            HookEvent.BEFORE_MESSAGE, session_id=session_id, role=role, content=content,
+        ):
+            logger.info(f"hook 拦截消息保存: role={role} session={session_id[:8]}")
+            return False
+    except Exception:
+        pass
     try:
         msg = json.dumps({"role": role, "content": content})
         key = _messages_key(session_id)
         client.rpush(key, msg)
         client.expire(key, settings.context_ttl)
+        # Hook：after_message（观察型）
+        try:
+            hooks_manager.trigger(
+                HookEvent.AFTER_MESSAGE, session_id=session_id, role=role, content=content,
+            )
+        except Exception:
+            pass
         return True
     except Exception as e:
         logger.error(f"Redis 保存消息失败: {e}")

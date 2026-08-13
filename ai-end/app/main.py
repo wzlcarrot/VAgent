@@ -49,6 +49,36 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
         return response
 
 
+def _init_hooks():
+    """初始化 Hook 引擎：按配置启停 + 注册内置审计钩子。"""
+    try:
+        from app.harness.hooks import hooks_manager, HookEvent
+        from app.config import settings
+        hooks_manager.enabled = settings.hooks_enabled
+
+        # 内置审计钩子：记录工具调用（供排查/指标）
+        def _audit_tool_call(ctx: dict):
+            from app.utils.metrics import tool_calls_total
+            try:
+                tool_calls_total.labels(
+                    tool_name=ctx.get("tool_name", ""),
+                    agent=ctx.get("agent", ""),
+                    status="hooked",
+                ).inc()
+            except Exception:
+                pass
+            logger.debug(
+                f"[hook] tool_call: agent={ctx.get('agent')} tool={ctx.get('tool_name')}"
+                f" session={str(ctx.get('session_id', ''))[:8]}"
+            )
+            return None
+
+        hooks_manager.register(HookEvent.AFTER_TOOL_CALL, _audit_tool_call)
+        logger.info(f"Hook 引擎初始化完成（enabled={settings.hooks_enabled}）")
+    except Exception as e:
+        logger.warning(f"Hook 引擎初始化失败: {e}")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     from app.tools.tool_registry import init_registry
@@ -57,6 +87,7 @@ async def lifespan(app: FastAPI):
     init_registry()
     init_agent_tables()
     start_token_cleanup_task()
+    _init_hooks()
 
     # 预热 Embedding 模型（避免首请求冷启动 5-15s）
     # 在线程池里跑，不阻塞 event loop

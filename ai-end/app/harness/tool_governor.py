@@ -324,6 +324,23 @@ class ToolGovernor:
             arguments=arguments, status="running",
         )
 
+        # Hook：before_tool_call（可拦截）
+        try:
+            from app.harness.hooks import hooks_manager, HookEvent
+            allowed = hooks_manager.trigger_intercept(
+                HookEvent.BEFORE_TOOL_CALL,
+                session_id=session_id, agent=agent, tool_name=tool_name, arguments=arguments,
+            )
+            if not allowed:
+                logger.warning(f"hook 拦截工具调用: {tool_name} (session={session_id[:8]})")
+                record.status = "rejected_hook"
+                record.error = "intercepted by before_tool_call hook"
+                if record_artifact:
+                    self._write_artifact(record)
+                return None
+        except Exception as e:
+            logger.error(f"before_tool_call hook 异常: {e}")
+
         timeout = self._timeout_for(tool_name)
         start = time.time()
         try:
@@ -344,6 +361,15 @@ class ToolGovernor:
             record.latency_ms = (time.time() - start) * 1000
             if record_artifact:
                 self._write_artifact(record)
+            # Hook：after_tool_call（观察型）
+            try:
+                hooks_manager.trigger(
+                    HookEvent.AFTER_TOOL_CALL,
+                    session_id=session_id, agent=agent, tool_name=tool_name,
+                    arguments=arguments, result=result,
+                )
+            except Exception:
+                pass
             return result
 
         except ToolCallLimitExceeded:
