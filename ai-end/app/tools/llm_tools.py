@@ -273,8 +273,6 @@ def _build_payload(messages: List[Dict[str, str]], model: str, temperature: floa
         # （minimax 不支持，改用 prompt 指令约束，见 chat_sync_json）
         from app.tools.providers import provider_factory
         prov_obj = provider_factory(provider or settings.llm_provider)
-        if prov_obj.supports_json_mode():
-            payload["response_format"] = {"type": "json_object"}
         payload = prov_obj.build_payload_extra(payload, json_mode=True)
     return payload
 
