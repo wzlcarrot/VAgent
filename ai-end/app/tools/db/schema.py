@@ -32,6 +32,11 @@ def init_agent_tables():
         """)
 
         cursor.execute("CREATE EXTENSION IF NOT EXISTS vector")
+        # pg_search（ParadeDB BM25）：与 init.sql 保持一致，确保任意初始化路径都有该扩展
+        try:
+            cursor.execute("CREATE EXTENSION IF NOT EXISTS pg_search")
+        except Exception as e:
+            logger.warning(f"pg_search 扩展不可用（BM25 将降级到 tsvector）: {e}")
 
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS video_vector_block (

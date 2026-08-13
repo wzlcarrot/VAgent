@@ -156,6 +156,23 @@ export const useChatStore = defineStore('chat', () => {
     messages.value = []
   }
 
+  function reset() {
+    // 登出时清空全部会话状态（内存 + localStorage），避免新用户看到旧用户历史
+    if (persistTimer) {
+      clearTimeout(persistTimer)
+      persistTimer = null
+    }
+    dirtyFlag = false
+    sessions.value = []
+    currentSessionId.value = null
+    messages.value = []
+    try {
+      localStorage.removeItem(STORAGE_KEY)
+    } catch {
+      /* 静默 */
+    }
+  }
+
   function deleteSession(sessionId: string) {
     const index = sessions.value.findIndex((s) => s.id === sessionId)
     if (index !== -1) {
@@ -186,6 +203,7 @@ export const useChatStore = defineStore('chat', () => {
     setCurrentSessionId,
     clearMessages,
     deleteSession,
+    reset,
     loadUserSessions,
   }
 })

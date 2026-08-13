@@ -9,6 +9,7 @@ describe('chat store localStorage 去抖', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     localStorage.clear()
+    vi.restoreAllMocks()
   })
 
   it('连续 updateMessage 应合并为一次写入', async () => {
@@ -84,5 +85,21 @@ describe('chat store localStorage 去抖', () => {
       throw new Error('QuotaExceeded')
     })
     expect(() => store.createSession()).not.toThrow()
+  })
+
+  it('reset 应清空全部会话状态与 localStorage', () => {
+    const store = useChatStore()
+    const session = store.createSession()
+    store.addMessage({ role: 'user', content: 'hi', status: 'success' })
+    expect(store.sessions.length).toBe(1)
+    expect(store.messages.length).toBe(1)
+    expect(localStorage.getItem('viewhub_sessions')).toBeTruthy()
+
+    store.reset()
+
+    expect(store.sessions.length).toBe(0)
+    expect(store.messages.length).toBe(0)
+    expect(store.currentSessionId).toBeNull()
+    expect(localStorage.getItem('viewhub_sessions')).toBeNull()
   })
 })

@@ -45,15 +45,18 @@
 import { ref, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
+import { useChatStore } from '@/stores/chat'
 
 const router = useRouter()
 const userStore = useUserStore()
+const chatStore = useChatStore()
 const showUserMenu = ref(false)
 
 async function handleLogout() {
   const { logout: apiLogout } = await import('@/api/user')
   await apiLogout()  // 清 httpOnly cookie
   userStore.logout()
+  chatStore.reset()  // 清空会话状态，避免新用户看到旧用户历史
   showUserMenu.value = false
   router.push('/login')
 }

@@ -176,6 +176,7 @@ async function handleLogout() {
   const { logout: apiLogout } = await import('@/api/user')
   await apiLogout()  // 清 httpOnly cookie
   userStore.logout()
+  chatStore.reset()  // 清空会话状态，避免新用户看到旧用户历史
   router.push('/login')
 }
 
