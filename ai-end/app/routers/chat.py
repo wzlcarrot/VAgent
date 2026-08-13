@@ -202,7 +202,7 @@ async def get_checkpoints(session_id: str, authed_user_id: str = Depends(require
         mgr = CheckpointManager()
         all_steps = []
         for wf_type in WorkflowType.all():
-            steps = mgr.list_steps(session_id, wf_type)
+            steps = mgr.list_step_details(session_id, wf_type)
             if steps:
                 last_cp = mgr.get_last_completed(session_id, wf_type)
                 all_steps.append({

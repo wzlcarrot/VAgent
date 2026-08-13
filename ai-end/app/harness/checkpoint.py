@@ -240,6 +240,35 @@ class CheckpointManager:
         except Exception:
             return []
 
+    def list_step_details(self, session_id: str, workflow_type: str) -> List[Dict[str, Any]]:
+        """返回结构化 step 详情（step_name/status/created_at），供前端展示。"""
+        try:
+            pool = get_global_pool()
+            if pool is None:
+                return []
+            conn = pool.getconn()
+            try:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT step_name, status, created_at FROM workflow_checkpoints
+                    WHERE session_id = %s AND workflow_type = %s
+                    ORDER BY created_at ASC
+                """, (session_id, workflow_type))
+                rows = cursor.fetchall()
+                cursor.close()
+                return [
+                    {
+                        "step_name": step_name,
+                        "status": status,
+                        "created_at": created_at.isoformat() if created_at else None,
+                    }
+                    for step_name, status, created_at in rows
+                ]
+            finally:
+                pool.putconn(conn)
+        except Exception:
+            return []
+
     def clear_session(self, session_id: str) -> bool:
         try:
             pool = get_global_pool()
