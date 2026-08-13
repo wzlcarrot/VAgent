@@ -65,9 +65,9 @@ class TestIndexVideo:
         assert result["success"] is True
         # title/tags/introduction 三个部分都索引
         assert set(result["parts"].keys()) == {"title", "tags", "introduction"}
-        # block_weight：title=1, tags=2, introduction=3
+        # block_weight：title=1.0, tags=0.5, introduction=0.3（与 vector_search 加权一致）
         weights = [c[1]["block_weight"] for c in mock_index.call_args_list]
-        assert weights == [1, 2, 3]
+        assert weights == [1.0, 0.5, 0.3]
 
     @patch("app.tools.rag_tools.RAGTools.index_document")
     @patch("app.tools.VideoTools.get_video_info")

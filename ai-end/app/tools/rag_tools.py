@@ -264,9 +264,11 @@ class RAGTools:
                 cursor.execute("""
                     WITH weighted AS (
                         SELECT video_id,
-                            COALESCE(SUM(CASE WHEN block_type LIKE 'title%' THEN (1.0 - (content_vector <=> %s::vector)) * 1.0 END), 0) +
-                            COALESCE(SUM(CASE WHEN block_type LIKE 'tags%' THEN (1.0 - (content_vector <=> %s::vector)) * 0.5 END), 0) +
-                            COALESCE(SUM(CASE WHEN block_type LIKE 'introduction%' THEN (1.0 - (content_vector <=> %s::vector)) * 0.3 END), 0) AS total_score
+                            COALESCE(SUM(
+                                CASE WHEN block_type LIKE 'title%' OR block_type LIKE 'tags%' OR block_type LIKE 'introduction%'
+                                THEN (1.0 - (content_vector <=> %s::vector)) * block_weight
+                                END
+                            ), 0) AS total_score
                         FROM video_vector_block
                         GROUP BY video_id
                     )
@@ -294,7 +296,7 @@ class RAGTools:
 
     @classmethod
     def index_document(cls, video_id: str, block_type: str, content: str,
-                       block_weight: int = 1) -> bool:
+                       block_weight: float = 1.0) -> bool:
         """
         索引一段文本到 video_vector_block。
 
@@ -302,12 +304,13 @@ class RAGTools:
         - 每个 chunk 独立 embedding（原来整段一个向量，块与向量错配）
         - 索引前清理该视频该类型的旧块（幂等，重复索引不残留）
         - block_type 存 `{base}_{i}` 带序号，检索端用 LIKE 匹配
+        - block_weight 供 vector_search 加权（title 1.0 / tags 0.5 / intro 0.3）
 
         Args:
             video_id: 视频 ID
             block_type: 基础类型（title / tags / introduction）
             content: 待索引文本
-            block_weight: 检索加权（默认 1）
+            block_weight: 检索加权（写入列，由 vector_search 消费）
         """
         from app.tools.chunker import chunk_document
         from app.tools.llm_tools import LLM_tools
@@ -382,7 +385,8 @@ class RAGTools:
             try:
                 ok = cls.index_document(
                     video_id, part_type, text,
-                    block_weight=1 if part_type == "title" else (2 if part_type == "tags" else 3),
+                    # 与 vector_search 的加权语义一致：title 最重要，introduction 次要
+                    block_weight=1.0 if part_type == "title" else (0.5 if part_type == "tags" else 0.3),
                 )
                 results[part_type] = {"indexed": ok}
             except Exception as e:
