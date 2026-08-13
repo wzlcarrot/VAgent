@@ -237,3 +237,17 @@ class TestRedisCircuitBreaker:
             # 成功后熔断器关闭
             assert ct._redis_circuit_open is False
             assert ct._last_redis_failure == 0.0
+
+
+class TestInvokeWithGovernorNoneFallback:
+    """invoke_with_governor 对 gate 返回 None（hook 拦截）兜底为空结果"""
+
+    def test_none_result_falls_back_to_empty(self):
+        from app.agents.workflows.harness_helpers import invoke_with_governor
+        from app.agents.workflows.constants import WorkflowType
+        with patch("app.agents.workflows.harness_helpers.ToolGovernor") as mock_gov:
+            mock_gov.return_value.gate.return_value = None  # 模拟 before hook 拦截
+            result = invoke_with_governor(
+                "session_1", WorkflowType.CHAT, "retrieve_knowledge", lambda: "should_not_run"
+            )
+        assert result == []  # None → 兜底空列表，不破坏 workflow

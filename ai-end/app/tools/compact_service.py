@@ -237,9 +237,11 @@ async def compact_conversation(session_id: str) -> Dict:
     summary_tokens_exact = None
     if summary_usage and summary_usage.get("completion_tokens"):
         summary_tokens_exact = summary_usage["completion_tokens"]
-        # 用精确摘要 token 替换估算中的摘要消息部分（估算 post_tokens 减去摘要估算 + 精确值）
-        summary_estimated = count_tokens(summary_text)
-        post_tokens = max(0, post_tokens - summary_estimated) + summary_tokens_exact
+        # 用精确摘要 token 替换估算中的摘要消息部分
+        # 估算含 role 开销(+4)，精确值只含 content，需补回 role 开销
+        from app.tools.token_estimation import MESSAGE_ROLE_OVERHEAD
+        summary_estimated = count_tokens(summary_text) + MESSAGE_ROLE_OVERHEAD
+        post_tokens = max(0, post_tokens - summary_estimated) + summary_tokens_exact + MESSAGE_ROLE_OVERHEAD
     tokens_saved = pre_tokens - post_tokens
 
     _record_compact_metric("success")

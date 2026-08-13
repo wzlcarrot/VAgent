@@ -8,6 +8,8 @@
 4. 注册的指标 labels 与契约一致
 """
 import pytest
+pytest.importorskip("prometheus_client")
+
 from prometheus_client import REGISTRY, Counter, Histogram, Gauge
 
 from app.utils.metrics_contract import METRICS_CONTRACT, MetricType

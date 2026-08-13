@@ -113,7 +113,7 @@ def invoke_with_governor(
     if not HARNESS_ENABLED or not session_id:
         return fn()
     try:
-        return ToolGovernor().gate(
+        result = ToolGovernor().gate(
             session_id=session_id,
             agent=agent,
             tool_name=tool_name,
@@ -121,6 +121,8 @@ def invoke_with_governor(
             execute_fn=fn,
             record_artifact=True,
         )
+        # before_tool_call 拦截钩子可能返回 None：兜底为空结果，避免破坏 workflow
+        return result if result is not None else []
     except ToolCallLimitExceeded:
         logger.warning(f"tool {tool_name} hit limit, fallback to empty")
         return []
