@@ -427,6 +427,34 @@ class LLM_tools:
             return None
 
     @staticmethod
+    def chat_sync_with_usage(messages: List[Dict[str, str]], temperature: float = 0.7,
+                             max_tokens: int = 2000, provider: Optional[str] = None):
+        """同步聊天并返回 (content, usage)。用于需要精确 token 计数的场景（如 compact 摘要）。"""
+        base_url, model, api_key = _resolve_provider(provider)
+        prov = provider or settings.llm_provider
+
+        def _do(attempt: int):
+            client = _get_sync_client()
+            response = client.post(
+                f"{base_url}/chat/completions",
+                headers=_get_headers(api_key),
+                json=_build_payload(messages, model, temperature, max_tokens),
+            )
+            response.raise_for_status()
+            data = response.json()
+            usage = _safe_get_usage(data)
+            _record_llm_metrics("chat_sync_with_usage", prov, "success", usage)
+            content = _safe_get_content(data) or ""
+            return content, usage
+
+        try:
+            return _call_with_retry_sync(_do, "LLM.chat_sync_with_usage")
+        except Exception as e:
+            _record_llm_metrics("chat_sync_with_usage", prov, "error")
+            logger.error(f"LLM同步调用(带 usage)失败: {e}")
+            return None
+
+    @staticmethod
     def _build_vision_messages(messages: List[Dict[str, str]], image_urls: List[str]) -> List[Dict]:
         """将最后一条 user 消息转为多模态格式（OpenAI 兼容）"""
         if not image_urls:

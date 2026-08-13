@@ -192,14 +192,17 @@ async def compact_conversation(session_id: str) -> Dict:
     ]
 
     summary_text = ""
+    summary_usage = None
     loop = asyncio.get_running_loop()
     for attempt in range(2):
         try:
+            # 用 chat_sync_with_usage 拿到 LLM 真实 usage，精确统计摘要 token（借鉴 kimi-cli compaction）
             result = await loop.run_in_executor(
-                None, lambda: LLM_tools.chat_sync(messages_for_llm, temperature=0.3)
+                None, lambda: LLM_tools.chat_sync_with_usage(messages_for_llm, temperature=0.3)
             )
-            if result:
-                summary_text = result.strip()
+            if result and result[0]:
+                summary_text = result[0].strip()
+                summary_usage = result[1]
                 break
         except Exception as e:
             logger.warning(f"Compact摘要尝试{attempt+1}失败: {e}")
@@ -229,6 +232,14 @@ async def compact_conversation(session_id: str) -> Dict:
 
     post_count = len(new_messages)
     post_tokens = count_messages_tokens(new_messages)
+    # 借鉴 kimi-cli compaction：摘要用 LLM 真实 usage.completion_tokens 精确计数，
+    # 替代估算（估算值仍保留在返回里供对比）
+    summary_tokens_exact = None
+    if summary_usage and summary_usage.get("completion_tokens"):
+        summary_tokens_exact = summary_usage["completion_tokens"]
+        # 用精确摘要 token 替换估算中的摘要消息部分（估算 post_tokens 减去摘要估算 + 精确值）
+        summary_estimated = count_tokens(summary_text)
+        post_tokens = max(0, post_tokens - summary_estimated) + summary_tokens_exact
     tokens_saved = pre_tokens - post_tokens
 
     _record_compact_metric("success")
@@ -243,6 +254,8 @@ async def compact_conversation(session_id: str) -> Dict:
         "tokens_saved": max(0, tokens_saved),
         "micro_saved": micro_saved,
         "summary_length": len(summary_text),
+        "summary_tokens_exact": summary_tokens_exact,
+        "summary_usage": summary_usage,
     }
 
 
