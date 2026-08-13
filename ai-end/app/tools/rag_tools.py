@@ -265,7 +265,7 @@ class RAGTools:
                     WITH weighted AS (
                         SELECT video_id,
                             COALESCE(SUM(
-                                CASE WHEN block_type LIKE 'title%' OR block_type LIKE 'tags%' OR block_type LIKE 'introduction%'
+                                CASE WHEN block_type LIKE 'title%%' OR block_type LIKE 'tags%%' OR block_type LIKE 'introduction%%'
                                 THEN (1.0 - (content_vector <=> %s::vector)) * block_weight
                                 END
                             ), 0) AS total_score
@@ -278,7 +278,7 @@ class RAGTools:
                     WHERE w.total_score > 0
                     ORDER BY w.total_score DESC
                     LIMIT %s
-                """, (vector_str, vector_str, vector_str, top_k))
+                """, (vector_str, top_k))
                 rows = cursor.fetchall()
                 cursor.close()
             finally:

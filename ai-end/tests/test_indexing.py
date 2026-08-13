@@ -94,7 +94,8 @@ class TestVectorSearchBlockType:
         mock_cursor.fetchall.return_value = []
         RAGTools.vector_search([0.1] * 384, top_k=3)
         sql = mock_cursor.execute.call_args[0][0]
-        assert "block_type LIKE 'title%'" in sql
-        assert "block_type LIKE 'tags%'" in sql
-        assert "block_type LIKE 'introduction%'" in sql
+        # psycopg2 中字面 % 需转义为 %%
+        assert "block_type LIKE 'title%%'" in sql
+        assert "block_type LIKE 'tags%%'" in sql
+        assert "block_type LIKE 'introduction%%'" in sql
         assert "block_type = 'title'" not in sql
