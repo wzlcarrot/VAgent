@@ -81,6 +81,38 @@ async def lifespan(app: FastAPI):
                 logger.warning(f"tiktoken 预热失败: {e}")
         await loop.run_in_executor(ex, _warmup_tiktoken)
 
+    # 后台补索引：扫描 video_info 中未被 video_vector_block 覆盖的视频，
+    # 生成向量索引（Java 上传视频后若未来得及回调，由这里兜底）。
+    # 后台线程执行，不阻塞启动。
+    import threading
+    def _backfill_video_index():
+        try:
+            from app.tools.rag_tools import RAGTools
+            from app.tools.db import get_cursor
+            with get_cursor() as cursor:
+                if cursor is None:
+                    return
+                cursor.execute("""
+                    SELECT v.video_id FROM video_info v
+                    LEFT JOIN video_vector_block b ON v.video_id = b.video_id
+                    WHERE b.video_id IS NULL
+                    LIMIT 50
+                """)
+                pending = [r["video_id"] for r in cursor.fetchall()]
+            if not pending:
+                logger.info("视频索引兜底：无待索引视频")
+                return
+            logger.info(f"视频索引兜底：发现 {len(pending)} 个未索引视频，开始补索引")
+            for vid in pending:
+                try:
+                    RAGTools.index_video(vid)
+                except Exception as e:
+                    logger.warning(f"补索引失败 video_id={vid}: {e}")
+        except Exception as e:
+            logger.warning(f"视频索引兜底扫描失败: {e}")
+
+    threading.Thread(target=_backfill_video_index, name="video-index-backfill", daemon=True).start()
+
     logger.info("=" * 50)
     logger.info(f"{settings.app_name} 服务已启动")
     logger.info("=" * 50)

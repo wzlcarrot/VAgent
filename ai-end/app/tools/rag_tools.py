@@ -264,9 +264,9 @@ class RAGTools:
                 cursor.execute("""
                     WITH weighted AS (
                         SELECT video_id,
-                            COALESCE(SUM(CASE WHEN block_type = 'title' THEN (1.0 - (content_vector <=> %s::vector)) * 1.0 END), 0) +
-                            COALESCE(SUM(CASE WHEN block_type = 'tags' THEN (1.0 - (content_vector <=> %s::vector)) * 0.5 END), 0) +
-                            COALESCE(SUM(CASE WHEN block_type = 'introduction' THEN (1.0 - (content_vector <=> %s::vector)) * 0.3 END), 0) AS total_score
+                            COALESCE(SUM(CASE WHEN block_type LIKE 'title%' THEN (1.0 - (content_vector <=> %s::vector)) * 1.0 END), 0) +
+                            COALESCE(SUM(CASE WHEN block_type LIKE 'tags%' THEN (1.0 - (content_vector <=> %s::vector)) * 0.5 END), 0) +
+                            COALESCE(SUM(CASE WHEN block_type LIKE 'introduction%' THEN (1.0 - (content_vector <=> %s::vector)) * 0.3 END), 0) AS total_score
                         FROM video_vector_block
                         GROUP BY video_id
                     )
@@ -294,41 +294,102 @@ class RAGTools:
 
     @classmethod
     def index_document(cls, video_id: str, block_type: str, content: str,
-                       content_vector: List[float], block_weight: int = 1) -> bool:
-        try:
-            from app.tools.chunker import chunk_document
-            chunks = chunk_document(content)
-            if not chunks:
-                return False
+                       block_weight: int = 1) -> bool:
+        """
+        索引一段文本到 video_vector_block。
 
-            pool = get_global_pool()
-            if pool is None:
-                return False
-            conn = pool.getconn()
-            try:
-                cursor = conn.cursor()
-                vector_str = "[" + ",".join(str(v) for v in content_vector) + "]"
-                for i, chunk_text in enumerate(chunks):
-                    cursor.execute("""
-                        INSERT INTO video_vector_block (video_id, block_type, block_content, content_vector, block_weight)
-                        VALUES (%s, %s, %s, %s::vector, %s)
-                        ON CONFLICT (video_id, block_type) DO UPDATE SET
-                            block_content = EXCLUDED.block_content,
-                            content_vector = EXCLUDED.content_vector,
-                            block_weight = EXCLUDED.block_weight
-                    """, (video_id, f"{block_type}_{i}", chunk_text, vector_str, block_weight))
-                conn.commit()
-                cursor.close()
-            finally:
-                pool.putconn(conn)
-            return True
-        except Exception as e:
-            logger.error(f"文档索引失败: {e}")
+        改进（接入"Java 上传视频 → Python 生成索引"链路前必须修）：
+        - 每个 chunk 独立 embedding（原来整段一个向量，块与向量错配）
+        - 索引前清理该视频该类型的旧块（幂等，重复索引不残留）
+        - block_type 存 `{base}_{i}` 带序号，检索端用 LIKE 匹配
+
+        Args:
+            video_id: 视频 ID
+            block_type: 基础类型（title / tags / introduction）
+            content: 待索引文本
+            block_weight: 检索加权（默认 1）
+        """
+        from app.tools.chunker import chunk_document
+        from app.tools.llm_tools import LLM_tools
+        chunks = chunk_document(content)
+        if not chunks:
             return False
 
+        # 对每个 chunk 独立 embedding（返回 None 表示失败）
+        try:
+            embeddings = LLM_tools.embed(chunks)
+        except Exception as e:
+            logger.error(f"索引 embedding 失败: {e}")
+            return False
+        if not embeddings or len(embeddings) != len(chunks):
+            logger.error("索引 embedding 数量不匹配")
+            return False
 
-# 静态兜底数据：DB 启动时为空时使用，重命名为 PLATFORM_FAQ_FALLBACK
-# 运营通过 platform_docs 表管理实际内容（schema 启动时初始化 + 种子数据）
+        pool = get_global_pool()
+        if pool is None:
+            return False
+        conn = pool.getconn()
+        try:
+            cursor = conn.cursor()
+            # 清理该视频该类型的旧块（幂等）
+            cursor.execute(
+                "DELETE FROM video_vector_block WHERE video_id = %s AND block_type LIKE %s",
+                (video_id, f"{block_type}%"),
+            )
+            for i, (chunk_text, vec) in enumerate(zip(chunks, embeddings)):
+                vector_str = "[" + ",".join(str(v) for v in vec) + "]"
+                cursor.execute("""
+                    INSERT INTO video_vector_block (video_id, block_type, block_content, content_vector, block_weight)
+                    VALUES (%s, %s, %s, %s::vector, %s)
+                """, (video_id, f"{block_type}_{i}", chunk_text, vector_str, block_weight))
+            conn.commit()
+            cursor.close()
+            logger.info(f"已索引 {video_id} 的 {block_type} 块（{len(chunks)} 个 chunk）")
+            return True
+        except Exception as e:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            logger.error(f"文档索引失败: {e}")
+            return False
+        finally:
+            pool.putconn(conn)
+
+    @classmethod
+    def index_video(cls, video_id: str) -> Dict[str, Any]:
+        """
+        索引一条视频（接入"Java 上传视频 → Python 生成索引"链路）。
+
+        查 video_info → 提取 title / tags / introduction → 各自切块 + embedding 写入。
+        幂等：重复索引会先清理旧块。返回每部分的索引结果。
+        """
+        from app.tools import VideoTools
+        video = VideoTools.get_video_info(video_id)
+        if not video:
+            return {"success": False, "video_id": video_id, "error": "视频不存在"}
+
+        parts = {
+            "title": (video.videoName or "").strip(),
+            "tags": (video.tags or "").strip(),
+            "introduction": (video.introduction or "").strip(),
+        }
+        results = {}
+        for part_type, text in parts.items():
+            if not text:
+                results[part_type] = {"indexed": False, "reason": "无内容"}
+                continue
+            try:
+                ok = cls.index_document(
+                    video_id, part_type, text,
+                    block_weight=1 if part_type == "title" else (2 if part_type == "tags" else 3),
+                )
+                results[part_type] = {"indexed": ok}
+            except Exception as e:
+                results[part_type] = {"indexed": False, "error": str(e)}
+
+        success = any(r.get("indexed") for r in results.values())
+        return {"success": success, "video_id": video_id, "parts": results}
 PLATFORM_FAQ_FALLBACK = [
     {"title": "ViewHub 是什么", "content": "ViewHub 是一个视频分享平台，支持视频上传、播放、弹幕互动、评论交流等功能。你可以在这里找到各种有趣的视频内容。", "type": "faq"},
     {"title": "如何注册账号", "content": "点击登录弹窗的「注册」标签，填写邮箱、昵称、密码，通过邮箱验证码完成注册。注册成功后即可正常使用所有功能。", "type": "guide"},

@@ -14,21 +14,36 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-@router.get("/admin/stats")
-async def admin_stats(request: Request):
-    """系统管理统计（鉴权要求 X-Admin-Key）"""
+def _verify_admin_key(request: Request) -> None:
+    """校验 X-Admin-Key（fail-closed + 时序安全比较）"""
     expected_key = settings.admin_api_key
     if not expected_key:
-        logger.error("admin_api_key 未配置，拒绝访问 /admin/stats（fail-closed）")
+        logger.error("admin_api_key 未配置，拒绝访问（fail-closed）")
         raise HTTPException(status_code=503, detail="admin_api_key 未配置")
 
     provided_key = request.headers.get("X-Admin-Key", "")
     if not hmac.compare_digest(provided_key, expected_key):
         client = request.client.host if request.client else "unknown"
-        logger.warning(f"admin/stats 鉴权失败: remote={client}")
+        logger.warning(f"admin 鉴权失败: remote={client}")
         raise HTTPException(status_code=403, detail="Forbidden")
 
+
+@router.get("/admin/stats")
+async def admin_stats(request: Request):
+    """系统管理统计（鉴权要求 X-Admin-Key）"""
+    _verify_admin_key(request)
     return await run_in_threadpool(_query_stats)
+
+
+@router.post("/admin/index-video/{video_id}")
+async def admin_index_video(video_id: str, request: Request):
+    """索引指定视频（Java 上传视频后回调；X-Admin-Key 鉴权）"""
+    _verify_admin_key(request)
+    from app.tools.rag_tools import RAGTools
+    result = await run_in_threadpool(RAGTools.index_video, video_id)
+    if not result.get("success"):
+        return {**result, "error": result.get("error", "索引失败")}
+    return result
 
 
 def _query_stats() -> dict:
