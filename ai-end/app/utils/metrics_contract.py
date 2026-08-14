@@ -62,7 +62,6 @@ METRICS_CONTRACT: Tuple[MetricContract, ...] = (
     MetricContract("checkpoint_operations_total", "checkpoint_operations_total", MetricType.COUNTER,
                    ("operation", "status"), "Total checkpoint operations"),
     # 系统
-    MetricContract("active_sessions", "active_sessions", MetricType.GAUGE, (), "Number of active sessions"),
     MetricContract("redis_connection_status", "redis_connection_status", MetricType.GAUGE,
                    (), "Redis connection status (1=connected, 0=disconnected)"),
     MetricContract("db_connection_pool_size", "db_connection_pool_size", MetricType.GAUGE,
@@ -86,8 +85,6 @@ METRICS_CONTRACT: Tuple[MetricContract, ...] = (
     MetricContract("streaming_bytes_total", "streaming_bytes_total", MetricType.COUNTER,
                    ("endpoint",), "Total SSE bytes sent"),
     # 错误恢复
-    MetricContract("recovery_attempts_total", "recovery_attempts_total", MetricType.COUNTER,
-                   ("operation", "outcome"), "Recovery/retry attempts"),
     MetricContract("circuit_breaker_state", "circuit_breaker_state", MetricType.GAUGE,
                    ("service",), "Circuit breaker state (0=closed, 1=open, 2=half-open)"),
     # 业务

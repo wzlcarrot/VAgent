@@ -52,10 +52,20 @@ def get_global_pool() -> Optional[pool.ThreadedConnectionPool]:
             options="-c statement_timeout=15000",
         )
         _last_health_check = time.time()
+        _set_pool_metric(settings.db_pool_size)
         return _global_pool
     except Exception as e:
         logger.error(f"创建数据库连接池失败: {e}")
         return None
+
+
+def _set_pool_metric(size: int) -> None:
+    """记录 DB 连接池配置大小到 Prometheus"""
+    try:
+        from app.utils.metrics import db_connection_pool_size
+        db_connection_pool_size.labels(state="configured").set(size)
+    except Exception:
+        pass
 
 
 def close_global_pool():

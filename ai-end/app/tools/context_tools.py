@@ -71,12 +71,23 @@ def _get_redis():
             _redis_circuit_open = False
             _last_redis_failure = 0.0
             logger.info("Redis 连接成功")
+            _set_redis_metric(1)
             return _redis_client
         except Exception as e:
             _last_redis_failure = now
             _redis_circuit_open = True
             logger.warning(f"Redis 不可用，开启熔断器（{_REDIS_COOLDOWN_SECONDS}s 内不重连）: {e}")
+            _set_redis_metric(0)
             return None
+
+
+def _set_redis_metric(value: int) -> None:
+    """记录 Redis 连接状态到 Prometheus（1=connected, 0=disconnected）"""
+    try:
+        from app.utils.metrics import redis_connection_status
+        redis_connection_status.set(value)
+    except Exception:
+        pass
 
 
 def _messages_key(session_id: str) -> str:

@@ -364,6 +364,7 @@ async def chat_stream(request: ChatRequest, http_request: Request, authed_user_i
                         # 收集 reasons（和 videos 一起存 DB）
                         if event.get("reasons"):
                             recommended_reasons = event["reasons"]
+                    _record_streaming(event, session_id)
                     yield f"data: {_json_dumps(event)}\n\n"
                 # RECOMMEND/USER_DATA 有数据时（视频/记录），full_response 是空的也属正常
                 has_data = bool(recommended_videos) or winner_type_meta in (
@@ -584,6 +585,7 @@ async def _run_workflow_to_result(wf_type: str, question: str, video_id: str = N
                             user_id: str = None, conversation_history: list = None,
                             session_id: str = None, recommend_count: int = 5) -> dict:
     try:
+        _record_workflow_request(wf_type)
         from app.agents.workflows import run_sync_in_executor
         # 单 workflow 超时保护：防止卡死的 LLM/DB 调用永久占用线程池线程
         WORKFLOW_TIMEOUT = 120.0
@@ -635,3 +637,34 @@ def _extract_memories_from_conversation(user_id: str, question: str, answer: str
             MemoryTools.save_memory(user_id=user_id, type=item.type, content=item.content, source="inferred", score=0.6)
     except Exception as e:
         logger.warning(f"记忆提取异常: {e}")
+
+
+def _record_streaming(event: Dict[str, Any], session_id: str) -> None:
+    """记录 SSE 流式 chunk/字节指标"""
+    try:
+        import json as _j
+        from app.utils.metrics import streaming_chunks_total, streaming_bytes_total
+        chunk_str = _j.dumps(event, ensure_ascii=False)
+        streaming_chunks_total.labels(endpoint="chat_stream").inc()
+        streaming_bytes_total.labels(endpoint="chat_stream").inc(len(chunk_str))
+    except Exception:
+        pass
+
+
+def _record_workflow_request(wf_type: str) -> None:
+    """按 workflow 类型记录业务请求计数"""
+    try:
+        from app.utils.metrics import (
+            video_qa_requests_total, recommendation_requests_total,
+            user_data_requests_total, chat_streaming_requests_total,
+        )
+        metric = {
+            WorkflowType.VIDEO_QA: video_qa_requests_total,
+            WorkflowType.RECOMMEND: recommendation_requests_total,
+            WorkflowType.USER_DATA: user_data_requests_total,
+            WorkflowType.CHAT: chat_streaming_requests_total,
+        }.get(wf_type)
+        if metric:
+            metric.labels(result="dispatched").inc()
+    except Exception:
+        pass

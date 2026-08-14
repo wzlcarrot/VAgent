@@ -311,6 +311,11 @@ class ToolGovernor:
             self._decr_count(session_id, tool_name)
             msg = f"工具 '{tool_name}' 调用超限: {current}/{limit} (session={session_id[:8]})"
             logger.warning(msg)
+            try:
+                from app.utils.metrics import rate_limited_requests_total
+                rate_limited_requests_total.labels(limiter_name="tool_governor").inc()
+            except Exception:
+                pass
             if record_artifact:
                 self._write_artifact(ToolCallRecord(
                     session_id=session_id, agent=agent, tool_name=tool_name,
