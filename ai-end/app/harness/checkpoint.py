@@ -147,15 +147,6 @@ class CheckpointManager:
             logger.error(f"Checkpoint 写入失败: {e}")
 
 
-def _record_step_metric(workflow_type: str, step_name: str, status: str) -> None:
-    """记录 workflow 节点执行次数到 Prometheus"""
-    try:
-        from app.utils.metrics import workflow_steps_total
-        workflow_steps_total.labels(
-            workflow_type=workflow_type, step=step_name, status=status,
-        ).inc()
-    except Exception:
-        pass
 
     def get(self, session_id: str, workflow_type: str, step_name: str) -> Optional[Checkpoint]:
         try:
@@ -298,3 +289,16 @@ def _record_step_metric(workflow_type: str, step_name: str, status: str) -> None
         except Exception as e:
             logger.error(f"Checkpoint 清理失败: {e}")
             return False
+
+
+def _record_step_metric(workflow_type: str, step_name: str, status: str) -> None:
+    """记录 workflow 节点执行次数到 Prometheus"""
+    try:
+        from app.utils.metrics import workflow_steps_total
+        workflow_steps_total.labels(
+            workflow_type=workflow_type, step=step_name, status=status,
+        ).inc()
+    except Exception:
+        pass
+
+

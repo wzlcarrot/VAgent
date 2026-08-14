@@ -251,3 +251,23 @@ class TestInvokeWithGovernorNoneFallback:
                 "session_1", WorkflowType.CHAT, "retrieve_knowledge", lambda: "should_not_run"
             )
         assert result == []  # None → 兜底空列表，不破坏 workflow
+
+
+class TestCheckpointManagerMethodCompleteness:
+    """防缩进回归：CheckpointManager 必须保留全部核心方法（曾因缩进错误丢失）"""
+
+    def test_all_core_methods_present(self):
+        from app.harness.checkpoint import CheckpointManager
+        required = {
+            "save", "shutdown", "get", "get_last_completed",
+            "list_steps", "list_step_details", "clear_session",
+        }
+        actual = {m for m in dir(CheckpointManager) if not m.startswith("_")}
+        missing = required - actual
+        assert not missing, f"CheckpointManager 缺失方法: {missing}"
+
+    def test_list_step_details_returns_struct(self):
+        from app.harness.checkpoint import CheckpointManager
+        mgr = CheckpointManager()
+        # 无 DB 数据时返回空列表（不抛异常），验证方法可调用
+        assert mgr.list_step_details("__no_such__", "chat_workflow") == []
