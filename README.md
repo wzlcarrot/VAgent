@@ -98,6 +98,8 @@
 git clone https://github.com/wzlcarrot/VAgent.git
 cd VAgent
 cp .env.example .env            # 编辑填入 DEEPSEEK_API_KEY（必填）
+# 重要：若 shell 中已 export 过 DEEPSEEK_API_KEY 等变量，先 unset，
+# 否则 shell 环境变量会优先于 .env（导致旧 key 覆盖，LLM 401）
 docker compose up -d --build
 ```
 
