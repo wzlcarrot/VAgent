@@ -18,6 +18,7 @@
 """
 import logging
 from typing import Dict, Any, Optional, List
+from app.agents.workflows.constants import WorkflowType
 
 logger = logging.getLogger(__name__)
 
@@ -87,7 +88,7 @@ class IntentClarifier:
             True 表示应该追问
         """
         # recommend：新用户 + 无偏好记忆 → 追问
-        if intent == "recommend":
+        if intent == WorkflowType.RECOMMEND:
             has_pref = bool(user_preference and (
                 user_preference.get("favorite_tags")
                 or user_preference.get("favorite_video_ids")
@@ -97,11 +98,11 @@ class IntentClarifier:
                 return True
 
         # video_qa：缺 video_id → 追问
-        if intent == "video_qa" and not video_id:
+        if intent == WorkflowType.VIDEO_QA and not video_id:
             return True
 
         # chat：模糊平台问题（无具体关键词） → 引导
-        if intent == "chat" and not mentioned_keywords:
+        if intent == WorkflowType.CHAT and not mentioned_keywords:
             return True
 
         return False
@@ -117,7 +118,7 @@ class IntentClarifier:
         生成追问话术。
         返回纯文本，前端可以直接发给用户。
         """
-        if intent == "recommend":
+        if intent == WorkflowType.RECOMMEND:
             if has_history:
                 return _CLARIFICATIONS["recommend_no_history"].format(
                     categories=_format_categories(),
@@ -126,13 +127,13 @@ class IntentClarifier:
                 categories=_format_categories(),
             )
 
-        if intent == "video_qa":
+        if intent == WorkflowType.VIDEO_QA:
             if mentioned_keywords:
                 kw = mentioned_keywords[0] if mentioned_keywords else "这个"
                 return _CLARIFICATIONS["video_qa_ambiguous"].format(keyword=kw)
             return _CLARIFICATIONS["video_qa_no_id"]
 
-        if intent == "chat":
+        if intent == WorkflowType.CHAT:
             return _CLARIFICATIONS["chat_vague_platform"]
 
         return "能再具体描述一下你的需求吗？"

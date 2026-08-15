@@ -527,6 +527,9 @@ async def _parallel_agent_pipeline(workflow_type: str, question: str, video_id: 
             winner_text = reformatted
     # 统一过滤 MiniMax-M3 等推理模型的 <think>...</think> 块
     winner_text = re.sub(r"<think>.*?</think>\s*", "", winner_text, flags=re.DOTALL).strip()
+    # 输出兜底：替换其他平台名，防止 LLM 偶发跨平台内容
+    from app.agents.workflows.chat_graph import _sanitize_platform
+    winner_text = _sanitize_platform(winner_text)
     if not winner_text or not winner_text.strip():
         yield {"type": "text", "content": FALLBACK_RESPONSE}
         yield {"type": "status", "stage": "done", "label": "完成"}

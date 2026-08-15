@@ -37,6 +37,18 @@ PLATFORM_GUIDE_TRIGGER_KEYWORDS = [
 
 GREETINGS = ["你好", "您好", "嗨", "hello", "hi", "早上好", "中午好", "下午好", "晚上好", "在吗", "在不在", "hey"]
 
+# 其他视频平台名（输出兜底过滤，防止 LLM 偶发提及）
+_OTHER_PLATFORMS = ["bilibili", "哔哩哔哩", "youtube", "抖音", "快手", "优酷", "爱奇艺", "腾讯视频", "西瓜视频"]
+
+
+def _sanitize_platform(text: str) -> str:
+    """输出兜底：回答中出现其他视频平台名时，替换为 ViewHub，避免跨平台内容泄露。"""
+    if not text:
+        return text
+    for name in _OTHER_PLATFORMS:
+        text = text.replace(name, "ViewHub")
+    return text
+
 
 def _is_greeting(question: str) -> bool:
     import re as _re
@@ -196,7 +208,7 @@ def _supervisor_node(state: ChatState) -> dict:
         "guide_content": [r.get("content", "") for r in state.get("guide_results", []) if r.get("content")],
         "response": state.get("response", "")
     }
-    answer = Supervisor().aggregate(outputs, WorkflowType.CHAT)
+    answer = _sanitize_platform(Supervisor().aggregate(outputs, WorkflowType.CHAT))
     return {"answer": answer}
 
 
