@@ -178,7 +178,7 @@ function formatTime(t: string) {
 .workflow-type {
   font-size: 13px;
   font-weight: 600;
-  color: #5b21b6;
+  color: var(--color-primary-strong);
   background: rgba(91, 33, 182, 0.1);
   padding: 3px 8px;
   border-radius: 4px;
@@ -217,7 +217,7 @@ function formatTime(t: string) {
   font-size: 12px;
 }
 .step-name { color: #333; font-weight: 500; }
-.step.completed .step-name { color: #5b21b6; font-weight: 600; }
+.step.completed .step-name { color: var(--color-primary-strong); font-weight: 600; }
 .step-time { color: #999; }
 .checkpoint-viewer-enter-active,
 .checkpoint-viewer-leave-active {

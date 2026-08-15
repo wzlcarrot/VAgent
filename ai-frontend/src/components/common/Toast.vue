@@ -71,7 +71,7 @@ watch(() => props.visible, (val) => {
   border-radius: var(--radius-btn, 8px);
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
   font-size: 14px;
-  color: var(--color-text, #1a1a2e);
+  color: var(--color-text, var(--color-primary-strong));
   max-width: 90vw;
 }
 .toast-container.success {
@@ -81,10 +81,10 @@ watch(() => props.visible, (val) => {
   border-left: 4px solid var(--color-danger);
 }
 .toast-container.warning {
-  border-left: 4px solid #f59e0b;
+  border-left: 4px solid var(--color-warning);
 }
 .toast-container.info {
-  border-left: 4px solid var(--color-primary, #4a6cf7);
+  border-left: 4px solid var(--color-primary, var(--color-primary-light));
 }
 .toast-icon {
   font-size: 16px;

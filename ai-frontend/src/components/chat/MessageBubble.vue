@@ -250,7 +250,9 @@ function previewImage(url: string) {
 .role-assistant .bubble-main {
   background: var(--color-ai-bubble);
   color: var(--color-text);
+  border: 1px solid var(--color-border);
   border-bottom-left-radius: 4px;
+  box-shadow: var(--shadow-sm);
 }
 
 .status-sending .bubble-main {
@@ -312,7 +314,7 @@ function previewImage(url: string) {
 
 .feedback-btn.active[title="有用"],
 .feedback-btn[title="有用"]:hover:not(:disabled) {
-  color: #22c55e;
+  color: var(--color-success);
 }
 
 .feedback-btn.active[title="没用"],
@@ -511,7 +513,7 @@ function previewImage(url: string) {
 .bubble-main pre {
   margin: 0.75em 0;
   padding: 0.75em;
-  background: #1e1e1e;
+  background: var(--color-code-bg);
   border-radius: var(--radius-btn);
   overflow-x: auto;
 }

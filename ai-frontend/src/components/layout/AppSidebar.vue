@@ -217,8 +217,13 @@ onMounted(() => {
 }
 
 .new-chat-btn:hover {
-  opacity: 0.9;
+  opacity: 1;
   transform: translateY(-1px);
+  box-shadow: var(--shadow-primary);
+}
+
+.new-chat-btn:active {
+  transform: translateY(0);
 }
 
 .sidebar-content {
@@ -247,7 +252,21 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: var(--space-sm);
+  position: relative;
   transition: all var(--transition-fast);
+}
+
+/* active 会话：左侧品牌指示条 */
+.session-item.active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 60%;
+  border-radius: 3px;
+  background: var(--color-primary);
 }
 
 .session-item:hover {

@@ -191,7 +191,7 @@ function autoResize() {
   margin-bottom: 8px;
   background: var(--color-danger-bg);
   color: var(--color-danger);
-  border: 1px solid #fca5a5;
+  border: 1px solid var(--color-danger-light);
   border-radius: var(--radius-btn);
   font-size: 13px;
   animation: fadeIn 0.2s ease-out;

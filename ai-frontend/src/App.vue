@@ -110,7 +110,7 @@ onMounted(() => {
   justify-content: center;
   text-align: center;
   padding: 40px;
-  background: #1a1a2e;
+  background: var(--color-primary-strong);
   color: #eee;
 }
 
@@ -135,7 +135,7 @@ onMounted(() => {
 
 .retry-btn {
   padding: 10px 24px;
-  background: #4a6cf7;
+  background: var(--color-primary-light);
   color: white;
   border: none;
   border-radius: 8px;

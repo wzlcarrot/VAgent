@@ -59,10 +59,10 @@
       <div class="form-container">
         <div class="sparkle-icon">
           <svg viewBox="0 0 24 24" fill="none">
-            <path d="M12 2L13.5 9H10.5L12 2Z" fill="#1a1a2e" />
-            <path d="M12 22L10.5 15H13.5L12 22Z" fill="#1a1a2e" />
-            <path d="M2 12L9 10.5V13.5L2 12Z" fill="#1a1a2e" />
-            <path d="M22 12L15 13.5V10.5L22 12Z" fill="#1a1a2e" />
+            <path d="M12 2L13.5 9H10.5L12 2Z" fill="var(--color-primary-strong)" />
+            <path d="M12 22L10.5 15H13.5L12 22Z" fill="var(--color-primary-strong)" />
+            <path d="M2 12L9 10.5V13.5L2 12Z" fill="var(--color-primary-strong)" />
+            <path d="M22 12L15 13.5V10.5L22 12Z" fill="var(--color-primary-strong)" />
           </svg>
         </div>
         <div class="form-header">
@@ -876,7 +876,7 @@ onUnmounted(() => {
 .form-header h1 {
   font-size: 28px;
   font-weight: 700;
-  color: #1a1a2e;
+  color: var(--color-primary-strong);
   letter-spacing: -0.5px;
   margin-bottom: 6px;
 }
@@ -915,14 +915,14 @@ onUnmounted(() => {
   padding: 0 40px 0 0;
   font-size: 15px;
   font-family: inherit;
-  color: #1a1a2e;
+  color: var(--color-primary-strong);
   background: transparent;
   outline: none;
   transition: border-color 0.3s;
 }
 
 .form-group input:focus {
-  border-bottom-color: #5b21b6;
+  border-bottom-color: var(--color-primary-strong);
 }
 
 .form-group input.error {
@@ -979,13 +979,13 @@ onUnmounted(() => {
 .remember-me input[type="checkbox"] {
   width: 16px;
   height: 16px;
-  accent-color: #5b21b6;
+  accent-color: var(--color-primary-strong);
   cursor: pointer;
 }
 
 .forgot-link {
   font-size: 13px;
-  color: #5b21b6;
+  color: var(--color-primary-strong);
   text-decoration: none;
   font-weight: 500;
   transition: opacity 0.2s;
@@ -1000,8 +1000,8 @@ onUnmounted(() => {
   width: 100%;
   height: 50px;
   border-radius: 25px;
-  border: 1.5px solid #1a1a2e;
-  background: #1a1a2e;
+  border: 1.5px solid var(--color-primary-strong);
+  background: var(--color-primary-strong);
   color: #fff;
   font-size: 15px;
   font-weight: 600;
@@ -1060,7 +1060,7 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  background: #5b21b6;
+  background: var(--color-primary-strong);
   color: #fff;
   opacity: 0;
   transition: all 0.3s;

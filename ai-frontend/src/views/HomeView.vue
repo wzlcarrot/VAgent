@@ -417,12 +417,18 @@ function handleVideoPlay(video: { videoId: string }) {
   width: 64px;
   height: 64px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #4a6cf7, #6366f1);
+  background: linear-gradient(135deg, var(--color-primary-light), var(--color-primary));
   display: flex;
   align-items: center;
   justify-content: center;
   margin-bottom: 16px;
   box-shadow: 0 4px 16px rgba(74, 108, 247, 0.3);
+  animation: welcome-pulse 2.5s ease-in-out infinite;
+}
+
+@keyframes welcome-pulse {
+  0%, 100% { box-shadow: 0 4px 16px rgba(74, 108, 247, 0.3); }
+  50% { box-shadow: 0 4px 24px rgba(74, 108, 247, 0.5); }
 }
 
 .welcome-icon {
@@ -432,7 +438,7 @@ function handleVideoPlay(video: { videoId: string }) {
 .empty-state h2 {
   margin: 0 0 8px;
   font-size: 22px;
-  color: #1a1a2e;
+  color: var(--color-primary-strong);
 }
 
 .welcome-text {
@@ -444,7 +450,7 @@ function handleVideoPlay(video: { videoId: string }) {
 }
 
 .welcome-text .highlight {
-  color: #4a6cf7;
+  color: var(--color-primary-light);
   font-weight: 500;
 }
 
@@ -495,7 +501,7 @@ function handleVideoPlay(video: { videoId: string }) {
   left: 0;
   right: 0;
   height: 1px;
-  background: linear-gradient(90deg, transparent, #4a6cf7, transparent);
+  background: linear-gradient(90deg, transparent, var(--color-primary-light), transparent);
   animation: scan-h 3s linear infinite;
 }
 
@@ -514,14 +520,14 @@ function handleVideoPlay(video: { videoId: string }) {
 .recommendation-title {
   font-size: 14px;
   font-weight: 600;
-  color: #4a6cf7;
+  color: var(--color-primary-light);
   text-transform: uppercase;
   letter-spacing: 1px;
   text-shadow: 0 0 10px rgba(74, 108, 247, 0.5);
 }
 
 .recommendation-icon {
-  color: #00d9ff;
+  color: var(--color-brand-accent);
   font-size: 16px;
   text-shadow: 0 0 8px rgba(0, 217, 255, 0.6);
   animation: pulse 2s ease-in-out infinite;

@@ -188,7 +188,7 @@ function handlePlay(e: Event) {
   bottom: 4px;
   right: 4px;
   background: rgba(0, 0, 0, 0.8);
-  color: #00d9ff;
+  color: var(--color-brand-accent);
   font-size: 11px;
   padding: 2px 6px;
   border-radius: 4px;
@@ -202,7 +202,7 @@ function handlePlay(e: Event) {
   left: 0;
   width: 100%;
   height: 2px;
-  background: linear-gradient(90deg, transparent, #4a6cf7, transparent);
+  background: linear-gradient(90deg, transparent, var(--color-primary-light), transparent);
   opacity: 0;
   transition: opacity 0.3s ease;
 }
@@ -229,7 +229,7 @@ function handlePlay(e: Event) {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: #e0e0ff;
+  color: var(--color-primary-bg);
   text-shadow: 0 0 8px rgba(74, 108, 247, 0.3);
 }
 
@@ -237,7 +237,7 @@ function handlePlay(e: Event) {
   display: flex;
   gap: var(--space-sm);
   font-size: 12px;
-  color: #8888aa;
+  color: var(--color-text-secondary);
   margin-bottom: var(--space-xs);
 }
 
@@ -272,7 +272,7 @@ function handlePlay(e: Event) {
 
 .action-btn:hover:not(:disabled) {
   background: rgba(74, 108, 247, 0.3);
-  color: #4a6cf7;
+  color: var(--color-primary-light);
   box-shadow: 0 0 10px rgba(74, 108, 247, 0.4);
 }
 
@@ -282,7 +282,7 @@ function handlePlay(e: Event) {
 }
 
 .play-btn:hover:not(:disabled) {
-  color: #00d9ff;
+  color: var(--color-brand-accent);
   border-color: rgba(0, 217, 255, 0.5);
   box-shadow: 0 0 10px rgba(0, 217, 255, 0.4);
 }

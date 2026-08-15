@@ -522,13 +522,13 @@ onUnmounted(() => {
 
 .search-snippet {
   font-size: 12px;
-  color: #86868b;
+  color: var(--color-text-secondary);
   margin-top: 6px;
   display: flex;
   align-items: flex-start;
   gap: 4px;
   line-height: 1.5;
-  background: #f8f9fa;
+  background: var(--color-bg-card);
   padding: 6px 8px;
   border-radius: 6px;
 }
@@ -620,8 +620,8 @@ onUnmounted(() => {
   transition: all var(--transition-fast);
 }
 .checkpoint-btn:hover {
-  background: #ede9fe;
-  color: #5b21b6;
+  background: var(--color-primary-bg);
+  color: var(--color-primary-strong);
 }
 
 .empty-state {
