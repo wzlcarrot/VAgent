@@ -59,6 +59,8 @@ class Settings(BaseSettings):
     # 给前端浏览器访问的 cover URL 前缀（应公网可访问）。
     # 默认等于 video_service_url；生产部署到独立域名时通过环境变量覆盖。
     public_video_url: str = "http://localhost:4091/default-cover.svg"  # 前端占位封面（无外部视频服务时）
+    # 视频封面文件根目录（挂载进容器，sourceName 为 cover/xxx 相对路径）
+    cover_dir: str = "/app/data/file/cover"
 
     # ─── CORS ───
     cors_origins: str = "http://localhost:4000,http://127.0.0.1:4000,http://localhost:4091,http://127.0.0.1:4091"

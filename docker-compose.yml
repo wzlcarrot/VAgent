@@ -6,6 +6,9 @@ services:
     networks:
       - default
       - youtube-net
+    volumes:
+      # 视频封面文件（服务器本地目录，供 /ai/media/cover 读取真实封面）
+      - /home/tourist/webser/viewhub/file:/app/data/file:ro
     environment:
       - PG_HOST=postgres
       - PG_PORT=5432

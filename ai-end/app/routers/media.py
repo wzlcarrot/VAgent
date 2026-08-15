@@ -1,12 +1,15 @@
 """
 媒体路由：封面图片代理。
 
-后端容器不含视频封面文件，统一返回占位封面（SVG）。
-前端 markdown 里的封面 URL 走 /ai/media/cover → 此处，保证同源、无跨域、无外部视频服务依赖。
+前端 markdown 里的封面 URL 走 /ai/media/cover → 此处。
+从 cover_dir 读取真实封面文件（sourceName=cover/xxx 相对路径）；
+文件不存在时返回占位 SVG，保证前端图片可显示。
 """
 import logging
+import os
 from fastapi import APIRouter
 from fastapi.responses import Response
+from app.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -26,8 +29,30 @@ _DEFAULT_COVER_SVG = '''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320
   </g>
 </svg>'''.encode("utf-8")
 
+_CONTENT_TYPES = {
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".png": "image/png",
+    ".webp": "image/webp",
+    ".gif": "image/gif",
+}
+
 
 @router.get("/media/cover")
 async def media_cover(sourceName: str = ""):
-    """返回封面图。后端无真实文件时返回占位封面（保证前端图片可显示）。"""
+    """返回封面图：优先读取真实文件，缺失时返回占位封面。"""
+    if sourceName:
+        # sourceName 形如 cover/2026/08/02/BV1x.jpg → 去 cover/ 前缀
+        rel = sourceName.replace("cover/", "", 1)
+        path = os.path.join(settings.cover_dir, rel)
+        # 防路径穿越
+        if not os.path.abspath(path).startswith(os.path.abspath(settings.cover_dir)):
+            return Response(content=_DEFAULT_COVER_SVG, media_type="image/svg+xml")
+        if os.path.isfile(path):
+            try:
+                data = open(path, "rb").read()
+                ext = os.path.splitext(path)[1].lower()
+                return Response(content=data, media_type=_CONTENT_TYPES.get(ext, "image/jpeg"))
+            except Exception as e:
+                logger.warning(f"读取封面失败 {path}: {e}")
     return Response(content=_DEFAULT_COVER_SVG, media_type="image/svg+xml")
