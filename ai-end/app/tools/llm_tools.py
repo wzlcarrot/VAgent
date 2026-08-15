@@ -725,14 +725,14 @@ class LLM_tools:
     def chat_with_tools_router(cls, messages: List[Dict[str, str]], tools: List[Dict],
                                 temperature: float = 0.0, max_tokens: int = 500) -> Optional[Dict]:
         """
-        路由器意图分类专用。固定走 router_llm_provider（与主对话模型解耦）。
+        路由器意图分类专用。走 router_llm_provider；留空则跟随 llm_provider。
 
         修复：原来会改全局 settings.llm_provider 造成 race condition；
         现在通过 provider 参数显式传入，零共享状态。
         """
         return cls.chat_with_tools(
             messages, tools, temperature, max_tokens,
-            provider=settings.router_llm_provider,
+            provider=settings.router_llm_provider or settings.llm_provider,
         )
 
     @classmethod

@@ -38,7 +38,8 @@ class Settings(BaseSettings):
     minimax_base_url: str = "https://api.minimax.chat/v1"
     minimax_model: str = "MiniMax-Text-01"
     llm_provider: str = "deepseek"
-    router_llm_provider: str = "deepseek"
+    # 路由器意图分类专用 provider；留空则跟随 llm_provider（见 LLM_tools.chat_with_tools_router）
+    router_llm_provider: str = ""
     llm_timeout: int = 30
 
     # ─── LLM Retry ───
