@@ -223,6 +223,15 @@ def cold_start_node(state: RecommendState) -> dict:
                     "author": "",
                     "tags": ""
                 })
+        # 补全封面/作者：RAG 检索结果无 cover，批量查 video_info 填充（避免推荐卡无封面）
+        if recommended:
+            video_ids = [v["video_id"] for v in recommended]
+            info_map = {v.videoId: v for v in VideoTools.get_video_info_batch(video_ids) if v.videoId}
+            for v in recommended:
+                info = info_map.get(v["video_id"])
+                if info:
+                    v["cover"] = build_cover_url(info.videoCover) if info.videoCover else ""
+                    v["author"] = info.nickName or ""
         if recommended:
             reasons = []
             for v in recommended[:top_k]:
