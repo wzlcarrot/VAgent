@@ -58,7 +58,7 @@ class Settings(BaseSettings):
     video_service_url: str = "http://127.0.0.1:7071"
     # 给前端浏览器访问的 cover URL 前缀（应公网可访问）。
     # 默认等于 video_service_url；生产部署到独立域名时通过环境变量覆盖。
-    public_video_url: str = ""
+    public_video_url: str = "http://localhost:4091/default-cover.svg"  # 前端占位封面（无外部视频服务时）
 
     # ─── CORS ───
     cors_origins: str = "http://localhost:4000,http://127.0.0.1:4000,http://localhost:4091,http://127.0.0.1:4091"
@@ -168,13 +168,49 @@ class Settings(BaseSettings):
     )
 
 
+import re as _re
+
+
+def is_safe_cover_source_name(name: str) -> bool:
+    """封面 sourceName 安全性校验：拒绝 URL（SSRF）、路径穿越、绝对路径。"""
+    if not name:
+        return False
+    if name.startswith(("http://", "https://")):
+        return False
+    if name.startswith("/") or ".." in name or "\\" in name:
+        return False
+    if any(c in name for c in ("\x00", "\n", "\r")):
+        return False
+    return True
+
+
+def extract_cover_source_name(url: str) -> str:
+    """从封面 URL 提取 sourceName（兼容 /ai/media/cover?sourceName= 与网关 getResource 两种格式）。"""
+    m = _re.search(r"sourceName=([^&\s\"']+)", url or "")
+    return m.group(1) if m else ""
+
+
 def build_cover_url(cover_path: str) -> str:
+    """封面 URL 规范化：
+    - 公开 CDN（http/https，非网关）→ 原样返回
+    - 网关 getResource / 同源 /ai/media → 提取 sourceName 重写为同源代理
+    - 相对路径 → 同源代理；空 / 非法（穿越/SSRF）→ ""
+    """
     if not cover_path:
         return ""
-    if cover_path.startswith("http"):
+    # 含 sourceName 参数的 URL（网关或同源代理）→ 提取重写
+    if "sourceName=" in cover_path:
+        name = extract_cover_source_name(cover_path)
+        if not is_safe_cover_source_name(name):
+            return ""
+        return f"/ai/media/cover?sourceName={name}"
+    # 公开 CDN（普通 http/https 图）→ 原样
+    if cover_path.startswith(("http://", "https://")):
         return cover_path
-    base = (settings.public_video_url or settings.video_service_url).rstrip("/")
-    return f"{base}/api/file/getResource?sourceName={cover_path}"
+    # 相对路径
+    if not is_safe_cover_source_name(cover_path):
+        return ""
+    return f"/ai/media/cover?sourceName={cover_path}"
 
 
 settings = Settings()

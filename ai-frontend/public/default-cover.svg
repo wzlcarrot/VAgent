@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 180" width="320" height="180">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#6366F1"/>
+      <stop offset="100%" stop-color="#8B5CF6"/>
+    </linearGradient>
+  </defs>
+  <rect width="320" height="180" fill="url(#g)"/>
+  <g fill="#fff" opacity="0.9" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif">
+    <text x="160" y="78" font-size="22" font-weight="600">视频封面</text>
+    <text x="160" y="108" font-size="13" opacity="0.75">ViewHub AI</text>
+  </g>
+  <g fill="#fff" opacity="0.35" transform="translate(160,90)">
+    <circle r="6" cx="-18"/>
+    <circle r="6" cx="0"/>
+    <circle r="6" cx="18"/>
+  </g>
+</svg>

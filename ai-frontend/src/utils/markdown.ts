@@ -63,6 +63,19 @@ const md = new MarkdownIt({
   },
 })
 
+function rewriteCoverUrl(url: string): string {
+  if (!url) return url
+  // 提取 sourceName（兼容 /ai/media/cover?sourceName= 与网关 getResource 两种格式）
+  const m = url.match(/sourceName=([^&"' )]+)/)
+  if (m) return `/ai/media/cover?sourceName=${m[1]}`
+  return url
+}
+
 export function renderMarkdown(content: string): string {
-  return DOMPurify.sanitize(md.render(content))
+  // markdown 图片：改写为同源代理地址（经前端 nginx /ai/media 到后端）
+  const withProxy = md.render(content).replace(/<img [^>]*src="([^"]+)"/g, (_all, url) => {
+    const proxy = rewriteCoverUrl(url)
+    return `<img src="${proxy}"`
+  })
+  return DOMPurify.sanitize(withProxy)
 }
