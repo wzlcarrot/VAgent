@@ -625,7 +625,7 @@ class LLM_tools:
 
     @staticmethod
     def chat_sync_json(messages: List[Dict[str, str]], temperature: float = 0.0,
-                       max_tokens: int = 2000, timeout: float = 30.0,
+                       max_tokens: int = 4000, timeout: float = 30.0,
                        provider: Optional[str] = None) -> Optional[Dict]:
         base_url, model, api_key = _resolve_provider(provider)
         prov = provider or settings.llm_provider

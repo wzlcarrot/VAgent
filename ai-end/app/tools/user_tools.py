@@ -183,9 +183,10 @@ class UserTools:
                 if cursor is None:
                     return {"videos": [], "total": 0}
                 cursor.execute(
-                    "SELECT video_id, video_name FROM user_action "
-                    "WHERE user_id = %s AND action_type = 2 "
-                    "ORDER BY action_time DESC LIMIT %s",
+                    "SELECT ua.video_id, vi.video_name FROM user_action ua "
+                    "LEFT JOIN video_info vi ON ua.video_id = vi.video_id "
+                    "WHERE ua.user_id = %s AND ua.action_type = 2 "
+                    "ORDER BY ua.action_time DESC LIMIT %s",
                     (user_id, limit),
                 )
                 rows = cursor.fetchall()
@@ -209,9 +210,10 @@ class UserTools:
                 if cursor is None:
                     return {"videos": [], "total": 0}
                 cursor.execute(
-                    "SELECT video_id, video_name FROM user_action "
-                    "WHERE user_id = %s AND action_type = 3 "
-                    "ORDER BY action_time DESC LIMIT %s",
+                    "SELECT ua.video_id, vi.video_name FROM user_action ua "
+                    "LEFT JOIN video_info vi ON ua.video_id = vi.video_id "
+                    "WHERE ua.user_id = %s AND ua.action_type = 3 "
+                    "ORDER BY ua.action_time DESC LIMIT %s",
                     (user_id, limit),
                 )
                 rows = cursor.fetchall()
@@ -235,9 +237,10 @@ class UserTools:
                 if cursor is None:
                     return {"videos": [], "total": 0}
                 cursor.execute(
-                    "SELECT video_id, last_update_time FROM video_play_history "
-                    "WHERE user_id = %s "
-                    "ORDER BY last_update_time DESC LIMIT %s",
+                    "SELECT ph.video_id, vi.video_name FROM video_play_history ph "
+                    "LEFT JOIN video_info vi ON ph.video_id = vi.video_id "
+                    "WHERE ph.user_id = %s "
+                    "ORDER BY ph.last_update_time DESC LIMIT %s",
                     (user_id, limit),
                 )
                 rows = cursor.fetchall()
@@ -247,7 +250,7 @@ class UserTools:
                 )
                 total = cursor.fetchone()
             return {
-                "videos": [{"video_id": r["video_id"], "video_name": ""} for r in rows],
+                "videos": [{"video_id": r["video_id"], "video_name": r["video_name"] or ""} for r in rows],
                 "total": total["count"] if total else 0,
             }
         except Exception as e:
@@ -261,9 +264,10 @@ class UserTools:
                 if cursor is None:
                     return []
                 cursor.execute(
-                    "SELECT video_id, video_name, COUNT(*) as cnt FROM user_action "
-                    "WHERE user_id = %s AND action_type = 2 "
-                    "GROUP BY video_id, video_name ORDER BY cnt DESC LIMIT %s",
+                    "SELECT ua.video_id, vi.video_name, COUNT(*) as cnt FROM user_action ua "
+                    "LEFT JOIN video_info vi ON ua.video_id = vi.video_id "
+                    "WHERE ua.user_id = %s AND ua.action_type = 2 "
+                    "GROUP BY ua.video_id, vi.video_name ORDER BY cnt DESC LIMIT %s",
                     (user_id, limit),
                 )
                 rows = cursor.fetchall()
