@@ -42,4 +42,25 @@
   --color-primary-light: #6b8aff;
   --color-danger: #ef4444;
   --color-danger-light: #fca5a5;
+  --color-danger-bg: #fef2f2;
+  --color-success: #10b981;
+}
+
+/* 暗色主题（借鉴 DeepSeek Harness 深墨蓝黑 + indigo 品牌色） */
+.dark {
+  --color-primary: #818cf8;
+  --color-primary-hover: #6366f1;
+  --color-primary-light: #4f46e5;
+  --color-bg: #0d1017;
+  --color-bg-card: #161b26;
+  --color-border: #2a2f3a;
+  --color-text: #e5e7eb;
+  --color-text-secondary: #9ca3af;
+  --color-user-bubble: #818cf8;
+  --color-ai-bubble: #1f2430;
+  --color-danger-bg: #3b1d1d;
+  --color-success: #10b981;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.6);
 }

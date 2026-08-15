@@ -189,8 +189,8 @@ function autoResize() {
 .toast {
   padding: 8px 16px;
   margin-bottom: 8px;
-  background: #fef2f2;
-  color: #dc2626;
+  background: var(--color-danger-bg);
+  color: var(--color-danger);
   border: 1px solid #fca5a5;
   border-radius: var(--radius-btn);
   font-size: 13px;
@@ -251,11 +251,28 @@ function autoResize() {
   display: flex;
   align-items: flex-end;
   gap: var(--space-sm);
-  background: var(--color-bg);
-  border: 1px solid var(--color-border);
+  /* 旋转渐变边框（借鉴 DeepSeek Harness 动态描边）：
+     内层 padding-box 背景 + 外层 conic-gradient border-box 描边 */
+  border: 1px solid transparent;
+  background:
+    linear-gradient(var(--color-bg), var(--color-bg)) padding-box,
+    conic-gradient(from var(--border-angle),
+      var(--color-border) 0%, var(--color-primary) 25%,
+      var(--color-border) 50%, var(--color-primary) 75%,
+      var(--color-border) 100%) border-box;
   border-radius: 24px;
   padding: var(--space-sm) var(--space-sm) var(--space-sm) var(--space-md);
-  transition: border-color var(--transition-fast);
+  animation: ds-border-rotate 6s linear infinite;
+}
+
+@keyframes ds-border-rotate {
+  to { --border-angle: 360deg; }
+}
+
+@property --border-angle {
+  syntax: '<angle>';
+  initial-value: 0deg;
+  inherits: false;
 }
 
 .chat-input-container:focus-within {

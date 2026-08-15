@@ -258,7 +258,7 @@ function previewImage(url: string) {
 }
 
 .status-error .bubble-main {
-  border: 2px solid #ef4444;
+  border: 2px solid var(--color-danger);
 }
 
 .bubble-meta {
@@ -317,7 +317,7 @@ function previewImage(url: string) {
 
 .feedback-btn.active[title="没用"],
 .feedback-btn[title="没用"]:hover:not(:disabled) {
-  color: #ef4444;
+  color: var(--color-danger);
 }
 
 .feedback-btn:disabled {
@@ -339,7 +339,7 @@ function previewImage(url: string) {
   color: var(--color-text);
 }
 .copy-btn.copied {
-  color: #10b981;
+  color: var(--color-success);
 }
 
 .retry-btn {
@@ -358,8 +358,8 @@ function previewImage(url: string) {
 }
 
 .retry-btn:hover {
-  background: #fef2f2;
-  color: #ef4444;
+  background: var(--color-danger-bg);
+  color: var(--color-danger);
 }
 
 .image-grid {

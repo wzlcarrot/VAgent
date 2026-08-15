@@ -148,7 +148,7 @@ function formatTime(t: string) {
   text-align: center;
   color: #888;
 }
-.error { color: #dc2626; }
+.error { color: var(--color-danger); }
 .empty-icon {
   font-size: 40px;
   margin-bottom: 12px;

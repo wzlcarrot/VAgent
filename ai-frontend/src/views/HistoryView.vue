@@ -606,8 +606,8 @@ onUnmounted(() => {
 }
 
 .delete-btn:hover {
-  background: #fef2f2;
-  color: #dc2626;
+  background: var(--color-danger-bg);
+  color: var(--color-danger);
 }
 
 .checkpoint-btn {

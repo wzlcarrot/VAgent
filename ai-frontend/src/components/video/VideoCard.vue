@@ -243,7 +243,7 @@ function handlePlay(e: Event) {
 
 .reason {
   font-size: 12px;
-  color: #6a6a8a;
+  color: var(--color-text-secondary);
   line-height: 1.4;
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -264,7 +264,7 @@ function handlePlay(e: Event) {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #6a6a8a;
+  color: var(--color-text-secondary);
   transition: all 0.2s ease;
   background: rgba(74, 108, 247, 0.1);
   border: 1px solid rgba(74, 108, 247, 0.2);

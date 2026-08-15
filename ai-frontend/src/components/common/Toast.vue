@@ -75,10 +75,10 @@ watch(() => props.visible, (val) => {
   max-width: 90vw;
 }
 .toast-container.success {
-  border-left: 4px solid #10b981;
+  border-left: 4px solid var(--color-success);
 }
 .toast-container.error {
-  border-left: 4px solid #dc2626;
+  border-left: 4px solid var(--color-danger);
 }
 .toast-container.warning {
   border-left: 4px solid #f59e0b;

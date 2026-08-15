@@ -197,11 +197,11 @@ onUnmounted(() => {
 }
 
 .dropdown-item.logout {
-  color: #dc2626;
+  color: var(--color-danger);
 }
 
 .dropdown-item.logout:hover {
-  background: #fef2f2;
+  background: var(--color-danger-bg);
 }
 
 .dropdown-divider {

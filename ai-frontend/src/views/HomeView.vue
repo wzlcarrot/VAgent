@@ -438,7 +438,7 @@ function handleVideoPlay(video: { videoId: string }) {
 .welcome-text {
   margin: 0 0 24px;
   font-size: 15px;
-  color: #606266;
+  color: var(--color-text-secondary);
   line-height: 1.6;
   max-width: 400px;
 }

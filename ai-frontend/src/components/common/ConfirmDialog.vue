@@ -124,8 +124,8 @@ function onCancel() {
   border-color: var(--color-primary, #4a6cf7);
 }
 .btn-confirm.danger {
-  background: #dc2626;
-  border-color: #dc2626;
+  background: var(--color-danger);
+  border-color: var(--color-danger);
 }
 .btn-confirm.danger:hover:not(:disabled) {
   background: #b91c1c;
