@@ -16,6 +16,46 @@ RECOMMEND_STEP_ORDER = ["profile_node", "search_node", "reason_node", "summary_n
 RECOMMEND_COLD_START_ORDER = ["profile_node", "cold_start_node", "supervisor_node"]
 
 
+def _build_recommend_markdown(videos: List[Dict[str, Any]], reasons: List[str] = None) -> str:
+    """推荐结果生成纯 Markdown 文本（标题/封面/关键词/作者/创建时间/播放量/理由）。
+
+    替代"text 文本 + videos 卡片"双通道：信息全部由文本承载，避免冗余。
+    """
+    if not videos:
+        return ""
+    reasons = reasons or []
+    blocks = []
+    for i, v in enumerate(videos):
+        title = v.get("title", "未知视频")
+        cover = v.get("cover", "")
+        tags = v.get("tags", "") or []
+        author = v.get("author", "")
+        create_time = v.get("create_time", "") or ""
+        play_count = v.get("play_count", 0)
+        reason = reasons[i] if i < len(reasons) else ""
+
+        lines = [f"## {i+1}. {title}"]
+        if cover:
+            lines.append(f"![{title}]({cover})")
+        meta = []
+        if tags:
+            tag_str = " · ".join([t.strip() for t in str(tags).split(",") if t.strip()][:3]) if isinstance(tags, str) else " · ".join(tags[:3])
+            if tag_str:
+                meta.append(f"关键词：{tag_str}")
+        if author:
+            meta.append(f"作者：{author}")
+        if create_time:
+            meta.append(f"创建时间：{str(create_time)[:10]}")
+        if play_count:
+            meta.append(f"播放量：{play_count}次")
+        if reason:
+            meta.append(f"推荐理由：{reason}")
+        if meta:
+            lines.append("\n".join(meta))
+        blocks.append("\n".join(lines))
+    return "\n\n".join(blocks)
+
+
 class RecommendState(TypedDict):
     user_id: str
     question: str
@@ -125,7 +165,8 @@ def search_node(state: RecommendState) -> dict:
                 "cover": build_cover_url(vi.videoCover) if vi.videoCover else "",
                 "author": vi.nickName,
                 "tags": vi.tags,
-                "create_time": str(vi.createTime) if vi.createTime else ""
+                "create_time": str(vi.createTime) if vi.createTime else "",
+                "play_count": vi.playCount or 0
             })
 
     return {"candidate_videos": result_videos}
@@ -187,11 +228,7 @@ def summary_node(state: RecommendState) -> dict:
         summary = NO_RECOMMENDATION_MSG + "你可以多观看一些视频，我会更好地了解你的偏好。"
         return {"summary": summary, "answer": summary}
 
-    result_text = "根据你的观看历史和喜好，为你推荐以下视频：\n\n"
-    for i, video in enumerate(recommended_videos):
-        title = video.get("title", "未知视频")
-        result_text += f"{i+1}. {title}\n"
-        result_text += f"   推荐理由：{reasons[i] if i < len(reasons) else '根据你的兴趣推荐'}\n\n"
+    result_text = _build_recommend_markdown(recommended_videos, reasons)
 
     return {"summary": result_text, "answer": result_text}
 
@@ -223,7 +260,7 @@ def cold_start_node(state: RecommendState) -> dict:
                     "author": "",
                     "tags": ""
                 })
-        # 补全封面/作者：RAG 检索结果无 cover，批量查 video_info 填充（避免推荐卡无封面）
+        # 补全封面/作者/时间/播放量：RAG 检索结果无这些字段，批量查 video_info 填充
         if recommended:
             video_ids = [v["video_id"] for v in recommended]
             info_map = {v.videoId: v for v in VideoTools.get_video_info_batch(video_ids) if v.videoId}
@@ -232,6 +269,8 @@ def cold_start_node(state: RecommendState) -> dict:
                 if info:
                     v["cover"] = build_cover_url(info.videoCover) if info.videoCover else ""
                     v["author"] = info.nickName or ""
+                    v["create_time"] = str(info.createTime) if info.createTime else ""
+                    v["play_count"] = info.playCount or 0
         if recommended:
             reasons = []
             for v in recommended[:top_k]:
@@ -243,9 +282,7 @@ def cold_start_node(state: RecommendState) -> dict:
                     reasons.append(f"《{title}》值得一看")
                 else:
                     reasons.append("")
-            summary = f"为你找到 {len(recommended[:top_k])} 个推荐结果：\n\n"
-            for i, v in enumerate(recommended[:top_k]):
-                summary += f"{i+1}. {v['title']}\n\n"
+            summary = _build_recommend_markdown(recommended[:top_k], reasons)
             return {
                 "recommended_videos": recommended[:top_k],
                 "reasons": reasons,
@@ -262,7 +299,8 @@ def cold_start_node(state: RecommendState) -> dict:
             "cover": build_cover_url(v.videoCover) if v.videoCover else "",
             "author": v.nickName,
             "tags": v.tags,
-            "create_time": str(v.createTime) if v.createTime else ""
+            "create_time": str(v.createTime) if v.createTime else "",
+            "play_count": v.playCount or 0
         })
 
     top_k = state.get("top_k", 5)
@@ -292,10 +330,7 @@ def cold_start_node(state: RecommendState) -> dict:
             reasons.append(f"《{title}》值得一看")
         else:
             reasons.append("")
-    summary = "欢迎新用户！以下是最新热门视频推荐：\n\n"
-    for i, v in enumerate(recommended[:top_k]):
-        summary += f"{i+1}. {v['title']}\n"
-        summary += f"   作者：{v['author']}\n\n"
+    summary = _build_recommend_markdown(recommended[:top_k], reasons)
 
     return {
         "recommended_videos": recommended[:top_k],

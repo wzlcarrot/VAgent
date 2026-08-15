@@ -135,19 +135,21 @@ class Supervisor:
         return result if result else FALLBACK_RESPONSE
 
     def _aggregate_recommend(self, outputs: Dict[str, Any]) -> str:
-        """聚合推荐结果
+        """聚合推荐结果。
 
-        返回简洁的开场白 + 视频名列表 + 推荐理由。
-        视频卡片 UI 会单独显示，所以这里不需要完整的视频信息。
+        workflow 的 summary 已是完整 Markdown（标题/封面/关键词/作者/时间/播放量/理由），
+        直接返回；仅当无 summary 时降级为旧的开场白+标题列表。
         """
-        user_profile: Dict[str, Any] = outputs.get("user_profile", {})
+        summary: str = outputs.get("summary", "") or outputs.get("answer", "")
+        if summary and summary != FALLBACK_RESPONSE:
+            return summary
+
         videos: List[Dict[str, Any]] = outputs.get("recommended_videos", [])
         reasons: List[str] = outputs.get("reasons", [])
 
         if not videos:
             return FALLBACK_RESPONSE
 
-        # 简洁的开场白
         count = min(len(videos), 5)
         result = f"为你找到 {count} 个相关视频：\n\n"
 

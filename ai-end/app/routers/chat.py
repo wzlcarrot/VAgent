@@ -35,7 +35,7 @@ def _parse_recommend_count(text: str) -> int:
 from app.tools import ChatTools
 from app.tools.db import get_global_pool
 from app.routers._shared import require_auth, _json_dumps
-from app.config import build_cover_url, settings
+from app.config import settings
 from psycopg2.extras import RealDictCursor
 from app.utils.security import validate_session_id
 from app.tools.output_guard import FALLBACK_RESPONSE, ALL_AGENTS_FAILED_MSG
@@ -553,31 +553,8 @@ async def _parallel_agent_pipeline(workflow_type: str, question: str, video_id: 
         else:
             yield {"type": "text", "content": winner_text}
     else:
-        # RECOMMEND/USER_DATA/VIDEO_QA winner：先 yield 一段简洁的开场白（包含视频名+推荐理由），再 yield videos
-        if winner_type == WorkflowType.RECOMMEND and any(
-            r.get("workflow_type") == winner_type and r.get("recommended_videos")
-            for r in results
-        ):
-            # 已经被 supervisor 重新格式化过的 winner_text（带 reasons）
-            if winner_text:
-                yield {"type": "text", "content": winner_text}
-        else:
-            yield {"type": "text", "content": winner_text}
-    for r in results:
-        if r["workflow_type"] == winner_type and r.get("recommended_videos"):
-            normalized = [
-                {
-                    "videoId": v.get("video_id") or v.get("videoId"),
-                    "title": v.get("title", ""),
-                    "cover": build_cover_url(v.get("cover", "")),
-                    "author": v.get("author", ""),
-                    "tags": v.get("tags", []),
-                }
-                for v in r["recommended_videos"]
-            ]
-            yield {"type": "videos", "videos": normalized, "reasons": r.get("reasons", [])}
-            yield {"type": "meta", "meta": {"recommended_videos": r["recommended_videos"], "winner_type": winner_type}}
-            break
+        # RECOMMEND/USER_DATA/VIDEO_QA winner：yield 文本（推荐已生成含全字段的 markdown）
+        yield {"type": "text", "content": winner_text}
     yield {"type": "status", "stage": "done", "label": "完成"}
 
 
