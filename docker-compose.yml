@@ -3,6 +3,9 @@ services:
     build: ./ai-end
     ports:
       - "9090:8001"
+    networks:
+      - default
+      - youtube-net
     environment:
       - PG_HOST=postgres
       - PG_PORT=5432
@@ -17,8 +20,8 @@ services:
       - MINIMAX_MODEL=${MINIMAX_MODEL:-MiniMax-M3}
       - LLM_PROVIDER=${LLM_PROVIDER:-minimax}
       - ROUTER_LLM_PROVIDER=${ROUTER_LLM_PROVIDER:-}
-      - VIDEO_SERVICE_URL=http://video-service:7071
-      - PUBLIC_VIDEO_URL=${PUBLIC_VIDEO_URL:-}
+      - VIDEO_SERVICE_URL=http://gateway:8080
+      - PUBLIC_VIDEO_URL=${PUBLIC_VIDEO_URL:-http://localhost:8080}
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - REDIS_DB=0
@@ -91,3 +94,9 @@ services:
 volumes:
   pg_data:
   prometheus_data:
+
+# 接入外部视频服务网络（viewhub 主站 gateway），使 VIDEO_SERVICE_URL 可达
+networks:
+  youtube-net:
+    external: true
+    name: viewhub-youtube-backend_viewhub-youtube-net

@@ -85,6 +85,11 @@
 | `user_data_workflow` | 用户数据查询（点赞/收藏/历史） | intent → query → response → supervisor |
 | `chat_graph` | 平台客服 / 闲聊 | faq → guide → platform_docs → llm → supervisor |
 
+> **外部依赖**：`video_qa`/`recommend`/视频封面依赖 ViewHub 主站（`viewhub-youtube-backend`，gateway 暴露 8080）。
+> agent 已通过 external network 接入 `viewhub-youtube-backend_viewhub-youtube-net`，`VIDEO_SERVICE_URL=http://gateway:8080`，
+> `PUBLIC_VIDEO_URL` 为浏览器可达地址（默认 `http://localhost:8080`，可经 `.env` 覆盖）。
+> 若视频接口返回 503，说明主站下游微服务未启动，需外部启动 `viewhub-youtube-backend` 项目。
+
 ## 快速开始
 
 ### 方式一：Docker Compose（推荐）
