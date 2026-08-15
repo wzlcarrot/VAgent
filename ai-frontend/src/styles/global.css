@@ -63,6 +63,19 @@ textarea {
   background: var(--color-text-secondary);
 }
 
+/* 键盘焦点光晕（精致感 + 可访问性） */
+:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+  border-radius: var(--radius-btn);
+}
+
+/* 选择文本品牌色 */
+::selection {
+  background: var(--color-primary-bg);
+  color: var(--color-text);
+}
+
 /* Utility Classes */
 .text-primary {
   color: var(--color-primary);

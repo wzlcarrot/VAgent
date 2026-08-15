@@ -112,7 +112,10 @@ onUnmounted(() => {
 .logo-text {
   font-size: 18px;
   font-weight: 600;
-  color: var(--color-text);
+  background: linear-gradient(135deg, var(--color-primary), var(--color-secondary));
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
 }
 
 .header-right {

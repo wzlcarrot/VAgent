@@ -160,6 +160,13 @@ function initSteps() {
 .step.active .step-dot {
   border-color: var(--color-primary);
   background: var(--color-primary);
+  animation: step-pulse 1.2s ease-in-out infinite;
+  box-shadow: 0 0 0 4px var(--color-ring);
+}
+
+@keyframes step-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.15); }
 }
 
 .step.active .step-dot::after {
