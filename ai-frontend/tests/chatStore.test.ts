@@ -102,4 +102,28 @@ describe('chat store localStorage 去抖', () => {
     expect(store.currentSessionId).toBeNull()
     expect(localStorage.getItem('viewhub_sessions')).toBeNull()
   })
+
+  it('无 crypto.randomUUID 时 generateId 降级为合法 v4 UUID', () => {
+    // 模拟非安全上下文（http/IP 直连）：crypto.randomUUID 不可用，仅保留 getRandomValues
+    const fallbackCrypto = {
+      getRandomValues: (arr: Uint8Array) => {
+        for (let i = 0; i < arr.length; i++) arr[i] = Math.floor(Math.random() * 256)
+        return arr
+      },
+    }
+    vi.stubGlobal('crypto', fallbackCrypto)
+    try {
+      const store = useChatStore()
+      const session = store.createSession()
+      const msg = store.addMessage({ role: 'user', content: 'hi', status: 'success' })
+
+      // v4 UUID 格式：xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx（y 在 [89ab]）
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
+      expect(session.id).toMatch(uuidRegex)
+      expect(msg.id).toMatch(uuidRegex)
+      expect(session.id).not.toBe(msg.id) // 每次生成唯一
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
 })
