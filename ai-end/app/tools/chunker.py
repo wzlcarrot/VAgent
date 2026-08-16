@@ -1,7 +1,6 @@
 import re
 from typing import List
 
-
 CHUNK_SIZE = 512
 CHUNK_OVERLAP = 128
 

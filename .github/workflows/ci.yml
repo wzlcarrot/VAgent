@@ -1,0 +1,101 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend (pytest + ruff)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        # pgvector 镜像自带 vector 扩展；pg_search 不可用时由 app 自动降级
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: viewhub
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d viewhub"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 15
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      PG_HOST: localhost
+      PG_PORT: 5432
+      PG_USER: postgres
+      PG_PASSWORD: postgres
+      PG_DATABASE: viewhub
+      REDIS_HOST: localhost
+      REDIS_PORT: 6379
+      REDIS_DB: 0
+      # e2e 测试登录用测试账户
+      TEST_ACCOUNT_ENABLED: "true"
+      TEST_ACCOUNT_EMAIL: test@viewhub.com
+      TEST_ACCOUNT_PASSWORD_MD5: e10adc3949ba59abbe56e057f20f883e
+      TEST_ACCOUNT_USER_ID: test_user_001
+      TEST_ACCOUNT_NICKNAME: 测试用户
+      ADMIN_API_KEY: ci-admin-key
+    defaults:
+      run:
+        working-directory: ai-end
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: ai-end/requirements*.txt
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
+
+      - name: Lint (ruff)
+        run: ruff check app tests scripts
+
+      - name: Test
+        run: python -m pytest tests/ -q --cov=app --cov-fail-under=60
+
+  frontend:
+    name: Frontend (vue-tsc + vitest)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ai-frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: ai-frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck (vue-tsc)
+        run: npx vue-tsc --noEmit
+
+      - name: Test (vitest + coverage gate)
+        run: npx vitest run --coverage

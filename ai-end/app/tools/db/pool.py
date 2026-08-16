@@ -9,7 +9,9 @@ PostgreSQL 连接池管理
 import logging
 import time
 from typing import Optional
+
 from psycopg2 import pool
+
 from app.config import settings
 
 logger = logging.getLogger(__name__)

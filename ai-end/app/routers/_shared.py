@@ -1,12 +1,13 @@
 """
 共享工具：token 管理、JSON 序列化、认证依赖
 """
+import asyncio
+import json
 import logging
 import time
-import json
-import asyncio
-from typing import Dict, Tuple, Optional
-from fastapi import Request, HTTPException
+from typing import Dict, Optional, Tuple
+
+from fastapi import HTTPException, Request
 
 try:
     import orjson

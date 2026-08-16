@@ -2,9 +2,11 @@
 反馈路由
 """
 import logging
-from fastapi import APIRouter, HTTPException, Request, Depends
-from app.tools import MemoryTools
+
+from fastapi import APIRouter, Depends, HTTPException, Request
+
 from app.routers._shared import require_auth
+from app.tools import MemoryTools
 
 logger = logging.getLogger(__name__)
 
@@ -41,4 +43,4 @@ async def submit_feedback(request: Request, authed_user_id: str = Depends(requir
         raise
     except Exception as e:
         logger.error(f"提交反馈失败: {e}")
-        raise HTTPException(status_code=500, detail="提交反馈失败")
+        raise HTTPException(status_code=500, detail="提交反馈失败") from e

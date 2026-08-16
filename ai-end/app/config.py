@@ -2,9 +2,10 @@
 全局配置 —— 全部用环境变量覆盖，避免代码里散落 magic numbers
 """
 import os
-from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import field_validator
 from typing import Optional
+
+from pydantic import field_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 try:
     from dotenv import load_dotenv
@@ -28,7 +29,6 @@ class Settings(BaseSettings):
     pg_password: str = ""
     pg_database: str = "viewhub"
     db_pool_size: int = 20
-    db_health_check_interval: float = 30.0
 
     # ─── LLM ───
     deepseek_api_key: str = ""
@@ -40,7 +40,6 @@ class Settings(BaseSettings):
     llm_provider: str = "deepseek"
     # 路由器意图分类专用 provider；留空则跟随 llm_provider（见 LLM_tools.chat_with_tools_router）
     router_llm_provider: str = ""
-    llm_timeout: int = 30
 
     # ─── LLM Retry ───
     llm_retry_max_attempts: int = 3
@@ -121,13 +120,6 @@ class Settings(BaseSettings):
             raise ValueError(f"Invalid redis_port: {v}, must be 1-65535")
         return v
 
-    @field_validator("llm_timeout")
-    @classmethod
-    def validate_llm_timeout(cls, v: int) -> int:
-        if v < 1:
-            raise ValueError(f"Invalid llm_timeout: {v}, must be >= 1")
-        return v
-
     @field_validator("context_max_rounds")
     @classmethod
     def validate_context_max_rounds(cls, v: int) -> int:
@@ -170,7 +162,7 @@ class Settings(BaseSettings):
     )
 
 
-import re as _re
+import re as _re  # noqa: E402
 
 
 def is_safe_cover_source_name(name: str) -> bool:

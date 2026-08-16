@@ -1,17 +1,19 @@
-import logging
 import atexit
+import logging
+import re as _re
 from concurrent.futures import ThreadPoolExecutor
-from typing import Dict, Any, List, Optional, TypedDict, Literal
+from typing import Any, Dict, List, Literal, Optional, TypedDict
+
+from langgraph.constants import END, START
 from langgraph.graph import StateGraph
-from langgraph.constants import START, END
-from app.tools.rag_tools import RAGTools
-from app.tools.llm_tools import LLM_tools
+
 from app.agents.supervisor import Supervisor
-from app.tools.output_guard import FALLBACK_RESPONSE
-from app.agents.workflows.harness_helpers import invoke_with_governor, checkpoint, save_checkpoint
-from app.agents.workflows.harness_helpers import HARNESS_ENABLED
-from app.harness.checkpoint import CheckpointManager
 from app.agents.workflows.constants import WorkflowType
+from app.agents.workflows.harness_helpers import HARNESS_ENABLED, checkpoint, invoke_with_governor, save_checkpoint
+from app.harness.checkpoint import CheckpointManager
+from app.tools.llm_tools import LLM_tools
+from app.tools.output_guard import FALLBACK_RESPONSE
+from app.tools.rag_tools import RAGTools
 
 logger = logging.getLogger(__name__)
 
@@ -42,16 +44,17 @@ _OTHER_PLATFORMS = ["bilibili", "哔哩哔哩", "youtube", "抖音", "快手", "
 
 
 def _sanitize_platform(text: str) -> str:
-    """输出兜底：回答中出现其他视频平台名时，替换为 ViewHub，避免跨平台内容泄露。"""
+    """输出兜底：回答中出现其他视频平台名时，替换为 ViewHub，避免跨平台内容泄露。
+
+    用大小写不敏感替换，避免 "YouTube"/"Bilibili" 等大小写变体绕过过滤。
+    """
     if not text:
         return text
     for name in _OTHER_PLATFORMS:
-        text = text.replace(name, "ViewHub")
+        text = _re.sub(_re.escape(name), "ViewHub", text, flags=_re.IGNORECASE)
     return text
 
-
 def _is_greeting(question: str) -> bool:
-    import re as _re
     q = question.strip().lower()
     # 去掉 emoji 和非中英文符号
     q_clean = _re.sub(r"[^\w\s\u4e00-\u9fff]", "", q).strip()
@@ -284,7 +287,6 @@ def run_chat_workflow(question: str, conversation_history: List[Dict[str, str]] 
 
     # 并行召回 faq + guide（双路 + 平台 docs）
     # 用 ThreadPoolExecutor 而非 asyncio.gather：底层是同步 RAG 调用
-    from concurrent.futures import ThreadPoolExecutor
 
     def _faq_call():
         return _safe_recall(

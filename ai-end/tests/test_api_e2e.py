@@ -189,6 +189,19 @@ class TestRealFlowE2E:
         })
         assert r.status_code == 200
 
+    def test_search_with_sql_injection_payload(self, client):
+        """SQL 注入 payload 不应崩溃、不应泄露其他用户数据"""
+        _login(client)
+        payloads = [
+            "%' OR 1=1 --",
+            "' OR 1=1; DROP TABLE chat_history; --",
+            "x%' AND 1=1 UNION SELECT 1,2,3 --",
+        ]
+        for p in payloads:
+            r = client.get("/ai/chat/search", params={"q": p})
+            assert r.status_code == 200, p
+            assert "results" in r.json(), p
+
 
 class TestConcurrencyE2E:
     """并发验证：多请求并行下 event loop 不被同步调用阻塞"""
@@ -196,7 +209,8 @@ class TestConcurrencyE2E:
     def test_parallel_health_and_auth(self):
         import asyncio
         import time
-        from httpx import AsyncClient, ASGITransport
+
+        from httpx import ASGITransport, AsyncClient
 
         async def _run():
             transport = ASGITransport(app=app)

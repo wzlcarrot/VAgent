@@ -1,10 +1,11 @@
 import logging
-import threading
 import math
+import threading
 import time
 from collections import OrderedDict
-from typing import List, Tuple, Optional, Dict, Any
-from app.agents.intent_constants import USER_DATA_MARKERS, DATA_KEYWORDS
+from typing import Any, Dict, List, Optional, Tuple
+
+from app.agents.intent_constants import DATA_KEYWORDS, USER_DATA_MARKERS
 from app.agents.workflows.constants import WorkflowType
 
 logger = logging.getLogger(__name__)
@@ -146,7 +147,7 @@ class Router:
 
             with self._embedding_cache_lock:
                 max_size = self._cache_max()
-                for idx, text, vec in zip(miss_indices, miss_texts, new_vecs):
+                for idx, text, vec in zip(miss_indices, miss_texts, new_vecs, strict=False):
                     self._embedding_cache[text] = (vec, now)
                     results[idx] = vec
                     # 满了就 pop oldest（队首）
@@ -158,7 +159,7 @@ class Router:
     @staticmethod
     def _cosine_similarity(a: List[float], b: List[float]) -> float:
         """计算余弦相似度"""
-        dot: float = sum(x * y for x, y in zip(a, b))
+        dot: float = sum(x * y for x, y in zip(a, b, strict=False))
         norm_a: float = math.sqrt(sum(x * x for x in a))
         norm_b: float = math.sqrt(sum(y * y for y in b))
         if norm_a == 0 or norm_b == 0:

@@ -4,15 +4,15 @@ Agent 评测脚本
 用法: python scripts/eval_agent.py
 """
 
-import sys
-import json
 import logging
+import sys
+
 sys.path.insert(0, ".")
 
 logging.basicConfig(level=logging.WARNING)
 logger = logging.getLogger(__name__)
 
-from app.agents.workflows.constants import WorkflowType
+from app.agents.workflows.constants import WorkflowType  # noqa: E402
 
 TEST_CASES = [
     # (question, video_id, user_id, expected_workflow)
@@ -58,7 +58,7 @@ def eval_router():
 
     accuracy = correct / total * 100
     print(f"\n{'='*50}")
-    print(f"  Router 路由准确率评估")
+    print("  Router 路由准确率评估")
     print(f"{'='*50}")
     print(f"  总用例: {total}")
     print(f"  正确:   {correct}")
@@ -78,7 +78,7 @@ def eval_workflows():
     init_agent_tables()
 
     print(f"\n{'='*50}")
-    print(f"  Workflow 回答质量评估（chat_workflow）")
+    print("  Workflow 回答质量评估（chat_workflow）")
     print(f"{'='*50}")
 
     test_questions = [

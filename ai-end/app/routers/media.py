@@ -7,8 +7,11 @@
 """
 import logging
 import os
+
 from fastapi import APIRouter
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import Response
+
 from app.config import settings
 
 logger = logging.getLogger(__name__)
@@ -50,9 +53,15 @@ async def media_cover(sourceName: str = ""):
             return Response(content=_DEFAULT_COVER_SVG, media_type="image/svg+xml")
         if os.path.isfile(path):
             try:
-                data = open(path, "rb").read()
+                # 同步文件读放线程池，避免阻塞 event loop
+                data = await run_in_threadpool(_read_file, path)
                 ext = os.path.splitext(path)[1].lower()
                 return Response(content=data, media_type=_CONTENT_TYPES.get(ext, "image/jpeg"))
             except Exception as e:
                 logger.warning(f"读取封面失败 {path}: {e}")
     return Response(content=_DEFAULT_COVER_SVG, media_type="image/svg+xml")
+
+
+def _read_file(path: str) -> bytes:
+    with open(path, "rb") as f:
+        return f.read()

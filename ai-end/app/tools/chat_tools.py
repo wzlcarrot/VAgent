@@ -2,9 +2,9 @@
 ChatTools —— 聊天历史相关数据库操作
 """
 import json
-from typing import List, Dict, Any
 import logging
-from typing import List
+from typing import Any, Dict, List
+
 from app.models import ChatHistory
 from app.tools.db import get_cursor
 

@@ -4,8 +4,8 @@ UserTools 测试：验证 user_action 相关查询的 video_name 通过 LEFT JOI
 背景：user_action 表无 video_name 列，曾直接 SELECT 导致查询永远失败。
 修复：LEFT JOIN video_info 取 video_name，本测试防回归。
 """
-import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
+
 from app.tools.user_tools import UserTools
 
 
@@ -86,3 +86,74 @@ class TestRecentHistory:
         sql = mock_cursor.execute.call_args_list[0][0][0]
         assert "LEFT JOIN video_info" in sql
         assert result["videos"][0]["video_name"] == "历史视频"
+
+
+class TestResilience:
+    """所有 UserTools 方法在 DB 不可用/异常时应优雅降级，不抛异常。"""
+
+    @patch("app.tools.user_tools.get_cursor", return_value=MagicMock(__enter__=MagicMock(return_value=None), __exit__=MagicMock()))
+    def test_cursor_none_returns_empty(self, mock_get):
+        assert UserTools.get_user_by_email("a@b.com") is None
+        assert UserTools.update_user_password("u1", "h") is False
+        assert UserTools.get_play_history("u1") == []
+        assert UserTools.get_favorites("u1") == []
+        assert UserTools.get_liked_videos("u1") == []
+        assert UserTools.get_total_like_count("u1") == 0
+        assert UserTools.get_total_favorite_count("u1") == 0
+        assert UserTools.get_today_like_count("u1") == 0
+        assert UserTools.get_week_like_count("u1") == 0
+        assert UserTools.get_today_favorite_count("u1") == 0
+        assert UserTools.get_recent_liked_videos("u1") == {"videos": [], "total": 0}
+        assert UserTools.get_recent_favorites("u1") == {"videos": [], "total": 0}
+        assert UserTools.get_recent_history("u1") == {"videos": [], "total": 0}
+        assert UserTools.get_top_liked_videos("u1") == []
+
+    @patch("app.tools.user_tools.get_cursor", side_effect=Exception("db down"))
+    def test_db_error_swallowed(self, mock_get):
+        assert UserTools.get_user_by_email("a@b.com") is None
+        assert UserTools.update_user_password("u1", "h") is False
+        assert UserTools.get_play_history("u1") == []
+        assert UserTools.get_favorites("u1") == []
+        assert UserTools.get_liked_videos("u1") == []
+        assert UserTools.get_total_like_count("u1") == 0
+        assert UserTools.get_recent_liked_videos("u1") == {"videos": [], "total": 0}
+        assert UserTools.get_top_liked_videos("u1") == []
+
+
+class TestUserByEmail:
+    @patch("app.tools.user_tools.get_cursor")
+    def test_returns_row(self, mock_get):
+        mock_cursor = MagicMock()
+        mock_cursor.fetchone.return_value = {"user_id": "u1", "email": "a@b.com", "password": "$2b...", "nick_name": "n", "avatar": ""}
+        mock_get.return_value.__enter__.return_value = mock_cursor
+        assert UserTools.get_user_by_email("a@b.com") == mock_cursor.fetchone.return_value
+
+
+class TestUpdatePassword:
+    @patch("app.tools.user_tools.get_cursor")
+    def test_returns_rowcount(self, mock_get):
+        mock_cursor = MagicMock()
+        mock_cursor.rowcount = 1
+        mock_get.return_value.__enter__.return_value = mock_cursor
+        assert UserTools.update_user_password("u1", "newhash") is True
+
+    @patch("app.tools.user_tools.get_cursor")
+    def test_no_match_returns_false(self, mock_get):
+        mock_cursor = MagicMock()
+        mock_cursor.rowcount = 0
+        mock_get.return_value.__enter__.return_value = mock_cursor
+        assert UserTools.update_user_password("u1", "newhash") is False
+
+
+class TestCountQueries:
+    @patch("app.tools.user_tools.get_cursor")
+    def test_count_row_tuple(self, mock_get):
+        """cursor_factory=None 时 fetchone 返回元组 (count,)"""
+        mock_cursor = MagicMock()
+        mock_cursor.fetchone.return_value = (5,)
+        mock_get.return_value.__enter__.return_value = mock_cursor
+        assert UserTools.get_total_like_count("u1") == 5
+        assert UserTools.get_total_favorite_count("u1") == 5
+        assert UserTools.get_today_like_count("u1") == 5
+        assert UserTools.get_week_like_count("u1") == 5
+        assert UserTools.get_today_favorite_count("u1") == 5

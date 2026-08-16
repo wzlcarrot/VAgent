@@ -1,22 +1,24 @@
 """
 聊天相关路由：sessions, history, search, delete, stream, resume, checkpoints
 """
-import logging
+# ruff: noqa: E402  # 下方多处延迟导入（避免与 app.agents 循环导入），属有意为之
 import asyncio
+import logging
 import re
-import time
 import uuid
-from typing import List, Dict, Any
-from fastapi import APIRouter, HTTPException, Request, Depends
+from typing import Any, Dict, List
+
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
-from app.models import ChatRequest
-from app.agents.workflows.constants import WorkflowType
+
 from app.agents.router import Router
 from app.agents.supervisor import Supervisor
-from app.agents.workflows.video_qa_workflow import run_video_qa_workflow, resume_video_qa_workflow
-from app.agents.workflows.recommend_workflow import run_recommend_workflow, resume_recommend_workflow
-from app.agents.workflows.chat_graph import run_chat_workflow, resume_chat_workflow
-from app.agents.workflows.user_data_workflow import run_user_data_workflow, resume_user_data_workflow
+from app.agents.workflows.chat_graph import resume_chat_workflow, run_chat_workflow
+from app.agents.workflows.constants import WorkflowType
+from app.agents.workflows.recommend_workflow import resume_recommend_workflow, run_recommend_workflow
+from app.agents.workflows.user_data_workflow import resume_user_data_workflow, run_user_data_workflow
+from app.agents.workflows.video_qa_workflow import resume_video_qa_workflow, run_video_qa_workflow
+from app.models import ChatRequest
 
 _CHINESE_NUM = {"一": 1, "二": 2, "两": 2, "三": 3, "四": 4, "五": 5, "六": 6, "七": 7, "八": 8, "九": 9, "几": 3}  # "几"→默认按 3 个理解
 
@@ -32,17 +34,18 @@ def _parse_recommend_count(text: str) -> int:
     return _CHINESE_NUM.get(num_str, 5)
 
 
-from app.tools import ChatTools
-from app.tools.db import get_global_pool
-from app.routers._shared import require_auth, _json_dumps
-from app.config import settings
 from psycopg2.extras import RealDictCursor
-from app.utils.security import validate_session_id
-from app.tools.output_guard import FALLBACK_RESPONSE, ALL_AGENTS_FAILED_MSG
-from app.tools.context_tools import build_context, save_message
+
+from app.config import settings
 from app.conversation.context_manager import get_context_for_query
 from app.conversation.intent_clarifier import IntentClarifier
+from app.routers._shared import _json_dumps, require_auth
+from app.tools import ChatTools
+from app.tools.context_tools import build_context, save_message
+from app.tools.db import get_global_pool
 from app.tools.memory_tools import MemoryTools
+from app.tools.output_guard import ALL_AGENTS_FAILED_MSG, FALLBACK_RESPONSE
+from app.utils.security import validate_session_id
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +62,7 @@ async def get_chat_sessions(limit: int = 20, offset: int = 0, authed_user_id: st
         return {"sessions": sessions}
     except Exception as e:
         logger.error(f"获取会话列表失败: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="获取会话列表失败")
+        raise HTTPException(status_code=500, detail="获取会话列表失败") from e
 
 
 @router.get("/chat/history")
@@ -109,13 +112,13 @@ async def get_chat_history(session_id: str = None, limit: int = 50, authed_user_
         return {"messages": messages}
     except Exception as e:
         logger.error(f"获取聊天历史失败: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="获取聊天历史失败")
+        raise HTTPException(status_code=500, detail="获取聊天历史失败") from e
 
 
 @router.get("/chat/search")
 async def search_chat_content(q: str = "", limit: int = 50, authed_user_id: str = Depends(require_auth)):
     try:
-        from app.utils.security import escape_like_pattern, sanitize_search_input
+        from app.utils.security import sanitize_search_input
         if not q:
             return {"results": []}
         q = sanitize_search_input(q)
@@ -188,7 +191,25 @@ async def delete_chat_session(session_id: str, authed_user_id: str = Depends(req
         raise
     except Exception as e:
         logger.error(f"删除会话失败: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="删除会话失败")
+        raise HTTPException(status_code=500, detail="删除会话失败") from e
+
+def _collect_checkpoint_steps(session_id: str) -> List[Dict[str, Any]]:
+    """同步收集某 session 所有 workflow 的 checkpoint 步骤（同步 PG 查询，在调用方线程池中执行）。"""
+    from app.harness.checkpoint import CheckpointManager
+    mgr = CheckpointManager()
+    all_steps = []
+    for wf_type in WorkflowType.all():
+        steps = mgr.list_step_details(session_id, wf_type)
+        if steps:
+            last_cp = mgr.get_last_completed(session_id, wf_type)
+            all_steps.append({
+                "workflow_type": wf_type,
+                "steps": steps,
+                "last_completed_step": last_cp.step_name if last_cp else None,
+                "last_completed_at": last_cp.created_at if last_cp else None,
+            })
+    return all_steps
+
 
 @router.get("/chat/checkpoints")
 async def get_checkpoints(session_id: str, authed_user_id: str = Depends(require_auth)):
@@ -198,25 +219,14 @@ async def get_checkpoints(session_id: str, authed_user_id: str = Depends(require
         if not owner_check:
             logger.warning(f"checkpoints 越权拦截: user={authed_user_id} 试图查 session={session_id}")
             raise HTTPException(status_code=404, detail="会话不存在")
-        from app.harness.checkpoint import CheckpointManager
-        mgr = CheckpointManager()
-        all_steps = []
-        for wf_type in WorkflowType.all():
-            steps = mgr.list_step_details(session_id, wf_type)
-            if steps:
-                last_cp = mgr.get_last_completed(session_id, wf_type)
-                all_steps.append({
-                    "workflow_type": wf_type,
-                    "steps": steps,
-                    "last_completed_step": last_cp.step_name if last_cp else None,
-                    "last_completed_at": last_cp.created_at if last_cp else None,
-                })
+        # CheckpointManager 是同步 PG 查询，整体放入线程池执行，避免阻塞 event loop
+        all_steps = await run_sync_in_executor(_collect_checkpoint_steps, session_id)
         return {"session_id": session_id, "checkpoints": all_steps}
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"获取 checkpoint 失败: {e}")
-        raise HTTPException(status_code=500, detail="获取 checkpoint 失败")
+        raise HTTPException(status_code=500, detail="获取 checkpoint 失败") from e
 
 
 @router.post("/chat/stream")
@@ -405,7 +415,9 @@ async def chat_stream(request: ChatRequest, http_request: Request, authed_user_i
                         logger.warning(f"保存上下文失败(不影响响应): {e}")
                     if user_id:
                         # 把 recommended_videos + reasons 也存到 DB（videos/reasons JSONB 列）
-                        ChatTools.save_chat_history(
+                        # save_chat_history 是同步 PG 写，走线程池避免阻塞 event loop
+                        await _rse(
+                            ChatTools.save_chat_history,
                             user_id, question, full_response,
                             session_id, image_urls or None,
                             videos=recommended_videos or None,
@@ -424,7 +436,29 @@ async def chat_stream(request: ChatRequest, http_request: Request, authed_user_i
         raise
     except Exception as e:
         logger.error(f"chat stream error: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="聊天失败")
+        raise HTTPException(status_code=500, detail="聊天失败") from e
+
+
+def _find_resumable_checkpoint(session_id: str) -> Dict[str, Any]:
+    """同步查找 session 的可恢复 checkpoint（同步 PG 查询，在调用方线程池中执行）。
+
+    返回 {"steps": [...], "last_checkpoint": Checkpoint|None, "completed_steps": [...]}
+    """
+    from app.harness.checkpoint import CheckpointManager
+    mgr = CheckpointManager()
+    steps = mgr.list_steps(session_id, None)
+    if not steps:
+        for wf_type in WorkflowType.all():
+            steps = mgr.list_steps(session_id, wf_type)
+            if steps:
+                break
+    last_cp = None
+    for wf_type in WorkflowType.all():
+        last_cp = mgr.get_last_completed(session_id, wf_type)
+        if last_cp:
+            break
+    completed_steps = mgr.list_steps(session_id, last_cp.workflow_type) if last_cp else []
+    return {"steps": steps, "last_checkpoint": last_cp, "completed_steps": completed_steps}
 
 
 @router.post("/chat/resume")
@@ -439,21 +473,12 @@ async def resume_workflow(request: Request, authed_user_id: str = Depends(requir
         if not owner_check:
             logger.warning(f"resume 越权拦截: user={authed_user_id} 试图恢复 session={session_id}")
             raise HTTPException(status_code=404, detail="会话不存在")
-        from app.harness.checkpoint import CheckpointManager
-        mgr = CheckpointManager()
-        steps = mgr.list_steps(session_id, None)
-        if not steps:
-            for wf_type in WorkflowType.all():
-                steps = mgr.list_steps(session_id, wf_type)
-                if steps:
-                    break
+        # CheckpointManager 的多次 PG 查询整体放入线程池，避免阻塞 event loop
+        ckpt = await run_sync_in_executor(_find_resumable_checkpoint, session_id)
+        steps = ckpt["steps"]
+        last_cp = ckpt["last_checkpoint"]
         if not steps:
             raise HTTPException(status_code=404, detail="该 session 无 checkpoint 记录")
-        last_cp = None
-        for wf_type in WorkflowType.all():
-            last_cp = mgr.get_last_completed(session_id, wf_type)
-            if last_cp:
-                break
         if not last_cp:
             raise HTTPException(status_code=404, detail="无已完成的 checkpoint")
         wf_type = last_cp.workflow_type
@@ -475,13 +500,13 @@ async def resume_workflow(request: Request, authed_user_id: str = Depends(requir
             "answer": result.get("answer", ""),
             "error": result.get("error"),
             "failed_at": result.get("failed_at"),
-            "completed_steps": mgr.list_steps(session_id, wf_type),
+            "completed_steps": ckpt["completed_steps"],
         }
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"resume workflow error: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="断点恢复失败")
+        raise HTTPException(status_code=500, detail="断点恢复失败") from e
 
 
 async def _parallel_agent_pipeline(workflow_type: str, question: str, video_id: str = None,
@@ -597,8 +622,10 @@ async def _run_workflow_to_result(wf_type: str, question: str, video_id: str = N
 def _extract_memories_from_conversation(user_id: str, question: str, answer: str, session_id: str = ""):
     if not user_id or not answer:
         return
+    from typing import List, Literal
+
     from pydantic import BaseModel
-    from typing import Literal, List
+
     from app.tools.llm_tools import LLM_tools
     class ExtractedMemory(BaseModel):
         type: Literal["preference", "activity", "fact"]
@@ -623,7 +650,8 @@ def _record_streaming(event: Dict[str, Any], session_id: str) -> None:
     """记录 SSE 流式 chunk/字节指标"""
     try:
         import json as _j
-        from app.utils.metrics import streaming_chunks_total, streaming_bytes_total
+
+        from app.utils.metrics import streaming_bytes_total, streaming_chunks_total
         chunk_str = _j.dumps(event, ensure_ascii=False)
         streaming_chunks_total.labels(endpoint="chat_stream").inc()
         streaming_bytes_total.labels(endpoint="chat_stream").inc(len(chunk_str))
@@ -635,8 +663,10 @@ def _record_workflow_request(wf_type: str) -> None:
     """按 workflow 类型记录业务请求计数"""
     try:
         from app.utils.metrics import (
-            video_qa_requests_total, recommendation_requests_total,
-            user_data_requests_total, chat_streaming_requests_total,
+            chat_streaming_requests_total,
+            recommendation_requests_total,
+            user_data_requests_total,
+            video_qa_requests_total,
         )
         metric = {
             WorkflowType.VIDEO_QA: video_qa_requests_total,

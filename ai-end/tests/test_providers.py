@@ -1,10 +1,9 @@
 """
 Provider 抽象层测试：可插拔架构、配置解析、json_mode 能力差异
 """
-import pytest
-from app.tools.providers import provider_factory, DeepSeekProvider, MiniMaxProvider
-from app.tools.providers.factory import registered_providers
+from app.tools.providers import DeepSeekProvider, provider_factory
 from app.tools.providers.base import ProviderConfig
+from app.tools.providers.factory import registered_providers
 
 
 class TestProviderRegistry:

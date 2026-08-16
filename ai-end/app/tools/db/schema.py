@@ -5,6 +5,7 @@ Schema 初始化
 所有 CREATE TABLE 都是 IF NOT EXISTS，幂等。
 """
 import logging
+
 from app.tools.db.pool import get_global_pool
 
 logger = logging.getLogger(__name__)
@@ -49,6 +50,31 @@ def init_agent_tables():
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE (video_id, block_type)
             )
+        """)
+
+        # 迁移修复：旧 schema 的 video_vector_block 带 CHECK (block_type IN ('title','tags','introduction'))
+        # 而新代码写 `{base}_{i}`（title_0/tags_0，带序号）格式。旧 CHECK 会拒绝新值，导致
+        # 每次启动兜底索引全部失败。此处幂等删除该遗留约束（UNIQUE(video_id, block_type) 已保证数据完整性）。
+        cursor.execute("""
+            DO $$
+            BEGIN
+                IF EXISTS (
+                    SELECT 1 FROM pg_constraint
+                    WHERE conrelid = 'video_vector_block'::regclass
+                      AND conname = 'video_vector_block_block_type_check'
+                ) THEN
+                    ALTER TABLE video_vector_block DROP CONSTRAINT video_vector_block_block_type_check;
+                END IF;
+            END $$;
+        """)
+
+        # 迁移修复：旧 schema 列宽过窄（video_id VARCHAR(10)、block_type VARCHAR(20)），
+        # 而代码写入 64/32 位长度的值（video_id 如 '1L6ZvY1EMm' 11 位、block_type 如 'introduction_3'）。
+        # CREATE TABLE IF NOT EXISTS 不会调整已有表，此处幂等扩容对齐代码定义。
+        cursor.execute("""
+            ALTER TABLE video_vector_block
+                ALTER COLUMN video_id TYPE VARCHAR(64),
+                ALTER COLUMN block_type TYPE VARCHAR(32)
         """)
 
         cursor.execute("SELECT COUNT(*) FROM platform_docs")

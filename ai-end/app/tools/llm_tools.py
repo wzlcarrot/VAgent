@@ -1,12 +1,14 @@
-from app.config import settings
-from typing import Optional, List, Dict, Any, AsyncIterator, Type, TypeVar
 import asyncio
-import httpx
-import logging
 import json
+import logging
 import threading
 import time
+from typing import Any, AsyncIterator, Dict, List, Optional, Type, TypeVar
+
+import httpx
 from pydantic import BaseModel, ValidationError
+
+from app.config import settings
 from app.tools.output_guard import LLM_UNAVAILABLE_MSG
 
 # ─── 复用型 httpx Client（keep-alive，节省 TCP/TLS 握手） ───
@@ -99,7 +101,7 @@ def close_http_clients():
     _tools_client = None
 
 try:
-    from app.utils.metrics import llm_token_usage, llm_requests_total
+    from app.utils.metrics import llm_requests_total, llm_token_usage
     _METRICS_AVAILABLE = True
 except ImportError:
     _METRICS_AVAILABLE = False
@@ -182,22 +184,22 @@ def _strip_think_blocks(chunk: str, state: Dict[str, Any]) -> str:
 def _safe_get_content(data: dict) -> Optional[str]:
     choices = data.get("choices")
     if not choices or not isinstance(choices, list) or len(choices) == 0:
-        logger.error(f"LLM 返回异常: choices 为空或非列表")
+        logger.error("LLM 返回异常: choices 为空或非列表")
         return None
     message = choices[0].get("message", {})
     if not message:
-        logger.error(f"LLM 返回异常: message 为空")
+        logger.error("LLM 返回异常: message 为空")
         return None
     content = message.get("content")
     if content is None:
-        logger.warning(f"LLM 返回内容为空")
+        logger.warning("LLM 返回内容为空")
     return content
 
 
 def _safe_get_tool_call(data: dict) -> Optional[dict]:
     choices = data.get("choices")
     if not choices or not isinstance(choices, list) or len(choices) == 0:
-        logger.error(f"LLM tool_call 返回异常: choices 为空")
+        logger.error("LLM tool_call 返回异常: choices 为空")
         return None
     message = choices[0].get("message", {})
     if not message:
@@ -240,11 +242,6 @@ def _resolve_provider(provider: Optional[str] = None) -> tuple:
     result = provider_factory(p).resolve().as_tuple()
     _PROVIDER_CACHE[p] = result
     return result
-
-
-def invalidate_provider_cache():
-    """配置变更时调用（热更新场景）清空 provider 缓存"""
-    _PROVIDER_CACHE.clear()
 
 
 def _get_headers(api_key: str) -> dict:
@@ -333,6 +330,7 @@ class _HashEmbedder:
     def encode(self, texts):
         import hashlib
         import math
+
         import numpy as np
         results = []
         for text in texts:
@@ -492,7 +490,6 @@ class LLM_tools:
         for attempt in range(1, _RETRY_MAX_ATTEMPTS + 1):
             try:
                 client = _get_async_client()
-                received_any = False
                 async with client.stream(
                     "POST",
                     f"{base_url}/chat/completions",
@@ -524,7 +521,6 @@ class LLM_tools:
                                     delta = choices[0].get("delta", {})
                                     content = delta.get("content", "")
                                     if content:
-                                        received_any = True
                                         # 过滤 MiniMax-M3 等推理模型的 <think>...</think> 块
                                         content = _strip_think_blocks(content, think_state)
                                         if content:

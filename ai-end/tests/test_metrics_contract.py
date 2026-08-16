@@ -8,9 +8,10 @@
 4. 注册的指标 labels 与契约一致
 """
 import pytest
+
 pytest.importorskip("prometheus_client")
 
-from prometheus_client import REGISTRY, Counter, Histogram, Gauge
+from prometheus_client import REGISTRY
 
 from app.utils.metrics_contract import METRICS_CONTRACT, MetricType
 
@@ -53,25 +54,33 @@ class TestConformance:
 
     def test_metric_types_match_contract(self):
         from app.utils.metrics import (
-            llm_latency, llm_token_usage, llm_requests_total,
-            tool_call_latency, tool_calls_total,
-            router_latency, router_decisions_total,
-            workflow_latency, workflow_steps_total,
+            auth_failures_total,
+            chat_streaming_requests_total,
             checkpoint_operations_total,
-            redis_connection_status, db_connection_pool_size,
-            compact_operations_total, compact_tokens_saved_total,
-            http_requests_total, http_request_duration_seconds,
-            streaming_chunks_total, streaming_failures_total, streaming_bytes_total,
             circuit_breaker_state,
-            video_qa_requests_total, recommendation_requests_total,
-            user_data_requests_total, chat_streaming_requests_total,
-            rate_limited_requests_total, auth_failures_total,
+            compact_operations_total,
+            compact_tokens_saved_total,
+            db_connection_pool_size,
+            http_request_duration_seconds,
+            http_requests_total,
+            llm_latency,
+            llm_requests_total,
+            llm_token_usage,
+            rate_limited_requests_total,
+            recommendation_requests_total,
+            redis_connection_status,
+            router_decisions_total,
+            router_latency,
+            streaming_bytes_total,
+            streaming_chunks_total,
+            streaming_failures_total,
+            tool_call_latency,
+            tool_calls_total,
+            user_data_requests_total,
+            video_qa_requests_total,
+            workflow_latency,
+            workflow_steps_total,
         )
-        expected_type = {
-            MetricType.COUNTER: Counter,
-            MetricType.HISTOGRAM: Histogram,
-            MetricType.GAUGE: Gauge,
-        }
         registry = {
             "llm_latency": llm_latency, "llm_token_usage": llm_token_usage,
             "llm_requests_total": llm_requests_total,

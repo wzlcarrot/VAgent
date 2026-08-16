@@ -1,13 +1,13 @@
-import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
+import pytest
 
 
 class TestToolSandbox:
     """工具沙箱校验：deny by default + 白名单 + public 显式放行"""
 
     def setup_method(self):
-        from app.tools.tool_registry import ToolRegistry, Tool
+        from app.tools.tool_registry import Tool, ToolRegistry
         self.registry = ToolRegistry()
         self._saved = dict(self.registry._tools)
         self.registry._tools.clear()
@@ -66,8 +66,8 @@ class TestToolGovernorSandboxIntegration:
     """ToolGovernor.gate() 必须执行沙箱校验，拒绝时不消耗 rate limit 配额"""
 
     def test_gate_rejects_sandbox_violation(self):
-        from app.harness.tool_governor import ToolGovernor, ToolAccessDenied
-        from app.tools.tool_registry import ToolRegistry, Tool, ToolSandbox
+        from app.harness.tool_governor import ToolAccessDenied, ToolGovernor
+        from app.tools.tool_registry import Tool, ToolRegistry
 
         reg = ToolRegistry()
         saved = dict(reg._tools)
@@ -100,7 +100,7 @@ class TestToolGovernorSandboxIntegration:
 
     def test_gate_allows_listed_agent(self):
         from app.harness.tool_governor import ToolGovernor
-        from app.tools.tool_registry import ToolRegistry, Tool
+        from app.tools.tool_registry import Tool, ToolRegistry
 
         reg = ToolRegistry()
         saved = dict(reg._tools)
@@ -135,9 +135,10 @@ class TestLLMRaceConditionFix:
 
     def test_router_does_not_mutate_global_settings(self):
         """核心 bug 修复：调用 chat_with_tools_router 后全局 settings.llm_provider 保持不变"""
+        from unittest.mock import patch
+
         from app.config import settings
         from app.tools.llm_tools import LLM_tools
-        from unittest.mock import patch, MagicMock
 
         original_provider = settings.llm_provider
         original_router_provider = settings.router_llm_provider
@@ -208,8 +209,9 @@ class TestRedisCircuitBreaker:
 
     def test_circuit_short_circuits_during_cooldown(self):
         """熔断开启 + 冷却期内：不应尝试连接，直接返回 None"""
-        import app.tools.context_tools as ct
         import time as _time
+
+        import app.tools.context_tools as ct
         ct._redis_circuit_open = True
         ct._last_redis_failure = _time.time()  # 刚刚失败
         ct._redis_client = None
@@ -222,8 +224,9 @@ class TestRedisCircuitBreaker:
 
     def test_circuit_half_opens_after_cooldown(self):
         """冷却期过后：允许一次重试"""
-        import app.tools.context_tools as ct
         import time as _time
+
+        import app.tools.context_tools as ct
         ct._redis_circuit_open = True
         ct._last_redis_failure = _time.time() - 10.0  # 10 秒前失败
         ct._redis_client = None
@@ -243,8 +246,8 @@ class TestInvokeWithGovernorNoneFallback:
     """invoke_with_governor 对 gate 返回 None（hook 拦截）兜底为空结果"""
 
     def test_none_result_falls_back_to_empty(self):
-        from app.agents.workflows.harness_helpers import invoke_with_governor
         from app.agents.workflows.constants import WorkflowType
+        from app.agents.workflows.harness_helpers import invoke_with_governor
         with patch("app.agents.workflows.harness_helpers.ToolGovernor") as mock_gov:
             mock_gov.return_value.gate.return_value = None  # 模拟 before hook 拦截
             result = invoke_with_governor(

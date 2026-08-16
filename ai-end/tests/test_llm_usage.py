@@ -1,8 +1,7 @@
 """
 LLM chat_sync_with_usage 测试：返回 (content, usage)，供 compact 精确计数
 """
-import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 
 class TestChatSyncWithUsage:

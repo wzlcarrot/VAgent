@@ -11,10 +11,10 @@ app.tools —— 工具层
 - chunker / compact_service / ranker: 文本处理
 """
 from app.tools.chat_tools import ChatTools
-from app.tools.video_tools import VideoTools
-from app.tools.user_tools import UserTools
+from app.tools.llm_tools import LLM_tools
 from app.tools.memory_tools import MemoryTools
 from app.tools.rag_tools import RAGTools
-from app.tools.llm_tools import LLM_tools
+from app.tools.user_tools import UserTools
+from app.tools.video_tools import VideoTools
 
 __all__ = ["ChatTools", "VideoTools", "UserTools", "MemoryTools", "RAGTools", "LLM_tools"]

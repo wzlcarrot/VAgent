@@ -17,7 +17,8 @@
 - 返回 "需要追问" 标记，下游 supervisor 决定是否触发
 """
 import logging
-from typing import Dict, Any, Optional, List
+from typing import Any, Dict, List, Optional
+
 from app.agents.workflows.constants import WorkflowType
 
 logger = logging.getLogger(__name__)
@@ -137,28 +138,3 @@ class IntentClarifier:
             return _CLARIFICATIONS["chat_vague_platform"]
 
         return "能再具体描述一下你的需求吗？"
-
-    @staticmethod
-    def extract_preference_from_reply(reply: str) -> Optional[str]:
-        """
-        从用户对追问的回复中提取偏好。
-        例如用户回复"科技"或"我喜欢科技类" → 返回 "科技"。
-
-        用于：用户在追问后直接选了类别 → 立即存为偏好记忆。
-        """
-        reply_lower = reply.strip().lower()
-        if not reply_lower:
-            return None
-
-        # 1. 完全匹配
-        for name, _ in _PREFERENCE_CATEGORIES:
-            if name in reply:
-                return name
-
-        # 2. 关键词匹配
-        for name, kws in _PREFERENCE_CATEGORIES:
-            for kw in kws:
-                if kw in reply:
-                    return name
-
-        return None

@@ -2,7 +2,8 @@
 MemoryTools —— 用户长期记忆（跨 session 偏好/事实/反馈）
 """
 import logging
-from typing import List, Dict, Any
+from typing import Any, Dict, List
+
 from app.models import Memory
 from app.tools.db import get_cursor
 

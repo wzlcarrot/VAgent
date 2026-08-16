@@ -1,6 +1,7 @@
-from typing import Dict, Any, List, Tuple
-from app.tools.output_guard import FALLBACK_RESPONSE
+from typing import Any, Dict, List, Tuple
+
 from app.agents.workflows.constants import WorkflowType
+from app.tools.output_guard import FALLBACK_RESPONSE
 
 
 class Supervisor:
@@ -50,7 +51,7 @@ class Supervisor:
         scored.sort(key=lambda x: (x[3], x[2]), reverse=True)
 
         # 最高优先级有有效结果的胜出
-        for wf, answer, conf, priority, is_valid in scored:
+        for wf, answer, conf, _, is_valid in scored:
             if is_valid:
                 return (wf, answer, conf)
 

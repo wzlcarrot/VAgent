@@ -1,0 +1,21 @@
+[tool.ruff]
+target-version = "py311"
+line-length = 120
+exclude = ["__pycache__", "node_modules", ".pytest_cache"]
+
+[tool.ruff.lint]
+# F=pyflakes E/W=pycodestyle I=isort B=bugbear UP=pyupgrade
+# 初始收敛到 F + E/W + I + B，后续可逐步放开
+select = ["F", "E", "W", "I", "B"]
+ignore = [
+    "B008",  # function call in default args（FastAPI Depends 惯用法）
+    "E501",  # 行长已在 line-length 控制，E501 与 W505 语义重复
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["E401"]
+
+[tool.pytest.ini_options]
+# 覆盖率门槛：低于 60% 则本地 pytest 直接失败（与 CI --cov-fail-under 一致）
+addopts = "--cov=app --cov-report=term-missing --cov-fail-under=60"
+testpaths = ["tests"]

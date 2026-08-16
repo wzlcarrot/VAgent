@@ -8,7 +8,7 @@
 import asyncio
 import logging
 import time
-from typing import Callable, Any, Optional
+from typing import Any, Callable, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +48,7 @@ class CircuitBreaker:
 
         try:
             result = await fn(*args, **kwargs) if asyncio.iscoroutinefunction(fn) else fn(*args, **kwargs)
-        except Exception as e:
+        except Exception:
             async with self._lock:
                 self.failures += 1
                 self.last_failure_time = time.time()

@@ -15,7 +15,7 @@
 - image/document 块按固定权重（预留未来多模态消息）
 """
 import logging
-from typing import Any, List, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 

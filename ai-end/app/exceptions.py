@@ -11,7 +11,7 @@ app.exceptions —— 统一异常体系
         └── ToolAccessDenied       # 沙箱拒绝
 """
 
-from typing import Optional, Any, Dict
+from typing import Any, Dict, Optional
 
 
 class AgentBaseException(Exception):

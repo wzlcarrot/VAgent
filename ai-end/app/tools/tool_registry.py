@@ -9,7 +9,7 @@ Tool Registry + Tool Sandbox
 """
 
 import logging
-from typing import Dict, Any, List, Optional, Callable
+from typing import Any, Callable, Dict, List, Optional
 
 from app.agents.workflows.constants import WorkflowType
 

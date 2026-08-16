@@ -10,7 +10,8 @@ Compact对话压缩服务
 import asyncio
 import json
 import logging
-from typing import List, Dict, Tuple
+from typing import Dict, List, Tuple
+
 from app.config import settings
 from app.tools.message_models import Message
 
@@ -132,8 +133,8 @@ async def compact_conversation(session_id: str) -> Dict:
     执行对话压缩
     返回压缩结果统计
     """
-    from app.tools.llm_tools import LLM_tools
     from app.tools.context_tools import _get_redis, _messages_key
+    from app.tools.llm_tools import LLM_tools
 
     loop = asyncio.get_running_loop()
 

@@ -2,7 +2,8 @@
 Hook 引擎测试：注册/触发/拦截/enabled 开关/审计钩子
 """
 import pytest
-from app.harness.hooks import HooksManager, HookEvent
+
+from app.harness.hooks import HookEvent, HooksManager
 
 
 @pytest.fixture()

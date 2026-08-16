@@ -5,8 +5,8 @@
 - intent_clarifier: 智能追问与澄清
 """
 from app.conversation.context_manager import (
-    resolve_references,
     get_context_for_query,
+    resolve_references,
     update_recommendations,
     update_video_qa,
 )

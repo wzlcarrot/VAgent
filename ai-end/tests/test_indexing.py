@@ -1,8 +1,8 @@
 """
 视频索引链路测试：index_document / index_video / vector_search 的 block_type 兼容
 """
-import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
+
 from app.tools.rag_tools import RAGTools
 
 

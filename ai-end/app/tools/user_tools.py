@@ -2,7 +2,8 @@
 UserTools —— 用户数据相关数据库操作
 """
 import logging
-from typing import List, Dict, Any, Optional
+from typing import Any, Dict, List, Optional
+
 from app.models import VideoPlayHistory
 from app.tools.db import get_cursor
 

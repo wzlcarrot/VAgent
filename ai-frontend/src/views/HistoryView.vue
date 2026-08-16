@@ -156,7 +156,7 @@ const filteredSessions = computed(() => {
       .map(s => ({
         ...s,
         searchSnippet: resultMap.get(s.id)?.snippet || '',
-        searchMatchedIn: resultMap.get(s.id)?.matched_in || '',
+        matched_in: resultMap.get(s.id)?.matched_in,
       }))
   }
 

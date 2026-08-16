@@ -1,17 +1,19 @@
 """
 登录鉴权路由
 """
-import logging
 import hashlib
+import logging
 import secrets
 import time
+
 import bcrypt
-from fastapi import APIRouter, HTTPException, Response, Request
+from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
-from app.models import LoginRequest, AuthResponse
-from app.routers._shared import TOKEN_TTL, _token_set, _token_delete, AUTH_COOKIE_NAME
+
 from app.config import settings
+from app.models import AuthResponse, LoginRequest
+from app.routers._shared import AUTH_COOKIE_NAME, TOKEN_TTL, _token_delete, _token_set
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +59,8 @@ async def login(request: LoginRequest):
         if test_account and request.email == test_account["email"] and _verify_password(request.password, test_account["password_md5"]):
             user_id = test_account["user_id"]
             token = secrets.token_urlsafe(32)
-            _token_set(token, user_id, expiry)
+            # _token_set 内含同步 Redis 写，放线程池避免阻塞 event loop
+            await run_in_threadpool(_token_set, token, user_id, expiry)
             return _login_response(user_id, test_account["nick_name"], test_account["avatar"], token, expiry)
 
         user = await run_in_threadpool(_get_user_by_email, request.email)
@@ -78,13 +81,13 @@ async def login(request: LoginRequest):
                 logger.warning(f"密码哈希升级失败: {e}")
 
         token = secrets.token_urlsafe(32)
-        _token_set(token, user_id, expiry)
+        await run_in_threadpool(_token_set, token, user_id, expiry)
         return _login_response(user_id, user.get("nick_name"), user.get("avatar") or "", token, expiry)
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"login error: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="登录失败")
+        raise HTTPException(status_code=500, detail="登录失败") from e
 
 
 def _login_response(user_id: str, nickname: str, avatar: str, token: str, expiry: float) -> JSONResponse:
@@ -116,7 +119,7 @@ async def logout(request: Request, response: Response):
     auth = request.headers.get("Authorization", "")
     token = auth[7:] if auth.startswith("Bearer ") else request.cookies.get(AUTH_COOKIE_NAME)
     if token:
-        _token_delete(token)
+        await run_in_threadpool(_token_delete, token)
     response.delete_cookie(
         AUTH_COOKIE_NAME, path="/", httponly=True, samesite="lax", secure=settings.cookie_secure
     )

@@ -1,8 +1,10 @@
-from app.tools.db import get_global_pool
-from typing import List, Dict, Any, Optional
-from psycopg2.extras import RealDictCursor
 import logging
 import threading
+from typing import Any, Dict, List, Optional
+
+from psycopg2.extras import RealDictCursor
+
+from app.tools.db import get_global_pool
 
 logger = logging.getLogger(__name__)
 
@@ -339,7 +341,7 @@ class RAGTools:
                 "DELETE FROM video_vector_block WHERE video_id = %s AND block_type LIKE %s",
                 (video_id, f"{block_type}%"),
             )
-            for i, (chunk_text, vec) in enumerate(zip(chunks, embeddings)):
+            for i, (chunk_text, vec) in enumerate(zip(chunks, embeddings, strict=False)):
                 vector_str = "[" + ",".join(str(v) for v in vec) + "]"
                 cursor.execute("""
                     INSERT INTO video_vector_block (video_id, block_type, block_content, content_vector, block_weight)

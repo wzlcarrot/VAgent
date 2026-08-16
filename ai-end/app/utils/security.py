@@ -6,7 +6,6 @@
 
 import re
 
-
 # 控制字符正则（防止 ANSI escape / 换行符伪造等）
 _CONTROL_CHARS = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 

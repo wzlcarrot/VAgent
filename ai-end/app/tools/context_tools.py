@@ -2,7 +2,8 @@ import json
 import logging
 import threading
 import time
-from typing import List, Dict, Optional
+from typing import Dict, List, Optional
+
 from app.config import settings
 
 logger = logging.getLogger(__name__)
@@ -104,7 +105,7 @@ def save_message(session_id: str, role: str, content: str) -> bool:
         return False
     # Hook：before_message（可拦截）
     try:
-        from app.harness.hooks import hooks_manager, HookEvent
+        from app.harness.hooks import HookEvent, hooks_manager
         if not hooks_manager.trigger_intercept(
             HookEvent.BEFORE_MESSAGE, session_id=session_id, role=role, content=content,
         ):

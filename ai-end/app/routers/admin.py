@@ -2,10 +2,12 @@
 管理统计路由
 鉴权：X-Admin-Key header
 """
-import logging
 import hmac
+import logging
+
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.concurrency import run_in_threadpool
+
 from app.config import settings
 from app.tools.db import get_cursor
 

@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Simple metrics dashboard - fetches /metrics from backend and displays key metrics."""
 import urllib.request
-import re
 from html import escape
 
 BACKEND_URL = "http://localhost:9090/metrics"

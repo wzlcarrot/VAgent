@@ -14,7 +14,9 @@
 """
 import logging
 from contextlib import contextmanager
+
 from psycopg2.extras import RealDictCursor
+
 from app.tools.db.pool import get_global_pool
 
 logger = logging.getLogger(__name__)
@@ -86,13 +88,3 @@ def get_cursor(cursor_factory=RealDictCursor, commit: bool = False):
                 pool.putconn(conn)
             except Exception:
                 pass
-
-
-@contextmanager
-def get_scalar():
-    """获取单个标量值的简化包装"""
-    with get_cursor(cursor_factory=None) as cursor:
-        if cursor is None:
-            yield None
-            return
-        yield cursor

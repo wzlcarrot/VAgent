@@ -1,14 +1,16 @@
+import logging
+import uuid
 from contextlib import asynccontextmanager
 from contextvars import ContextVar
+
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from starlette.middleware.base import BaseHTTPMiddleware
-from app.routers import router, start_token_cleanup_task, stop_token_cleanup_task
+
 from app.config import settings
+from app.routers import router, start_token_cleanup_task, stop_token_cleanup_task
 from app.tools.db import close_global_pool, get_cursor
-import logging
-import uuid
 
 _request_id_var = ContextVar("request_id", default="-")
 
@@ -52,8 +54,8 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
 def _init_hooks():
     """初始化 Hook 引擎：按配置启停 + 注册内置审计钩子。"""
     try:
-        from app.harness.hooks import hooks_manager, HookEvent
         from app.config import settings
+        from app.harness.hooks import HookEvent, hooks_manager
         hooks_manager.enabled = settings.hooks_enabled
 
         # 内置审计钩子：记录工具调用（供排查/指标）
@@ -81,9 +83,8 @@ def _init_hooks():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    from app.tools.tool_registry import init_registry
     from app.tools.db import init_agent_tables
-    from app.routers import start_token_cleanup_task, stop_token_cleanup_task
+    from app.tools.tool_registry import init_registry
     init_registry()
     init_agent_tables()
     start_token_cleanup_task()
@@ -118,8 +119,8 @@ async def lifespan(app: FastAPI):
     import threading
     def _backfill_video_index():
         try:
-            from app.tools.rag_tools import RAGTools
             from app.tools.db import get_cursor
+            from app.tools.rag_tools import RAGTools
             with get_cursor() as cursor:
                 if cursor is None:
                     return
@@ -212,7 +213,7 @@ async def metrics_middleware(request, call_next):
         raise
     finally:
         try:
-            from app.utils.metrics import http_requests_total, http_request_duration_seconds
+            from app.utils.metrics import http_request_duration_seconds, http_requests_total
             duration = time.time() - start
             # 路径模板化（去掉动态 ID，避免指标维度爆炸）
             path = request.url.path
@@ -243,7 +244,8 @@ app.add_middleware(
 app.include_router(router)
 
 # Prometheus 指标端点（/ai/metrics）
-from app.utils.metrics import metrics_router
+from app.utils.metrics import metrics_router  # noqa: E402
+
 app.include_router(metrics_router)
 
 

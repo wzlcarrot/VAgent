@@ -6,10 +6,8 @@
 - message_models：Message 序列化 + is_internal 兼容式识别（新字段 + 旧字符串 flag）
 - compact_service：boundary/summary 生成、microcompact 合并、向后兼容
 """
-import pytest
-from app.tools import message_models
-from app.tools.message_models import Message
 from app.tools import compact_service
+from app.tools.message_models import Message
 
 
 class TestTokenEstimation:
@@ -36,7 +34,7 @@ class TestTokenEstimation:
 
     def test_count_messages_image_block_weight(self):
         """多模态块：image 按固定权重计费"""
-        from app.tools.token_estimation import count_messages_tokens, IMAGE_BLOCK_TOKENS
+        from app.tools.token_estimation import IMAGE_BLOCK_TOKENS, count_messages_tokens
         msgs = [{"role": "user", "content": [{"type": "image"}]}]
         total = count_messages_tokens(msgs)
         assert total >= 4 + IMAGE_BLOCK_TOKENS

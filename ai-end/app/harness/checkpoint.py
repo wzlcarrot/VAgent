@@ -18,7 +18,7 @@ import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
-from typing import Dict, Any, Optional, List
+from typing import Any, Dict, List, Optional
 
 from app.tools.db import get_global_pool
 

@@ -128,6 +128,58 @@ export type StreamVideosEvent = {
 
 export type StreamEvent = StreamStatusEvent | StreamTextEvent | StreamVideosEvent
 
+export type ParsedSSELine =
+  | { kind: 'done' }
+  | { kind: 'event'; event: StreamEvent }
+  | { kind: 'text'; content: string }
+
+/**
+ * 解析单行 SSE（`data: ...`）为结构化事件。
+ *
+ * 规则：
+ * - 非 `data:` 前缀 → null（忽略）
+ * - 空数据 / `[DONE]` → done 哨兵（终止流）
+ * - 合法 JSON 且含 type → 对应事件；videos/reasons 缺省时兜底为 []
+ * - JSON 解析失败且以 `{`/`[` 开头 → null（半截 chunk，跳过）
+ * - 其他纯文本 → 作为 text 事件输出
+ */
+export function parseSSELine(line: string): ParsedSSELine | null {
+  if (!line.startsWith('data: ')) return null
+  const data = line.slice(6).trim()
+  if (!data) return null
+  if (data === '[DONE]') return { kind: 'done' }
+  try {
+    const parsed = JSON.parse(data)
+    if (parsed && typeof parsed === 'object' && parsed.type) {
+      if (parsed.type === 'status') {
+        return {
+          kind: 'event',
+          event: { type: 'status', stage: parsed.stage, label: parsed.label },
+        }
+      }
+      if (parsed.type === 'text') {
+        return {
+          kind: 'event',
+          event: { type: 'text', content: typeof parsed.content === 'string' ? parsed.content : '' },
+        }
+      }
+      if (parsed.type === 'videos') {
+        return {
+          kind: 'event',
+          event: { type: 'videos', videos: parsed.videos || [], reasons: parsed.reasons || [] },
+        }
+      }
+    }
+    return null
+  } catch {
+    if (data.startsWith('{') || data.startsWith('[')) {
+      console.warn('[SSE] 非预期 JSON:', data)
+      return null
+    }
+    return { kind: 'text', content: data }
+  }
+}
+
 export function triggerUnauthorized() {
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent('auth:unauthorized'))
@@ -198,55 +250,27 @@ export async function* smartChatStream(
     buffer = lines.pop() || ''
 
     for (const line of lines) {
-      if (!line.startsWith('data: ')) continue
-      const data = line.slice(6).trim()
-      if (!data || data === '[DONE]') return  // [DONE] 终止流
-      try {
-        const parsed = JSON.parse(data)
-        if (parsed && typeof parsed === 'object' && parsed.type) {
-          if (parsed.type === 'status') {
-            yield { type: 'status', stage: parsed.stage, label: parsed.label } as StreamStatusEvent
-          } else if (parsed.type === 'text') {
-            yield { type: 'text', content: parsed.content } as StreamTextEvent
-          } else if (parsed.type === 'videos') {
-            yield { type: 'videos', videos: parsed.videos, reasons: parsed.reasons || [] } as StreamVideosEvent
-          }
-        }
-      } catch (e) {
-        if (data.startsWith('{') || data.startsWith('[')) {
-          console.warn('[SSE] 非预期 JSON:', data)
-          continue
-        }
-        yield { type: 'text', content: data } as StreamTextEvent
+      const parsed = parseSSELine(line)
+      if (parsed === null) continue
+      if (parsed.kind === 'done') return  // [DONE] 终止流
+      if (parsed.kind === 'event') {
+        yield parsed.event
+      } else {
+        yield { type: 'text', content: parsed.content }
       }
     }
   }
 
-  // Flush remaining buffer
-  const remaining = buffer
-  if (remaining.trim()) {
-    const lines = remaining.split('\n')
-    for (const line of lines) {
-      if (!line.startsWith('data: ')) continue
-      const data = line.slice(6).trim()
-      if (!data || data === '[DONE]') return
-      try {
-        const parsed = JSON.parse(data)
-        if (parsed && typeof parsed === 'object' && parsed.type) {
-          if (parsed.type === 'status') {
-            yield { type: 'status', stage: parsed.stage, label: parsed.label } as StreamStatusEvent
-          } else if (parsed.type === 'text') {
-            yield { type: 'text', content: parsed.content } as StreamTextEvent
-          } else if (parsed.type === 'videos') {
-            yield { type: 'videos', videos: parsed.videos, reasons: parsed.reasons || [] } as StreamVideosEvent
-          }
-        }
-      } catch (e) {
-        if (data.startsWith('{') || data.startsWith('[')) {
-          console.warn('[SSE] 非预期 JSON:', data)
-          continue
-        }
-        yield { type: 'text', content: data } as StreamTextEvent
+  // Flush remaining buffer（流结束但末尾没有换行符）
+  if (buffer.trim()) {
+    for (const line of buffer.split('\n')) {
+      const parsed = parseSSELine(line)
+      if (parsed === null) continue
+      if (parsed.kind === 'done') return
+      if (parsed.kind === 'event') {
+        yield parsed.event
+      } else {
+        yield { type: 'text', content: parsed.content }
       }
     }
   }

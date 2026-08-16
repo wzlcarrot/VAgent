@@ -16,20 +16,19 @@ ToolGovernor —— 工具调用治理
 - Redis 不可用时降级到内存（单进程场景仍可用）
 """
 
+import concurrent.futures
 import json
 import logging
+import threading
 import time
 import uuid
-import threading
-import concurrent.futures
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
-from typing import Dict, Any, Optional, Callable
+from typing import Any, Callable, Dict, Optional
 
-from app.tools.db import get_global_pool
-from app.agents.workflows.constants import WorkflowType
-from app.exceptions import ToolCallLimitExceeded, ToolCallTimeout, ToolAccessDenied
 from app.config import settings
+from app.exceptions import ToolAccessDenied, ToolCallLimitExceeded, ToolCallTimeout
+from app.tools.db import get_global_pool
 
 logger = logging.getLogger(__name__)
 
@@ -331,7 +330,7 @@ class ToolGovernor:
 
         # Hook：before_tool_call（可拦截）
         try:
-            from app.harness.hooks import hooks_manager, HookEvent
+            from app.harness.hooks import HookEvent, hooks_manager
             allowed = hooks_manager.trigger_intercept(
                 HookEvent.BEFORE_TOOL_CALL,
                 session_id=session_id, agent=agent, tool_name=tool_name, arguments=arguments,
@@ -359,7 +358,7 @@ class ToolGovernor:
                 record.latency_ms = (time.time() - start) * 1000
                 if record_artifact:
                     self._write_artifact(record)
-                raise ToolCallTimeout(tool_name, timeout)
+                raise ToolCallTimeout(tool_name, timeout) from None
 
             record.result = result
             record.status = "success"

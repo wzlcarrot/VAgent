@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 """Lightweight metrics dashboard for ViewHub AI."""
 import urllib.request
-import re
 from html import escape
-from http.server import HTTPServer, BaseHTTPRequestHandler
+from http.server import BaseHTTPRequestHandler, HTTPServer
 
 BACKEND_URL = "http://localhost:9090/metrics"
 
@@ -11,7 +10,7 @@ def fetch_metrics():
     try:
         with urllib.request.urlopen(BACKEND_URL, timeout=5) as resp:
             return resp.read().decode()
-    except Exception as e:
+    except Exception:
         return None
 
 def parse_metrics(text):

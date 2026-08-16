@@ -9,7 +9,7 @@ metrics.py 从契约构建指标，conformance 测试（tests/test_metrics_contr
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
 from typing import Optional, Tuple
 
@@ -106,7 +106,7 @@ METRICS_CONTRACT: Tuple[MetricContract, ...] = (
 
 def build_metric(contract: MetricContract):
     """按契约构建 prometheus_client 指标实例。"""
-    from prometheus_client import Counter, Histogram, Gauge
+    from prometheus_client import Counter, Gauge, Histogram
     if contract.mtype == MetricType.COUNTER:
         return Counter(contract.name, contract.help, list(contract.labels))
     if contract.mtype == MetricType.HISTOGRAM:

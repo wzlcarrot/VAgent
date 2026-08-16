@@ -6,8 +6,9 @@ FastEmbed ONNX embedding 包装类。
 通过 specific_model_path 参数加载，避免联网下载。
 """
 import os
-import numpy as np
 from typing import List
+
+import numpy as np
 
 DEFAULT_MODEL_DIR = os.path.expanduser("~/.cache/fastembed/local_models/bge-small-en-v1.5")
 

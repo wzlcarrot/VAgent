@@ -1,14 +1,16 @@
 import logging
-from typing import Dict, Any, List, TypedDict, Literal
+from typing import Any, Dict, List, Literal, TypedDict
+
+from langgraph.constants import END, START
 from langgraph.graph import StateGraph
-from langgraph.constants import START, END
-from app.tools import UserTools, VideoTools
+
 from app.agents.supervisor import Supervisor
-from app.tools.output_guard import NO_RECOMMENDATION_MSG
-from app.config import build_cover_url
-from app.agents.workflows.harness_helpers import save_checkpoint, invoke_with_governor, checkpoint
-from app.harness.checkpoint import CheckpointManager
 from app.agents.workflows.constants import WorkflowType
+from app.agents.workflows.harness_helpers import checkpoint, invoke_with_governor, save_checkpoint
+from app.config import build_cover_url
+from app.harness.checkpoint import CheckpointManager
+from app.tools import UserTools, VideoTools
+from app.tools.output_guard import NO_RECOMMENDATION_MSG
 
 logger = logging.getLogger(__name__)
 
@@ -152,7 +154,7 @@ def search_node(state: RecommendState) -> dict:
     )
     video_map = {v.videoId: v for v in video_infos if v}
     if not video_map:
-        logger.warning(f"批量获取视频信息失败，无法构建推荐列表")
+        logger.warning("批量获取视频信息失败，无法构建推荐列表")
         return {"candidate_videos": []}
 
     result_videos = []

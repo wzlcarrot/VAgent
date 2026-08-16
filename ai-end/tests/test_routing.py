@@ -1,8 +1,5 @@
-import pytest
-from unittest.mock import patch, MagicMock
 from app.agents.router import Router
 from app.agents.supervisor import Supervisor
-
 
 
 class TestRouter:

@@ -33,7 +33,7 @@ import logging
 import re
 import threading
 import time
-from typing import Dict, List, Any, Optional
+from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -267,7 +267,7 @@ def resolve_references(session_id: str, question: str) -> Dict[str, Any]:
                 "resolved_question": resolved,
                 "referenced_video": last_qa,
                 "reference_type": "last_video_qa",
-                "debug": f"pronoun → last_video_qa",
+                "debug": "pronoun → last_video_qa",
             }
         if last_recs:
             video = last_recs[0]
@@ -277,7 +277,7 @@ def resolve_references(session_id: str, question: str) -> Dict[str, Any]:
                 "resolved_question": resolved,
                 "referenced_video": video,
                 "reference_type": "pronoun",
-                "debug": f"pronoun → recs[0]",
+                "debug": "pronoun → recs[0]",
             }
 
     return {

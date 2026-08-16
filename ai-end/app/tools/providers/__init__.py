@@ -13,8 +13,8 @@ Provider 抽象层（借鉴 Clawd-Code 的 BaseProvider 设计）
 """
 from app.tools.providers.base import BaseProvider, ProviderConfig
 from app.tools.providers.deepseek import DeepSeekProvider
-from app.tools.providers.minimax import MiniMaxProvider
 from app.tools.providers.factory import provider_factory
+from app.tools.providers.minimax import MiniMaxProvider
 
 __all__ = [
     "BaseProvider",
