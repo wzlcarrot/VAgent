@@ -5,6 +5,24 @@ import type { Message, ChatSession } from '@/types'
 const STORAGE_KEY = 'viewhub_sessions'
 const PERSIST_DEBOUNCE_MS = 300 // 流式输出时合并写入
 
+// 生成 UUID：优先用 crypto.randomUUID（安全上下文），非 HTTPS/IP 直连时降级
+function generateId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID()
+  }
+  // 降级：基于随机数的 v4 风格 UUID
+  const bytes = new Uint8Array(16)
+  if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+    crypto.getRandomValues(bytes)
+  } else {
+    for (let i = 0; i < 16; i++) bytes[i] = Math.floor(Math.random() * 256)
+  }
+  bytes[6] = (bytes[6] & 0x0f) | 0x40 // version 4
+  bytes[8] = (bytes[8] & 0x3f) | 0x80 // variant
+  const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('')
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`
+}
+
 function loadFromStorage(): ChatSession[] {
   const stored = localStorage.getItem(STORAGE_KEY)
   if (stored) {
@@ -78,7 +96,7 @@ export const useChatStore = defineStore('chat', () => {
 
   function createSession(): ChatSession {
     const session: ChatSession = {
-      id: crypto.randomUUID(),
+      id: generateId(),
       title: '新对话',
       messages: [],
       createdAt: new Date(),
@@ -114,7 +132,7 @@ export const useChatStore = defineStore('chat', () => {
   function addMessage(message: Omit<Message, 'id' | 'timestamp'>) {
     const newMessage: Message = {
       ...message,
-      id: crypto.randomUUID(),
+      id: generateId(),
       timestamp: new Date(),
     }
     messages.value.push(newMessage)

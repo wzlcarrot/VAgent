@@ -49,17 +49,22 @@ CREATE INDEX IF NOT EXISTS idx_user_memory_content_trgm
     ON user_memory USING gin (content gin_trgm_ops);
 
 -- Chat history
+-- 结构与 app/tools/db/schema.py 的 init_agent_tables() 保持一致。
+-- 注意：代码只写入 user_id/question/answer/session_id/image_urls/videos/reasons，
+-- 不写入 role/content/workflow_type。这些历史列保留但必须可空，避免 NOT NULL 导致插入失败。
 CREATE TABLE IF NOT EXISTS chat_history (
     id BIGSERIAL PRIMARY KEY,
-    session_id VARCHAR(64) NOT NULL,
-    user_id VARCHAR(64) NOT NULL,
-    role VARCHAR(16) NOT NULL,
-    content TEXT NOT NULL,
+    session_id VARCHAR(64),
+    user_id VARCHAR(64),
+    role VARCHAR(16),
+    content TEXT,
     question TEXT,
     answer TEXT,
     image_urls TEXT[] DEFAULT '{}',
     workflow_type VARCHAR(32),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    videos JSONB DEFAULT '[]',
+    reasons JSONB DEFAULT '[]'
 );
 
 CREATE INDEX IF NOT EXISTS idx_chat_history_session

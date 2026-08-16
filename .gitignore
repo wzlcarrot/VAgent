@@ -93,3 +93,7 @@ desktop.ini
 *.log
 logs/
 .promtail/
+
+# 部署数据（FastEmbed 模型、视频封面），由部署流程填充，不入库
+/embedding_model/
+/cover/
