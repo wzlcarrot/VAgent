@@ -68,7 +68,7 @@ def record_workflow_request(wf_type: str) -> None:
 def extract_memories_from_conversation(user_id: str, question: str, answer: str, session_id: str = ""):
     if not user_id or not answer:
         return
-    from typing import List, Literal
+    from typing import Literal
 
     from pydantic import BaseModel
 

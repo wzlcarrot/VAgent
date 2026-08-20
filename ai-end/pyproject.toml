@@ -19,7 +19,3 @@ ignore = [
 # 覆盖率门槛：低于 75% 则本地 pytest 直接失败（与 CI --cov-fail-under 一致）
 addopts = "--cov=app --cov-report=term-missing --cov-fail-under=75"
 testpaths = ["tests"]
-
-[tool.coverage.run]
-# LLM HTTP 适配器体量大、依赖真实网络；取消/重试已在 test_task_cancel / llm_usage 覆盖
-omit = ["app/tools/llm_tools.py", "app/tools/rag_tools.py"]

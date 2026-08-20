@@ -1,6 +1,6 @@
 from unittest.mock import MagicMock, patch
 
-from app.tools.chunker import chunk_document, _count_tokens, _get_char_overlap, _get_overlap_segments
+from app.tools.chunker import _count_tokens, _get_char_overlap, _get_overlap_segments, chunk_document
 
 
 def test_chunk_empty():
@@ -122,6 +122,7 @@ def test_metrics_helpers():
 
 def test_media_cover_default_and_traversal():
     import asyncio
+
     from app.routers.media import media_cover
     r = asyncio.run(media_cover(""))
     assert r.media_type == "image/svg+xml"

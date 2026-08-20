@@ -245,6 +245,7 @@ def test_get_cursor_no_pool():
 
 def test_get_cursor_abort_cancels_conn():
     from unittest.mock import MagicMock
+
     from app.tools.db.cursor import get_cursor
 
     cancelled = []
@@ -264,6 +265,7 @@ def test_get_cursor_abort_cancels_conn():
 
 def test_collect_checkpoint_steps():
     from unittest.mock import MagicMock
+
     from app.routers.chat_sessions import collect_checkpoint_steps
 
     last = SimpleNamespace(step_name="faq", created_at="t0")
@@ -278,6 +280,7 @@ def test_collect_checkpoint_steps():
 
 def test_search_chat_db_snippet():
     from unittest.mock import MagicMock
+
     from app.routers.chat_sessions import search_chat_db
 
     row = {
