@@ -66,18 +66,38 @@ class TestProfileNode:
         assert profile_node(_state(user_id=None)) == {"user_profile": {}}
 
     def test_builds_profile(self):
-        from app.models import VideoPlayHistory
+        from app.models import VideoInfo, VideoPlayHistory
         hist = [VideoPlayHistory(video_id="v1", video_name="机器学习"), VideoPlayHistory(video_id="v2", video_name="深度学习")]
+        infos = [
+            VideoInfo(videoId="v1", videoName="机器学习", tags="AI,算法", categoryId=1),
+            VideoInfo(videoId="v2", videoName="深度学习", tags="AI,神经网络", categoryId=1),
+            VideoInfo(videoId="f1", videoName="收藏视频", tags="科普", categoryId=2),
+        ]
         with patch("app.agents.workflows.recommend_workflow.UserTools.get_play_history", return_value=hist), \
              patch("app.agents.workflows.recommend_workflow.UserTools.get_favorites", return_value=["f1"]), \
-             patch("app.agents.workflows.recommend_workflow.UserTools.get_liked_videos", return_value=["l1"]):
+             patch("app.agents.workflows.recommend_workflow.UserTools.get_liked_videos", return_value=["l1"]), \
+             patch("app.agents.workflows.recommend_workflow.VideoTools.get_video_info_batch", return_value=infos):
             result = profile_node(_state())
         profile = result["user_profile"]
         assert profile["play_count"] == 2
-        assert "机器学习" in profile["favorite_tags"]
+        assert "AI" in profile["favorite_tags"]
+        assert "算法" in profile["favorite_tags"]
+        assert "1" in profile["favorite_regions"]
         assert profile["watched_video_ids"] == ["v1", "v2"]
         assert profile["liked_video_ids"] == ["l1"]
         assert profile["favorite_video_ids"] == ["f1"]
+
+    def test_builds_profile_when_video_lookup_fails(self):
+        from app.models import VideoPlayHistory
+        hist = [VideoPlayHistory(video_id="v1", video_name="机器学习")]
+        with patch("app.agents.workflows.recommend_workflow.UserTools.get_play_history", return_value=hist), \
+             patch("app.agents.workflows.recommend_workflow.UserTools.get_favorites", return_value=[]), \
+             patch("app.agents.workflows.recommend_workflow.UserTools.get_liked_videos", return_value=[]), \
+             patch("app.agents.workflows.recommend_workflow.VideoTools.get_video_info_batch", return_value=[]):
+            result = profile_node(_state())
+        profile = result["user_profile"]
+        assert profile["watched_video_ids"] == ["v1"]
+        assert profile["favorite_tags"] == []
 
 
 class TestHasHistoryRouter:
@@ -101,7 +121,9 @@ class TestSearchNode:
         ]
         with patch("app.tools.ranker.dual_recall_and_rerank", return_value=results), \
              patch("app.agents.workflows.recommend_workflow.VideoTools.get_video_info_batch", return_value=infos), \
-             patch("app.agents.workflows.recommend_workflow.invoke_with_governor", side_effect=lambda *a, **k: a[3]()):
+             patch("app.agents.workflows.recommend_workflow.invoke_with_governor", side_effect=lambda *a, **k: a[3]()), \
+             patch("app.tools.memory_tools.MemoryTools.recall_memories", return_value=[]), \
+             patch("app.tools.memory_tools.MemoryTools.get_negative_feedback_video_ids", return_value=[]):
             result = search_node(_state(top_k=3))
         vids = [v["video_id"] for v in result["candidate_videos"]]
         assert vids == ["v1", "v2"]
@@ -110,6 +132,22 @@ class TestSearchNode:
         with patch("app.tools.ranker.dual_recall_and_rerank", return_value=[]), \
              patch("app.agents.workflows.recommend_workflow.invoke_with_governor", side_effect=lambda *a, **k: a[3]()):
             assert search_node(_state(top_k=3)) == {"candidate_videos": []}
+
+    def test_excludes_negative_feedback_videos(self):
+        from app.models import VideoInfo
+        results = [{"video_id": "v_bad"}, {"video_id": "v_ok"}]
+        infos = [
+            VideoInfo(videoId="v_ok", videoName="好视频", tags="AI"),
+        ]
+        with patch("app.tools.ranker.dual_recall_and_rerank", return_value=results), \
+             patch("app.agents.workflows.recommend_workflow.VideoTools.get_video_info_batch", return_value=infos), \
+             patch("app.agents.workflows.recommend_workflow.invoke_with_governor", side_effect=lambda *a, **k: a[3]()), \
+             patch("app.tools.memory_tools.MemoryTools.recall_memories", return_value=[]), \
+             patch("app.tools.memory_tools.MemoryTools.get_negative_feedback_video_ids", return_value=["v_bad"]):
+            result = search_node(_state(top_k=3, user_id="u1", user_profile={"favorite_tags": ["AI"]}))
+        vids = [v["video_id"] for v in result["candidate_videos"]]
+        assert vids == ["v_ok"]
+        assert "v_bad" not in vids
 
 
 class TestReasonNode:
@@ -123,6 +161,16 @@ class TestReasonNode:
         state = _state(candidate_videos=[{"video_id": "v1", "title": "值得一看"}], top_k=3)
         result = reason_node(state)
         assert "《值得一看》" in result["reasons"][0]
+
+    def test_reason_uses_profile_behavior(self):
+        state = _state(
+            candidate_videos=[{"video_id": "v1", "title": "t", "tags": "AI,算法", "author": "老王"}],
+            user_profile={"favorite_tags": ["AI"], "favorite_regions": [], "liked_video_ids": ["v1"]},
+            top_k=3,
+        )
+        result = reason_node(state)
+        assert "你常看「AI」" in result["reasons"][0]
+        assert "你点过同类" in result["reasons"][0]
 
 
 class TestSummaryNode:

@@ -10,6 +10,7 @@ from pydantic import BaseModel, ValidationError
 
 from app.config import settings
 from app.tools.output_guard import LLM_UNAVAILABLE_MSG
+from app.utils.task_cancel import WorkflowCancelled
 
 # ─── 复用型 httpx Client（keep-alive，节省 TCP/TLS 握手） ───
 # 每个请求新建 client 每次都要握手 ~30-100ms（生产更慢）。
@@ -46,33 +47,71 @@ def _get_async_client() -> httpx.AsyncClient:
     return _async_client
 
 
+_tls_http = threading.local()
+
+
+def _new_sync_client() -> httpx.Client:
+    return httpx.Client(
+        timeout=httpx.Timeout(30.0, connect=10.0, read=30.0),
+        limits=httpx.Limits(
+            max_connections=settings.db_pool_size,
+            max_keepalive_connections=settings.db_pool_size // 2 or 1,
+        ),
+    )
+
+
+def _new_tools_client() -> httpx.Client:
+    return httpx.Client(
+        timeout=httpx.Timeout(15.0, connect=10.0, read=15.0),
+        limits=httpx.Limits(
+            max_connections=max(settings.db_pool_size, 16),
+            max_keepalive_connections=8,
+        ),
+    )
+
+
+def _abortable_http_client(kind: str) -> Optional[httpx.Client]:
+    """超时取消范围内使用独立 client，close() 可打断进行中的请求。"""
+    from app.utils.task_cancel import current_cancel_event, register_abortable
+    if current_cancel_event() is None:
+        return None
+    attr = f"client_{kind}"
+    client = getattr(_tls_http, attr, None)
+    if client is None or getattr(client, "is_closed", False):
+        client = _new_sync_client() if kind == "sync" else _new_tools_client()
+        setattr(_tls_http, attr, client)
+
+        def _close() -> None:
+            try:
+                client.close()
+            finally:
+                setattr(_tls_http, attr, None)
+
+        register_abortable(_close)
+    return client
+
+
 def _get_sync_client() -> httpx.Client:
+    scoped = _abortable_http_client("sync")
+    if scoped is not None:
+        return scoped
     global _sync_client
     if _sync_client is None:
         with _client_lock:
             if _sync_client is None:
-                _sync_client = httpx.Client(
-                    timeout=httpx.Timeout(30.0, connect=10.0, read=30.0),
-                    limits=httpx.Limits(
-                        max_connections=settings.db_pool_size,
-                        max_keepalive_connections=settings.db_pool_size // 2 or 1,
-                    ),
-                )
+                _sync_client = _new_sync_client()
     return _sync_client
 
 
 def _get_tools_client() -> httpx.Client:
+    scoped = _abortable_http_client("tools")
+    if scoped is not None:
+        return scoped
     global _tools_client
     if _tools_client is None:
         with _client_lock:
             if _tools_client is None:
-                _tools_client = httpx.Client(
-                    timeout=httpx.Timeout(15.0, connect=10.0, read=15.0),
-                    limits=httpx.Limits(
-                        max_connections=max(settings.db_pool_size, 16),
-                        max_keepalive_connections=8,
-                    ),
-                )
+                _tools_client = _new_tools_client()
     return _tools_client
 
 
@@ -282,9 +321,13 @@ def _call_with_retry_sync(call_fn, op_name: str):
     - 最多 _RETRY_MAX_ATTEMPTS 次
     """
     last_exc = None
+    from app.utils.task_cancel import WorkflowCancelled, check_cancelled, interruptible_sleep
     for attempt in range(1, _RETRY_MAX_ATTEMPTS + 1):
+        check_cancelled()
         try:
             return call_fn(attempt)
+        except WorkflowCancelled:
+            raise
         except httpx.HTTPStatusError as e:
             last_exc = e
             status = e.response.status_code
@@ -296,7 +339,7 @@ def _call_with_retry_sync(call_fn, op_name: str):
                 raise
             delay = min(_RETRY_BASE_DELAY * (2 ** (attempt - 1)), _RETRY_MAX_DELAY)
             logger.warning(f"{op_name} 失败 (status={status})，{delay:.1f}s 后第 {attempt+1} 次重试")
-            time.sleep(delay)
+            interruptible_sleep(delay)
         except httpx.TimeoutException as e:
             last_exc = e
             if attempt >= _RETRY_MAX_ATTEMPTS:
@@ -304,7 +347,7 @@ def _call_with_retry_sync(call_fn, op_name: str):
                 raise
             delay = min(_RETRY_BASE_DELAY * (2 ** (attempt - 1)), _RETRY_MAX_DELAY)
             logger.warning(f"{op_name} 超时，{delay:.1f}s 后第 {attempt+1} 次重试")
-            time.sleep(delay)
+            interruptible_sleep(delay)
         except (httpx.ConnectError, httpx.RemoteProtocolError) as e:
             last_exc = e
             if attempt >= _RETRY_MAX_ATTEMPTS:
@@ -312,7 +355,7 @@ def _call_with_retry_sync(call_fn, op_name: str):
                 raise
             delay = min(_RETRY_BASE_DELAY * (2 ** (attempt - 1)), _RETRY_MAX_DELAY)
             logger.warning(f"{op_name} 连接错误，{delay:.1f}s 后第 {attempt+1} 次重试")
-            time.sleep(delay)
+            interruptible_sleep(delay)
     if last_exc:
         raise last_exc
     return None
@@ -419,6 +462,8 @@ class LLM_tools:
             _record_llm_metrics("chat_sync", prov, "timeout")
             logger.error("LLM调用超时")
             return None
+        except WorkflowCancelled:
+            raise
         except Exception as e:
             _record_llm_metrics("chat_sync", prov, "error")
             logger.error(f"LLM同步调用失败: {e}")
@@ -447,6 +492,8 @@ class LLM_tools:
 
         try:
             return _call_with_retry_sync(_do, "LLM.chat_sync_with_usage")
+        except WorkflowCancelled:
+            raise
         except Exception as e:
             _record_llm_metrics("chat_sync_with_usage", prov, "error")
             logger.error(f"LLM同步调用(带 usage)失败: {e}")
@@ -610,6 +657,8 @@ class LLM_tools:
 
         try:
             return _call_with_retry_sync(_do, "LLM.chat_with_tools")
+        except WorkflowCancelled:
+            raise
         except (httpx.HTTPStatusError, httpx.TimeoutException, httpx.ConnectError) as e:
             _record_llm_metrics("chat_with_tools", prov, "error")
             logger.error(f"LLM Function Calling 调用失败: {e}")
@@ -659,6 +708,8 @@ class LLM_tools:
 
         try:
             return _call_with_retry_sync(_do, "LLM.chat_sync_json")
+        except WorkflowCancelled:
+            raise
         except Exception as e:
             logger.error(f"LLM JSON调用失败: {e}")
             return None

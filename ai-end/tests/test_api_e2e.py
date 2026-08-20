@@ -129,6 +129,21 @@ class TestAdminE2E:
         assert r.json().get("success") is False
 
 
+class TestMetricsAuth:
+    def test_metrics_no_key_forbidden(self, client):
+        r = client.get("/metrics")
+        assert r.status_code in (403, 503)
+
+    def test_metrics_wrong_key_403(self, client):
+        r = client.get("/metrics", headers={"X-Admin-Key": "wrong"})
+        assert r.status_code == 403
+
+    def test_metrics_ok_with_admin_key(self, client):
+        from app.config import settings
+        r = client.get("/metrics", headers={"X-Admin-Key": settings.admin_api_key})
+        assert r.status_code == 200
+
+
 class TestRealFlowE2E:
     """真实业务链路：SSE 流式、分页、越权拦截、反馈写入"""
 

@@ -42,14 +42,15 @@ export async function login(data: LoginRequest): Promise<AuthResponse> {
   })
 
   if (!response.ok) {
-    // 当后端返回非 2xx 时，body 可能为空或非 JSON（如 502 代理错误）
+    let detail = ''
     try {
       const error = await response.json()
-      throw new Error(error.detail || '登录失败')
+      detail = error.detail || ''
     } catch {
       const text = await response.text().catch(() => '')
       throw new Error(`登录失败 (${response.status})${text ? ': ' + text.slice(0, 100) : ''}`)
     }
+    throw new Error(detail || '登录失败')
   }
 
   interface LoginRawResponse {

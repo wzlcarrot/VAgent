@@ -50,6 +50,9 @@ def get_cursor(cursor_factory=RealDictCursor, commit: bool = False):
     conn = pool.getconn()
     cursor = None
     broken = False
+    from app.utils.task_cancel import register_abortable
+    cancel_fn = getattr(conn, "cancel", None)
+    unregister_abort = register_abortable(cancel_fn) if cancel_fn else (lambda: None)
     try:
         cursor = conn.cursor(cursor_factory=cursor_factory)
         yield cursor
@@ -71,6 +74,7 @@ def get_cursor(cursor_factory=RealDictCursor, commit: bool = False):
         logger.error(f"DB 操作失败: {e}")
         raise
     finally:
+        unregister_abort()
         if cursor is not None:
             try:
                 cursor.close()

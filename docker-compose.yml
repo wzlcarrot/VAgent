@@ -14,7 +14,7 @@ services:
       - PG_HOST=postgres
       - PG_PORT=5432
       - PG_USER=postgres
-      - PG_PASSWORD=postgres
+      - PG_PASSWORD=${POSTGRES_PASSWORD:?请通过 .env 设置强数据库口令 POSTGRES_PASSWORD（禁止用默认口令）}
       - PG_DATABASE=viewhub
       - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:?请设置 DEEPSEEK_API_KEY 环境变量}
       - DEEPSEEK_BASE_URL=${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
@@ -27,8 +27,8 @@ services:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - REDIS_DB=0
-      - REDIS_PASSWORD=
-      - TEST_ACCOUNT_ENABLED=${TEST_ACCOUNT_ENABLED:-true}
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+      - TEST_ACCOUNT_ENABLED=${TEST_ACCOUNT_ENABLED:-false}
       - TEST_ACCOUNT_EMAIL=${TEST_ACCOUNT_EMAIL:-test@viewhub.com}
       - TEST_ACCOUNT_PASSWORD_MD5=${TEST_ACCOUNT_PASSWORD_MD5:-e10adc3949ba59abbe56e057f20f883e}
       - TEST_ACCOUNT_USER_ID=${TEST_ACCOUNT_USER_ID:-test_user_001}
@@ -37,7 +37,7 @@ services:
       - HARNESS_ENABLED=${HARNESS_ENABLED:-true}
       - AGENT_ASYNC_MAX_WORKERS=${AGENT_ASYNC_MAX_WORKERS:-8}
       - COOKIE_SECURE=${COOKIE_SECURE:-false}
-      - ADMIN_API_KEY=${ADMIN_API_KEY:-}
+      - ADMIN_API_KEY=${ADMIN_API_KEY:?请设置强随机 ADMIN_API_KEY（保护 /ai/admin 与 /metrics）}
     depends_on:
       postgres:
         condition: service_healthy
@@ -61,7 +61,7 @@ services:
     environment:
       POSTGRES_DB: viewhub
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?请通过 .env 设置强数据库口令 POSTGRES_PASSWORD（禁止用默认口令）}
     volumes:
       - pg_data:/var/lib/postgresql
       - ./ai-end/scripts/init.sql:/docker-entrypoint-initdb.d/init.sql
@@ -79,16 +79,19 @@ services:
     restart: unless-stopped
 
   prometheus:
-    image: prom/prometheus:latest
+    image: prom/prometheus:v2.54.1
     ports:
       - "9093:9090"
+    environment:
+      ADMIN_API_KEY: ${ADMIN_API_KEY:?请设置强随机 ADMIN_API_KEY（保护 /ai/admin 与 /metrics）}
     volumes:
-      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml.tpl:ro
       - prometheus_data:/prometheus
+    entrypoint: ["/bin/sh", "-c"]
     command:
-      - '--config.file=/etc/prometheus/prometheus.yml'
-      - '--storage.tsdb.path=/prometheus'
-      - '--storage.tsdb.retention.time=7d'
+      - |
+        sed "s#__ADMIN_API_KEY__#$${ADMIN_API_KEY}#g" /etc/prometheus/prometheus.yml.tpl > /tmp/prometheus.yml
+        exec /bin/prometheus --config.file=/tmp/prometheus.yml --storage.tsdb.path=/prometheus --storage.tsdb.retention.time=7d
     depends_on:
       - ai-agent
     restart: unless-stopped

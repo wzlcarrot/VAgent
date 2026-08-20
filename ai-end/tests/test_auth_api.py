@@ -76,3 +76,17 @@ class TestChatRequestValidation:
         from app.models import ChatRequest
         with pytest.raises(ValidationError):
             ChatRequest(question="hi", image_urls=[123])
+
+
+class TestLoginRateLimit:
+    def test_only_failures_consume_quota(self):
+        from app.routers import auth as auth_mod
+        ip = "10.0.0.9"
+        with auth_mod._login_lock:
+            auth_mod._login_attempts.pop(ip, None)
+        for _ in range(20):
+            assert auth_mod._rate_limited(ip) is False
+        for _ in range(auth_mod._LOGIN_LIMIT_MAX):
+            assert auth_mod._rate_limited(ip) is False
+            auth_mod._record_login_failure(ip)
+        assert auth_mod._rate_limited(ip) is True

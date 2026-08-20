@@ -6,6 +6,7 @@ from typing import Any, Dict, List
 
 from app.models import Memory
 from app.tools.db import get_cursor
+from app.utils.security import escape_like_pattern, sanitize_search_input
 
 logger = logging.getLogger(__name__)
 
@@ -48,8 +49,9 @@ class MemoryTools:
         按相关度 + 时间衰减召回用户记忆。
 
         性能优化：
-        - 关键词查询走 pg_trgm GIN 索引（部署时需要 CREATE EXTENSION pg_trgm;
-          CREATE INDEX idx_user_memory_content_trgm ON user_memory USING gin (content gin_trgm_ops);）
+        - 关键词查询走 pg_trgm GIN 索引：用 similarity(content, %s) 的 `%` 运算符
+          （触发 idx_user_memory_content_trgm GIN 索引），阈值 >0.1 过滤弱匹配
+        - 若 similarity 函数/索引不可用（扩展未建），降级到 ILIKE 全表扫描
         - 时间衰减公式：score × 2^(-Δdays/10)，10 天半衰期
         - 召回后批量 _touch，单条 UPDATE 一次完成（消除 N+1 写）
         """
@@ -57,21 +59,42 @@ class MemoryTools:
             with get_cursor() as cursor:
                 if cursor is None:
                     return []
-                keywords = _extract_keywords(query)
+                keywords = [
+                    escape_like_pattern(sanitize_search_input(k, max_length=50))
+                    for k in _extract_keywords(query)
+                ]
+                keywords = [k for k in keywords if k]
                 if keywords:
-                    # pg_trgm 索引走 similarity 而非 ILIKE，避免全表扫描
-                    # 索引缺失时降级到 ILIKE（性能差但功能等价）
-                    like_clauses = " OR ".join(
-                        ["content ILIKE '%%' || %s || '%%'"] * len(keywords)
-                    )
-                    params = [user_id] + keywords + [top_k]
-                    cursor.execute(f"""
-                        SELECT *, (score * POWER(2, -EXTRACT(EPOCH FROM NOW() - last_accessed_at) / 864000.0)) as effective_score
-                        FROM user_memory
-                        WHERE user_id = %s AND ({like_clauses})
-                        ORDER BY effective_score DESC
-                        LIMIT %s
-                    """, params)
+                    try:
+                        cursor.execute("SELECT 1 FROM pg_extension WHERE extname = 'pg_trgm'")
+                        has_trgm = cursor.fetchone() is not None
+                    except Exception:
+                        has_trgm = False
+
+                    if has_trgm:
+                        like_clauses = " OR ".join(["content %% %s"] * len(keywords))
+                        cursor.execute(f"""
+                            SELECT *, GREATEST(
+                                {", ".join(["similarity(content, %s)"] * len(keywords))}
+                            ) as sim,
+                            (score * POWER(2, -EXTRACT(EPOCH FROM NOW() - last_accessed_at) / 864000.0)) as effective_score
+                            FROM user_memory
+                            WHERE user_id = %s AND ({like_clauses})
+                            ORDER BY effective_score DESC
+                            LIMIT %s
+                        """, keywords + [user_id] + keywords + [top_k])
+                    else:
+                        like_clauses = " OR ".join(
+                            ["content ILIKE %s ESCAPE '\\'"] * len(keywords)
+                        )
+                        like_params = [f"%{k}%" for k in keywords]
+                        cursor.execute(f"""
+                            SELECT *, (score * POWER(2, -EXTRACT(EPOCH FROM NOW() - last_accessed_at) / 864000.0)) as effective_score
+                            FROM user_memory
+                            WHERE user_id = %s AND ({like_clauses})
+                            ORDER BY effective_score DESC
+                            LIMIT %s
+                        """, [user_id] + like_params + [top_k])
                 else:
                     cursor.execute("""
                         SELECT *, (score * POWER(2, -EXTRACT(EPOCH FROM NOW() - last_accessed_at) / 864000.0)) as effective_score
@@ -95,6 +118,37 @@ class MemoryTools:
             ) for r in rows]
         except Exception as e:
             logger.error(f"召回记忆失败: {e}")
+            return []
+
+    @staticmethod
+    def get_negative_feedback_video_ids(user_id: str, limit: int = 50) -> List[str]:
+        """召回用户标记"没用"的推荐视频 ID（用于下次推荐降权/剔除）。
+
+        负反馈记忆的 tags 形如 ["not_helpful", session_id, "video:<id>", ...]。
+        只取 not_helpful，避免把点过「有用」的视频也剔除。
+        """
+        try:
+            with get_cursor() as cursor:
+                if cursor is None:
+                    return []
+                cursor.execute("""
+                    SELECT content, tags FROM user_memory
+                    WHERE user_id = %s AND type = 'feedback' AND %s = ANY(tags)
+                    ORDER BY created_at DESC
+                    LIMIT %s
+                """, (user_id, "not_helpful", limit))
+                rows = cursor.fetchall()
+            ids = []
+            for r in rows:
+                tags = r.get("tags") or []
+                for t in tags:
+                    if isinstance(t, str) and t.startswith("video:"):
+                        vid = t[len("video:"):]
+                        if vid and vid not in ids:
+                            ids.append(vid)
+            return ids
+        except Exception as e:
+            logger.error(f"召回负反馈视频失败: {e}")
             return []
 
     @staticmethod

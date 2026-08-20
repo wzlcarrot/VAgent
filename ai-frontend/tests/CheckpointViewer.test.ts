@@ -12,11 +12,13 @@ const attachTo = typeof document !== 'undefined' ? document.body : undefined
 // Mock API 模块
 vi.mock('@/api/chat', () => ({
   getCheckpoints: vi.fn(),
+  resumeWorkflow: vi.fn(),
 }))
 
-import { getCheckpoints } from '@/api/chat'
+import { getCheckpoints, resumeWorkflow } from '@/api/chat'
 
 const mockGet = getCheckpoints as unknown as ReturnType<typeof vi.fn>
+const mockResume = resumeWorkflow as unknown as ReturnType<typeof vi.fn>
 
 const cpData = {
   checkpoints: [
@@ -86,5 +88,41 @@ describe('CheckpointViewer', () => {
     const closeBtn = document.querySelector('.close-btn') as HTMLElement
     closeBtn?.click()
     expect(wrapper.emitted('close')).toBeTruthy()
+  })
+
+  it('点击「继续运行」调用 resume 并显示成功结果', async () => {
+    mockGet.mockResolvedValue(cpData)
+    mockResume.mockResolvedValue({ success: true, workflow_type: 'recommend_workflow', resumed_from: 'summary_node', answer: '推荐结果' })
+    wrapper = mount(CheckpointViewer, { props: { visible: true, sessionId: 's1' }, attachTo })
+    await flushPromises()
+    const resumeBtn = document.querySelector('.resume-btn') as HTMLElement
+    resumeBtn?.click()
+    await flushPromises()
+    expect(mockResume).toHaveBeenCalledWith('s1')
+    expect(document.body.textContent).toContain('已从断点继续完成')
+  })
+
+  it('resume 返回 error 时显示失败结果', async () => {
+    mockGet.mockResolvedValue(cpData)
+    mockResume.mockResolvedValue({ success: false, workflow_type: 'recommend_workflow', resumed_from: 'summary_node', answer: '', error: '数据缺失', failed_at: 'reason_node' })
+    wrapper = mount(CheckpointViewer, { props: { visible: true, sessionId: 's1' }, attachTo })
+    await flushPromises()
+    const resumeBtn = document.querySelector('.resume-btn') as HTMLElement
+    resumeBtn?.click()
+    await flushPromises()
+    expect(document.body.textContent).toContain('恢复失败')
+    expect(document.body.textContent).toContain('reason_node')
+  })
+
+  it('resume 接口异常时显示失败结果', async () => {
+    mockGet.mockResolvedValue(cpData)
+    mockResume.mockRejectedValue({ response: { data: { detail: '断点恢复失败' } } })
+    wrapper = mount(CheckpointViewer, { props: { visible: true, sessionId: 's1' }, attachTo })
+    await flushPromises()
+    const resumeBtn = document.querySelector('.resume-btn') as HTMLElement
+    resumeBtn?.click()
+    await flushPromises()
+    expect(document.body.textContent).toContain('恢复失败')
+    expect(document.body.textContent).toContain('断点恢复失败')
   })
 })

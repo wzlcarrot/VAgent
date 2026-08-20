@@ -74,7 +74,8 @@ jobs:
         run: ruff check app tests scripts
 
       - name: Test
-        run: python -m pytest tests/ -q --cov=app --cov-fail-under=60
+        # tests/test_golden_set.py：关键词路径黄金集下限（不调 LLM）
+        run: python -m pytest tests/ -q --cov=app --cov-fail-under=75
 
   frontend:
     name: Frontend (vue-tsc + vitest)

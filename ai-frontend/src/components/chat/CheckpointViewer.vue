@@ -14,7 +14,15 @@
           <p>该会话暂无 checkpoint 记录</p>
           <p class="hint">Agent 流程结束后会保存 checkpoint</p>
         </div>
-        <div v-else class="workflows">
+        <div v-else>
+          <div v-if="resuming" class="resume-banner">
+            <span class="resume-spinner"></span>
+            正在从断点继续执行…
+          </div>
+          <div v-else-if="resumeResult" class="resume-banner" :class="resumeResult.ok ? 'ok' : 'fail'">
+            <strong>{{ resumeResult.title }}</strong>
+            <span class="resume-detail">{{ resumeResult.detail }}</span>
+          </div>
           <div
             v-for="wf in checkpoints"
             :key="wf.workflow_type"
@@ -26,6 +34,14 @@
                 当前: <strong>{{ wf.last_completed_step }}</strong>
               </span>
               <span v-else class="last-step muted">未完成任何步骤</span>
+              <button
+                v-if="wf.last_completed_step"
+                class="resume-btn"
+                :disabled="resuming"
+                @click="resume"
+              >
+                ▶ 继续运行
+              </button>
             </div>
             <div class="step-timeline">
               <div
@@ -49,7 +65,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
-import { getCheckpoints, type CheckpointStep } from '@/api/chat'
+import { getCheckpoints, resumeWorkflow, type CheckpointStep } from '@/api/chat'
 
 const props = defineProps<{
   visible: boolean
@@ -63,6 +79,8 @@ const emit = defineEmits<{
 const checkpoints = ref<CheckpointStep[]>([])
 const loading = ref(false)
 const error = ref('')
+const resuming = ref(false)
+const resumeResult = ref<{ ok: boolean; title: string; detail: string } | null>(null)
 
 const hasCheckpoints = computed(() => checkpoints.value.length > 0)
 
@@ -78,6 +96,35 @@ async function load() {
     error.value = err.response?.data?.detail || err.message || '加载失败'
   } finally {
     loading.value = false
+  }
+}
+
+async function resume() {
+  if (!props.sessionId) return
+  resuming.value = true
+  resumeResult.value = null
+  try {
+    const res = await resumeWorkflow(props.sessionId)
+    if (res.error) {
+      resumeResult.value = {
+        ok: false,
+        title: '恢复失败',
+        detail: `${res.error}${res.failed_at ? `（失败于 ${res.failed_at}）` : ''}`,
+      }
+    } else {
+      const wfLabel = (res.workflow_type || '').replace(/_workflow$/, '')
+      resumeResult.value = {
+        ok: true,
+        title: `已从断点继续完成（${wfLabel}）`,
+        detail: res.answer ? res.answer.replace(/\s+/g, ' ').slice(0, 120) + '…' : '',
+      }
+    }
+  } catch (e: unknown) {
+    const err = e as { response?: { data?: { detail?: string } }; message?: string }
+    resumeResult.value = { ok: false, title: '恢复失败', detail: err.response?.data?.detail || err.message || '未知错误' }
+  } finally {
+    resuming.value = false
+    await load()
   }
 }
 
@@ -158,6 +205,46 @@ function formatTime(t: string) {
   color: #aaa;
   margin-top: 8px;
 }
+.resume-banner {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0 20px 16px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: #f0f7ff;
+  border: 1px solid #cfe5ff;
+  font-size: 13px;
+  color: #1a5c9e;
+}
+.resume-banner.ok {
+  background: #f0fdf4;
+  border-color: #c6f0d0;
+  color: #157347;
+}
+.resume-banner.fail {
+  background: #fef2f2;
+  border-color: #f7c9c9;
+  color: #b02a37;
+}
+.resume-detail {
+  font-size: 12px;
+  color: inherit;
+  opacity: 0.85;
+}
+.resume-spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid #cfe5ff;
+  border-top-color: #1a5c9e;
+  border-radius: 50%;
+  animation: rspin 0.8s linear infinite;
+}
+@keyframes rspin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
 .workflows {
   padding: 16px 20px;
   overflow-y: auto;
@@ -188,6 +275,20 @@ function formatTime(t: string) {
   color: #555;
 }
 .last-step.muted { color: #aaa; }
+.resume-btn {
+  margin-left: auto;
+  font-size: 12px;
+  font-weight: 600;
+  color: #fff;
+  background: var(--color-primary, #5b21b6);
+  border: none;
+  border-radius: 6px;
+  padding: 5px 10px;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+.resume-btn:hover:not(:disabled) { opacity: 0.85; }
+.resume-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .step-timeline {
   display: flex;
   flex-direction: column;

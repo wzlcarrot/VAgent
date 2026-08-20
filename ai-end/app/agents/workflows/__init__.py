@@ -27,14 +27,31 @@ atexit.register(lambda: _executor.shutdown(wait=False))
 async def run_sync_in_executor(fn: Callable, *args, timeout: float = None, **kwargs):
     """在线程池中执行同步函数，可选超时。
 
-    timeout：超过后取消等待（coroutine 不再阻塞 event loop），
-    底层线程会继续跑完但被丢弃——避免单个卡死的 workflow 永久占用线程池。
+    timeout：超过后抛 asyncio.TimeoutError，set 取消 Event，并 abort 已注册的
+    httpx.Client / psycopg2 connection.cancel，打断进行中的下游 I/O。
+    线程本身无法被杀死；I/O 被掐断后工作函数应尽快返回。
     """
+    import threading
+
+    from app.utils.task_cancel import cancel_scope
+
     loop = asyncio.get_running_loop()
-    fut = loop.run_in_executor(_executor, lambda: fn(*args, **kwargs))
-    if timeout is not None:
+    cancel_event = threading.Event()
+
+    def _wrapped():
+        with cancel_scope(cancel_event):
+            return fn(*args, **kwargs)
+
+    fut = loop.run_in_executor(_executor, _wrapped)
+    if timeout is None:
+        return await fut
+    try:
         return await asyncio.wait_for(fut, timeout=timeout)
-    return await fut
+    except asyncio.TimeoutError:
+        cancel_event.set()
+        from app.utils.task_cancel import abort_running_io
+        abort_running_io(cancel_event)
+        raise
 
 
 def shutdown_executor():

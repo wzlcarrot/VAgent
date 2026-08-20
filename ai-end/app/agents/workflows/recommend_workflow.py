@@ -88,21 +88,35 @@ def profile_node(state: RecommendState) -> dict:
     favorites = UserTools.get_favorites(user_id, limit=50)
     liked = UserTools.get_liked_videos(user_id, limit=50)
 
+    watched_ids = [h.videoId for h in play_history if h.videoId]
+    # 用 ViewHub 主站真实行为画像：回查 video_info 取 tags 与分区（category_id），
+    # 而非把 videoName 按空格切分当关键词。
+    video_ids = list(dict.fromkeys(watched_ids + favorites + liked))
+    infos = VideoTools.get_video_info_batch(video_ids) if video_ids else []
+    info_map = {vi.videoId: vi for vi in infos if vi and vi.videoId}
+
     tags = []
-    watched_ids = []
-    for h in play_history:
-        if h.videoId:
-            watched_ids.append(h.videoId)
-            if h.videoName:
-                tags.extend(h.videoName.split())
+    regions = []
+    for vid in video_ids:
+        vi = info_map.get(vid)
+        if not vi:
+            continue
+        if vi.tags:
+            tag_list = [t.strip() for t in str(vi.tags).split(",") if t.strip()]
+            tags.extend(tag_list)
+        if vi.categoryId:
+            regions.append(str(vi.categoryId))
+        elif vi.pCategoryId:
+            regions.append(str(vi.pCategoryId))
 
     return {
         "user_profile": {
-            "favorite_tags": list(set(tags))[:10],
+            "favorite_tags": list(dict.fromkeys(tags))[:10],
+            "favorite_regions": list(dict.fromkeys(regions))[:5],
             "watched_video_ids": watched_ids,
             "liked_video_ids": liked,
             "favorite_video_ids": favorites,
-            "play_count": len(play_history)
+            "play_count": len(play_history),
         }
     }
 
@@ -111,19 +125,38 @@ def profile_node(state: RecommendState) -> dict:
 def search_node(state: RecommendState) -> dict:
     user_profile = state.get("user_profile", {})
     favorite_tags = user_profile.get("favorite_tags", [])
+    favorite_regions = user_profile.get("favorite_regions", [])
     question = (state.get("question") or "").strip()
     sid = state.get("session_id", "")
+    user_id = state.get("user_id", "")
 
-    if not favorite_tags and not question:
+    if not favorite_tags and not question and not favorite_regions:
         return {"candidate_videos": []}
+
+    # 把主站真实画像（tags + 分区）并入检索 query，替代空泛标题
+    profile_terms = list(favorite_tags)
+    if favorite_regions:
+        profile_terms.extend(favorite_regions)
+    # 并入跨会话记忆（偏好/活动），让"常看/常点"进排序
+    memory_terms = []
+    if user_id:
+        try:
+            from app.tools.memory_tools import MemoryTools
+            mems = MemoryTools.recall_memories(user_id, query=question, top_k=8)
+            memory_terms = [m.content for m in mems if m.type in ("preference", "activity")][:5]
+        except Exception:
+            memory_terms = []
 
     if question:
         query_parts = [question]
-        if favorite_tags:
-            query_parts.extend(favorite_tags[:3])
+        if profile_terms:
+            query_parts.extend(profile_terms[:3])
+        if memory_terms:
+            query_parts.extend(memory_terms[:3])
         query = " ".join(query_parts)
     else:
-        query = " ".join(favorite_tags[:5])
+        query = " ".join((profile_terms or memory_terms or ["热门"])[:5])
+
     from app.tools.ranker import dual_recall_and_rerank
     results = invoke_with_governor(
         sid, WorkflowType.RECOMMEND, "vector_search",
@@ -142,8 +175,16 @@ def search_node(state: RecommendState) -> dict:
         return {"candidate_videos": []}
 
     watched = set(user_profile.get("watched_video_ids", []))
+    # 负反馈视频（用户标记过"没用"的推荐）从候选剔除，让赞踩真正影响下次排序
+    excluded = watched
+    if user_id:
+        try:
+            from app.tools.memory_tools import MemoryTools
+            excluded = watched | set(MemoryTools.get_negative_feedback_video_ids(user_id))
+        except Exception:
+            excluded = watched
     top_k = state.get("top_k", 5)
-    candidate_ids = [vid for vid in candidate_videos if vid not in watched][:min(top_k + 3, 10)]
+    candidate_ids = [vid for vid in candidate_videos if vid not in excluded][:min(top_k + 3, 10)]
 
     if not candidate_ids:
         return {"candidate_videos": []}
@@ -178,6 +219,12 @@ def search_node(state: RecommendState) -> dict:
 def reason_node(state: RecommendState) -> dict:
     candidate_videos = state.get("candidate_videos", [])
     top_k = state.get("top_k", 5)
+    user_profile = state.get("user_profile", {})
+
+    favorite_tags = user_profile.get("favorite_tags", [])
+    favorite_regions = user_profile.get("favorite_regions", [])
+    liked_ids = set(user_profile.get("liked_video_ids", []))
+    favorite_ids = set(user_profile.get("favorite_video_ids", []))
 
     reasons = []
     for video in candidate_videos[:top_k]:
@@ -185,21 +232,26 @@ def reason_node(state: RecommendState) -> dict:
         tags = video.get("tags", "")
         author = video.get("author", "")
         create_time = video.get("create_time", "") or ""
+        video_id = video.get("video_id", "")
 
-        # 用视频元数据拼接自然推荐理由，优先级：标签 > 作者 > 时间
+        # 用主站真实行为生成理由："你常看科技区且点过同类" 之类，而非空泛元数据拼接
+        tag_list = [t.strip() for t in str(tags).split(",") if t.strip()][:3]
+        overlap = [t for t in tag_list if t in favorite_tags]
+        is_liked = video_id in liked_ids or video_id in favorite_ids
+
         parts = []
-        if tags:
-            tag_list = [t.strip() for t in str(tags).split(",") if t.strip()][:3]
-            if tag_list:
-                parts.append(" · ".join(tag_list))
-        if author:
+        if overlap:
+            parts.append(f"你常看「{'/'.join(overlap[:2])}」")
+        elif favorite_regions:
+            parts.append("你常看这个分区")
+        if is_liked:
+            parts.append("你点过同类")
+        if author and len(parts) < 2:
             parts.append(f"作者 {author}")
-        if create_time:
-            try:
-                dt = create_time[:10]
-                parts.append(f"发布于 {dt}")
-            except Exception:
-                pass
+        if tag_list and not overlap and len(parts) < 2:
+            parts.append(" · ".join(tag_list))
+        if create_time and len(parts) < 2:
+            parts.append(f"发布于 {create_time[:10]}")
         if parts:
             reasons.append("  ".join(parts))
         elif title:

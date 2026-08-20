@@ -68,4 +68,25 @@ describe('WorkflowIndicator', () => {
     await nextTick()
     expect(wrapper.text()).toContain('当前: 正在生成答案')
   })
+
+  it('有 route 时展示路由决策（意图·方法·置信度）', () => {
+    wrapper = mount(WorkflowIndicator, {
+      props: {
+        visible: true,
+        stage: 'generating',
+        label: '生成回复',
+        route: { winner_type: 'recommend_workflow', confidence: 0.85, method: 'consensus' },
+      },
+    })
+    const text = wrapper.text()
+    expect(text).toContain('路由')
+    expect(text).toContain('视频推荐')
+    expect(text).toContain('关键词+语义一致')
+    expect(text).toContain('置信度 85%')
+  })
+
+  it('route 为空时渲染路由决策', () => {
+    wrapper = mountVisible()
+    expect(wrapper.find('.route-decision').exists()).toBe(false)
+  })
 })

@@ -3,12 +3,29 @@ import math
 import threading
 import time
 from collections import OrderedDict
+from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
 from app.agents.intent_constants import DATA_KEYWORDS, USER_DATA_MARKERS
 from app.agents.workflows.constants import WorkflowType
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class RouteDecision:
+    """路由决策结果：意图 + 置信度 + 判定方式。
+
+    confidence 是"意图置信度"（0~1），由真实信号合成：
+    - keyword：关键词命中强度（route_candidates 的固定分）
+    - semantic：语义示例的余弦相似度（归一化到 0~1）
+    - llm：分歧时 LLM 裁决（置信度取 max(语义, 关键词, 0.7)）
+    method 记录实际走的判定路径：keyword_only / consensus / llm / fallback。
+    """
+
+    workflow_type: str
+    confidence: float
+    method: str
 
 
 def _record_router_decision(intent: str, method: str) -> None:
@@ -100,11 +117,12 @@ class Router:
             return
         self._initialized = True
         self.video_keywords: List[str] = ["这个视频", "讲解", "重点", "讲了什么", "说了什么",
-                               "作者是谁", "up主是谁", "主播是谁", "视频简介"]
+                               "作者是谁", "up主是谁", "up主", "主播是谁", "视频简介",
+                               "视频的简介", "时长"]
         self.video_exclude: List[str] = ["功能", "怎么用", "怎么使用", "如何使用", "是什么", "有什么用",
                               "怎么上传", "怎么下载", "怎么删除", "设置", "帮助", "介绍平台"]
         self.recommend_keywords: List[str] = ["推荐", "推荐点", "推荐一些", "推荐几个", "有什么好看的", "看什么", "好看的",
-                                   "有什么推荐", "有啥好看的", "热门"]
+                                   "有什么推荐", "有啥好看的", "热门", "新出"]
         self.user_data_markers: List[str] = USER_DATA_MARKERS
         self.data_keywords: List[str] = DATA_KEYWORDS
 
@@ -269,11 +287,20 @@ class Router:
         return unique
 
     def hybrid_route(self, question: str, context: Optional[Dict[str, Any]] = None) -> str:
+        """两阶段融合路由：返回获胜意图（兼容旧调用方）。"""
+        return self.hybrid_route_full(question, context).workflow_type
+
+    def hybrid_route_full(self, question: str, context: Optional[Dict[str, Any]] = None) -> RouteDecision:
         """
-        两阶段融合路由：
+        两阶段融合路由（返回完整决策：意图 + 置信度 + 判定方式）。
 
         阶段一（共识检测）：关键词 Top-1 与语义 Top-1 一致 → 直接返回
         阶段二（分歧裁决）：不一致时 → LLM 裁决，LLM 结果直接覆盖
+
+        置信度是真实信号，不是拍脑袋常数：
+        - 共识路径：max(关键词强度, 语义余弦归一化分)
+        - LLM 裁决：max(语义, 关键词, 0.7)（LLM 兜底确认）
+        - 纯关键词（embedding 不可用）：关键词强度
 
         上下文信号：
         - video_id + 没有排除关键词 → video_qa 获得 0.5 上下文加分
@@ -308,36 +335,50 @@ class Router:
         sem_top_val_norm = (sem_top_val + 1) / 2
         kw_top_val_norm = kw_top_val
 
+        # embedding 不可用 → 纯关键词路径（无语义分差）
+        if not semantic_dict:
+            conf = min(max(kw_top_val_norm, 0.0), 1.0)
+            if conf < CONFIDENCE_GATE:
+                logger.info(f"keyword_low_conf: {kw_top} ({conf:.2f}), fallback to chat")
+                _record_router_decision(WorkflowType.CHAT, "keyword_low_conf")
+                _record_router_latency("keyword_only", time.time() - start_time)
+                return RouteDecision(WorkflowType.CHAT, conf, "keyword_low_conf")
+            logger.info(f"keyword_route: {kw_top} (kw={kw_top_val:.2f})")
+            _record_router_decision(kw_top, "keyword_only")
+            _record_router_latency("keyword_only", time.time() - start_time)
+            return RouteDecision(kw_top, conf, "keyword_only")
+
         if kw_top == sem_top:
             best_signal = kw_top_val_norm if kw_top_val_norm >= sem_top_val_norm else sem_top_val_norm
             if best_signal < CONFIDENCE_GATE:
                 logger.info(f"low_confidence_consensus: {kw_top} ({best_signal:.2f}), fallback to chat")
                 _record_router_decision(WorkflowType.CHAT, "consensus_low_conf")
-                _record_router_latency("hybrid", time.time() - start_time)
-                return WorkflowType.CHAT
+                _record_router_latency("consensus", time.time() - start_time)
+                return RouteDecision(WorkflowType.CHAT, best_signal, "consensus_low_conf")
             logger.info(f"consensus_route: {kw_top} (kw={kw_top_val:.2f}, sem={sem_top_val:.2f})")
             _record_router_decision(kw_top, "consensus")
-            _record_router_latency("hybrid", time.time() - start_time)
-            return kw_top
+            _record_router_latency("consensus", time.time() - start_time)
+            return RouteDecision(kw_top, best_signal, "consensus")
 
         llm_result = self._route_with_llm(question, context)
         if llm_result is not None:
-            logger.info(f"llm_route: {llm_result} (kw={kw_top}, sem={sem_top})")
+            conf = min(max(max(sem_top_val_norm, kw_top_val_norm), 0.7), 1.0)
+            logger.info(f"llm_route: {llm_result} (kw={kw_top}, sem={sem_top}, conf={conf:.2f})")
             _record_router_decision(llm_result, "llm")
-            _record_router_latency("hybrid", time.time() - start_time)
-            return llm_result
+            _record_router_latency("llm", time.time() - start_time)
+            return RouteDecision(llm_result, conf, "llm")
 
         final = kw_top if kw_top_val >= sem_top_val else sem_top
-        best_signal = max(kw_top_val, sem_top_val)
+        best_signal = max(kw_top_val_norm, sem_top_val_norm)
         if best_signal < CONFIDENCE_GATE:
             logger.info(f"low_confidence_fallback: {final} ({best_signal:.2f}), default to chat")
             _record_router_decision(WorkflowType.CHAT, "fallback_low_conf")
-            _record_router_latency("hybrid", time.time() - start_time)
-            return WorkflowType.CHAT
+            _record_router_latency("fallback", time.time() - start_time)
+            return RouteDecision(WorkflowType.CHAT, best_signal, "fallback_low_conf")
         logger.info(f"fallback_route: {final} (kw={kw_top}, sem={sem_top})")
         _record_router_decision(final, "fallback")
-        _record_router_latency("hybrid", time.time() - start_time)
-        return final
+        _record_router_latency("fallback", time.time() - start_time)
+        return RouteDecision(final, best_signal, "fallback")
 
     def _route_with_llm(self, question: str, context: dict = None) -> Optional[str]:
         """

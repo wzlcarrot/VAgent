@@ -56,6 +56,7 @@
           :visible="showWorkflow"
           :stage="workflowStage"
           :label="workflowLabel"
+          :route="workflowRoute"
         />
 
         <!-- Input -->
@@ -91,6 +92,7 @@ const pendingImages = ref<string[]>([])
 const showWorkflow = ref(false)
 const workflowStage = ref('')
 const workflowLabel = ref('')
+const workflowRoute = ref<{ winner_type: string; confidence: number; method: string } | null>(null)
 const recommendationReasons = ref<Record<string, string>>({})
 const videoServiceAvailable = ref(true)
 
@@ -300,6 +302,7 @@ async function streamAiResponse(text: string, aiMessageId: string, extractedVide
   let fullContent = ''
   workflowStage.value = ''
   workflowLabel.value = ''
+  workflowRoute.value = null
 
   const controller = new AbortController()
   activeStreamController = controller
@@ -323,6 +326,8 @@ async function streamAiResponse(text: string, aiMessageId: string, extractedVide
             recommendationReasons.value[v.videoId] = event.reasons[i]
           }
         })
+      } else if (event.type === 'meta') {
+        workflowRoute.value = event.meta
       }
     }
 
@@ -351,6 +356,7 @@ async function streamAiResponse(text: string, aiMessageId: string, extractedVide
 
     workflowStage.value = ''
     workflowLabel.value = ''
+    workflowRoute.value = null
     chatStore.needsSidebarRefresh = true
   }
 }

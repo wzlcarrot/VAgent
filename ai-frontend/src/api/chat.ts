@@ -97,9 +97,23 @@ export async function submitFeedback(params: {
   session_id: string
   message_index: number
   feedback: 'helpful' | 'not_helpful'
+  video_ids?: string[]
 }): Promise<{ success: boolean }> {
   const url = getStreamUrl('/ai/feedback')
   const response = await http.post(url, params)
+  return response.data
+}
+
+export async function resumeWorkflow(sessionId: string): Promise<{
+  success: boolean
+  workflow_type: string
+  resumed_from: string
+  answer: string
+  error?: string | null
+  failed_at?: string | null
+}> {
+  const url = getStreamUrl('/ai/chat/resume')
+  const response = await http.post(url, { session_id: sessionId })
   return response.data
 }
 
@@ -126,7 +140,16 @@ export type StreamVideosEvent = {
   reasons: string[]
 }
 
-export type StreamEvent = StreamStatusEvent | StreamTextEvent | StreamVideosEvent
+export type StreamMetaEvent = {
+  type: 'meta'
+  meta: {
+    winner_type: string
+    confidence: number
+    method: string
+  }
+}
+
+export type StreamEvent = StreamStatusEvent | StreamTextEvent | StreamVideosEvent | StreamMetaEvent
 
 export type ParsedSSELine =
   | { kind: 'done' }
@@ -167,6 +190,20 @@ export function parseSSELine(line: string): ParsedSSELine | null {
         return {
           kind: 'event',
           event: { type: 'videos', videos: parsed.videos || [], reasons: parsed.reasons || [] },
+        }
+      }
+      if (parsed.type === 'meta') {
+        const m = parsed.meta || {}
+        return {
+          kind: 'event',
+          event: {
+            type: 'meta',
+            meta: {
+              winner_type: typeof m.winner_type === 'string' ? m.winner_type : '',
+              confidence: typeof m.confidence === 'number' ? m.confidence : 0,
+              method: typeof m.method === 'string' ? m.method : '',
+            },
+          },
         }
       }
     }

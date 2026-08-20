@@ -13,7 +13,7 @@ Prometheus Metrics 模块
 from contextlib import contextmanager
 from typing import Optional
 
-from fastapi import APIRouter, Response
+from fastapi import APIRouter, Request, Response
 
 try:
     from prometheus_client import (
@@ -73,8 +73,10 @@ metrics_router = APIRouter()
 
 
 @metrics_router.get("/metrics")
-async def metrics_endpoint():
-    """Prometheus 抓取端点（暴露在 /ai/metrics）"""
+async def metrics_endpoint(request: Request):
+    """Prometheus 抓取端点（/metrics）。与 /ai/admin 一样要求 X-Admin-Key，fail-closed。"""
+    from app.routers.admin import _verify_admin_key
+    _verify_admin_key(request)
     if not PROMETHEUS_AVAILABLE:
         return Response(
             content="# prometheus_client 未安装\n",

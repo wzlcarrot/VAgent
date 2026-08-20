@@ -8,12 +8,18 @@ import { useNotify, showToast as globalShowToast, showConfirm as globalShowConfi
 
 describe('useNotify', () => {
   it('showToast 应更新 toastState', async () => {
-    const { showToast, toastState } = useNotify()
+    const { showToast, hideToast, toastState, onConfirmResolve, showConfirm, confirmState } = useNotify()
     showToast('测试消息', 'success')
     await flushPromises()
     expect(toastState.message).toBe('测试消息')
     expect(toastState.type).toBe('success')
     expect(toastState.visible).toBe(true)
+    hideToast()
+    expect(toastState.visible).toBe(false)
+    const p = showConfirm({ message: 'x' })
+    onConfirmResolve(true)
+    await expect(p).resolves.toBe(true)
+    expect(confirmState.visible).toBe(false)
   })
 
   it('showConfirm 应返回 Promise<bool>', async () => {

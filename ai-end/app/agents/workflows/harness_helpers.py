@@ -110,6 +110,12 @@ def invoke_with_governor(
     tool_name: str,
     fn: Callable,
 ):
+    from app.utils.task_cancel import WorkflowCancelled, check_cancelled
+    try:
+        check_cancelled()
+    except WorkflowCancelled:
+        logger.info(f"tool {tool_name} skipped: workflow cancelled")
+        return []
     if not HARNESS_ENABLED or not session_id:
         return fn()
     try:

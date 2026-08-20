@@ -53,6 +53,33 @@ describe('parseSSELine', () => {
     })
   })
 
+  it('解析 meta 事件（路由决策）', () => {
+    const line = 'data: {"type":"meta","meta":{"winner_type":"recommend_workflow","confidence":0.85,"method":"consensus"}}'
+    expect(parseSSELine(line)).toEqual({
+      kind: 'event',
+      event: {
+        type: 'meta',
+        meta: { winner_type: 'recommend_workflow', confidence: 0.85, method: 'consensus' },
+      },
+    })
+  })
+
+  it('meta 字段缺失时兜底为安全默认值', () => {
+    const line = 'data: {"type":"meta"}'
+    expect(parseSSELine(line)).toEqual({
+      kind: 'event',
+      event: { type: 'meta', meta: { winner_type: '', confidence: 0, method: '' } },
+    })
+  })
+
+  it('meta 字段类型异常时兜底为安全默认值', () => {
+    const line = 'data: {"type":"meta","meta":{"winner_type":123,"confidence":"x","method":null}}'
+    expect(parseSSELine(line)).toEqual({
+      kind: 'event',
+      event: { type: 'meta', meta: { winner_type: '', confidence: 0, method: '' } },
+    })
+  })
+
   it('非预期 JSON（半截 chunk）返回 null 并告警', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     expect(parseSSELine('data: {"type":"text","con')).toBeNull()
@@ -117,6 +144,17 @@ describe('smartChatStream', () => {
     expect(events).toEqual([
       { type: 'status', stage: 'routing', label: '分析意图' },
       { type: 'text', content: '回答' },
+    ])
+  })
+
+  it('产出 meta 事件（路由决策透出）', async () => {
+    const body = [
+      'data: {"type":"meta","meta":{"winner_type":"recommend_workflow","confidence":0.85,"method":"consensus"}}\n\n',
+      'data: [DONE]\n\n',
+    ]
+    const events = await collect(body)
+    expect(events).toEqual([
+      { type: 'meta', meta: { winner_type: 'recommend_workflow', confidence: 0.85, method: 'consensus' } },
     ])
   })
 

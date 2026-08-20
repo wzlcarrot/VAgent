@@ -5,7 +5,6 @@ from contextvars import ContextVar
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import Response
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.config import settings
@@ -304,22 +303,6 @@ async def ready():
 
     ok = all(checks.values())
     return {"status": "ready" if ok else "degraded", "checks": checks}
-
-
-@app.get("/metrics")
-async def metrics():
-    """Prometheus 指标端点"""
-    from app.utils.metrics import get_metrics, get_metrics_content_type
-    metrics_data = get_metrics()
-    if metrics_data is None:
-        return Response(
-            content="# prometheus_client not installed\n",
-            media_type="text/plain",
-        )
-    return Response(
-        content=metrics_data,
-        media_type=get_metrics_content_type(),
-    )
 
 
 if __name__ == "__main__":

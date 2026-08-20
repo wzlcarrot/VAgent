@@ -129,7 +129,8 @@ class TestRecommendWorkflow:
     @patch("app.agents.workflows.recommend_workflow.UserTools.get_play_history")
     @patch("app.agents.workflows.recommend_workflow.UserTools.get_favorites")
     @patch("app.agents.workflows.recommend_workflow.UserTools.get_liked_videos")
-    def test_profile_node_with_history(self, mock_liked, mock_fav, mock_history):
+    @patch("app.agents.workflows.recommend_workflow.VideoTools.get_video_info_batch")
+    def test_profile_node_with_history(self, mock_batch, mock_liked, mock_fav, mock_history):
         from app.agents.workflows.recommend_workflow import RecommendState, profile_node
 
         mock_history.return_value = [
@@ -138,6 +139,10 @@ class TestRecommendWorkflow:
         ]
         mock_fav.return_value = []
         mock_liked.return_value = []
+        mock_batch.return_value = [
+            VideoInfo(videoId="v1", videoName="Python入门", tags="编程,Python", categoryId=1),
+            VideoInfo(videoId="v2", videoName="Java基础", tags="编程,Java", categoryId=1),
+        ]
 
         state: RecommendState = {
             "user_id": "u1", "question": "", "session_id": "",
@@ -149,7 +154,9 @@ class TestRecommendWorkflow:
         result = profile_node(state)
         profile = result["user_profile"]
         assert profile["play_count"] == 2
-        assert "Python入门" in profile["favorite_tags"] or "Java基础" in profile["favorite_tags"]
+        assert "Python" in profile["favorite_tags"]
+        assert "编程" in profile["favorite_tags"]
+        assert "1" in profile["favorite_regions"]
 
     @patch("app.agents.workflows.recommend_workflow.UserTools.get_play_history")
     @patch("app.agents.workflows.recommend_workflow.UserTools.get_favorites")

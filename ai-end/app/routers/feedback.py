@@ -30,14 +30,20 @@ async def submit_feedback(request: Request, authed_user_id: str = Depends(requir
         if not isinstance(message_index, int) or message_index < 0 or message_index > 1000:
             logger.warning(f"feedback 非法 message_index: {message_index}")
             raise HTTPException(status_code=400, detail="message_index 必须为 0-1000 的整数")
+        # 可选的推荐视频 ID 列表：负反馈时记录，供下次推荐降权/剔除
+        video_ids = body.get("video_ids") or []
+        if not isinstance(video_ids, list):
+            raise HTTPException(status_code=400, detail="video_ids 必须是数组")
+        video_ids = [str(v) for v in video_ids[:20]]
         content = f"用户认为第{message_index + 1}轮回复{'有用' if feedback == 'helpful' else '没用'}"
+        tags = [feedback, session_id] + [f"video:{v}" for v in video_ids]
         from app.agents.workflows import run_sync_in_executor
         await run_sync_in_executor(
             MemoryTools.save_memory,
             user_id=user_id, type="feedback", content=content, source="feedback",
-            score=1.0 if feedback == "helpful" else 0.3, tags=[feedback, session_id],
+            score=1.0 if feedback == "helpful" else 0.3, tags=tags,
         )
-        logger.info(f"反馈已记录 user={user_id} session={session_id} feedback={feedback}")
+        logger.info(f"反馈已记录 user={user_id} session={session_id} feedback={feedback} videos={len(video_ids)}")
         return {"success": True}
     except HTTPException:
         raise

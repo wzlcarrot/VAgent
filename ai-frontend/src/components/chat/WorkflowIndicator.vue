@@ -25,22 +25,53 @@
     <div class="current-step" v-if="currentStepLabel">
       当前: {{ currentStepLabel }}
     </div>
+    <div class="route-decision" v-if="routeText">
+      <span class="route-badge">路由</span>
+      <span class="route-text">{{ routeText }}</span>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { ref, watch, computed } from 'vue'
 
 const props = defineProps<{
   visible: boolean
   stage: string
   label: string
+  route?: { winner_type: string; confidence: number; method: string } | null
 }>()
 
 interface Step {
   label: string
   status: 'pending' | 'active' | 'completed'
 }
+
+const WINNER_LABELS: Record<string, string> = {
+  video_qa_workflow: '视频问答',
+  recommend_workflow: '视频推荐',
+  user_data_workflow: '个人数据',
+  chat_workflow: '平台对话',
+}
+
+const METHOD_LABELS: Record<string, string> = {
+  keyword_only: '关键词命中',
+  keyword_low_conf: '关键词低置信',
+  consensus: '关键词+语义一致',
+  consensus_low_conf: '低置信共识',
+  llm: 'LLM 裁决',
+  fallback: '语义兜底',
+  fallback_low_conf: '低置信兜底',
+  fallback_priority: '优先级降级',
+}
+
+const routeText = computed(() => {
+  if (!props.route) return ''
+  const wf = WINNER_LABELS[props.route.winner_type] || props.route.winner_type
+  const method = METHOD_LABELS[props.route.method] || props.route.method
+  const conf = (props.route.confidence * 100).toFixed(0)
+  return `${wf} · ${method} · 置信度 ${conf}%`
+})
 
 const stepConfig = [
   { key: 'routing', label: '分析意图' },
@@ -219,5 +250,31 @@ function initSteps() {
   font-size: 12px;
   color: var(--color-text-secondary);
   margin-top: var(--space-sm);
+}
+
+.route-decision {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  margin-top: var(--space-sm);
+  padding-top: var(--space-sm);
+  border-top: 1px dashed var(--color-border);
+  font-size: 12px;
+}
+
+.route-badge {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-primary);
+  border: 1px solid var(--color-primary);
+  border-radius: 4px;
+  padding: 0 6px;
+  line-height: 18px;
+}
+
+.route-text {
+  color: var(--color-text-secondary);
+  word-break: break-all;
 }
 </style>

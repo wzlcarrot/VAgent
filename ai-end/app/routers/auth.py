@@ -4,6 +4,7 @@
 import hashlib
 import logging
 import secrets
+import threading
 import time
 
 import bcrypt
@@ -18,6 +19,38 @@ from app.routers._shared import AUTH_COOKIE_NAME, TOKEN_TTL, _token_delete, _tok
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+# ─── 登录限流（内存滑动窗口）───
+# 防止暴力破解：按 IP 限频。单实例内存实现，跨实例请换 Redis。
+_LOGIN_LIMIT_MAX = 10          # 窗口内最大尝试次数
+_LOGIN_LIMIT_WINDOW = 900      # 窗口 15 分钟
+_login_attempts: dict = {}
+_login_lock = threading.Lock()
+
+
+def _rate_limited(ip: str) -> bool:
+    """返回 True 表示超过限流（应拒绝）。只统计失败次数，成功登录不占配额。"""
+    now = time.time()
+    with _login_lock:
+        bucket = [t for t in _login_attempts.get(ip, []) if now - t < _LOGIN_LIMIT_WINDOW]
+        _login_attempts[ip] = bucket
+        return len(bucket) >= _LOGIN_LIMIT_MAX
+
+
+def _record_login_failure(ip: str) -> None:
+    """登录失败时立即把该 IP 的窗口计数推进一次。"""
+    now = time.time()
+    with _login_lock:
+        bucket = _login_attempts.get(ip, [])
+        bucket = [t for t in bucket if now - t < _LOGIN_LIMIT_WINDOW]
+        bucket.append(now)
+        _login_attempts[ip] = bucket
+
+
+def _client_ip(request: Request) -> str:
+    if request.client:
+        return request.client.host or "unknown"
+    return "unknown"
 
 
 def _get_test_account():
@@ -51,8 +84,19 @@ def _auth_cookie_kwargs(expiry: float) -> dict:
 
 
 @router.post("/login")
-async def login(request: LoginRequest):
+async def login(request: LoginRequest, req: Request):
     try:
+        # 登录限流：按 IP 窗口计数，超限直接 429
+        ip = _client_ip(req)
+        if _rate_limited(ip):
+            logger.warning(f"登录限流触发: ip={ip}")
+            try:
+                from app.utils.metrics import rate_limited_requests_total
+                rate_limited_requests_total.labels(limiter_name="login").inc()
+            except Exception:
+                pass
+            raise HTTPException(status_code=429, detail="尝试过于频繁，请稍后再试")
+
         expiry = time.time() + TOKEN_TTL
 
         test_account = _get_test_account()
@@ -65,11 +109,13 @@ async def login(request: LoginRequest):
 
         user = await run_in_threadpool(_get_user_by_email, request.email)
         if not user:
+            _record_login_failure(ip)
             raise HTTPException(status_code=401, detail="邮箱或密码错误")
 
         user_id = user.get("user_id")
         stored_password = user.get("password") or ""
         if not _verify_password(request.password, stored_password):
+            _record_login_failure(ip)
             raise HTTPException(status_code=401, detail="邮箱或密码错误")
 
         # 透明升级：旧 MD5 密码验证通过后重哈希为 bcrypt

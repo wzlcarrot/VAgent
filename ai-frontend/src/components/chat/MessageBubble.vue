@@ -56,6 +56,31 @@
             <polyline points="20 6 9 17 4 12"></polyline>
           </svg>
         </button>
+        <div
+          v-if="message.role === 'assistant' && message.status === 'success' && sessionId && !isStreaming"
+          class="feedback-btns"
+        >
+          <button
+            class="feedback-btn"
+            :class="{ active: feedbackState === 'helpful' }"
+            :disabled="feedbackState !== ''"
+            title="有用"
+            aria-label="有用"
+            @click="sendFeedback('helpful')"
+          >
+            有用
+          </button>
+          <button
+            class="feedback-btn"
+            :class="{ active: feedbackState === 'not_helpful' }"
+            :disabled="feedbackState !== ''"
+            title="没用"
+            aria-label="没用"
+            @click="sendFeedback('not_helpful')"
+          >
+            没用
+          </button>
+        </div>
       </div>
     </div>
   </div>
@@ -64,6 +89,7 @@
 <script setup lang="ts">
 import { ref, computed, onBeforeUnmount } from 'vue'
 import { renderMarkdown } from '@/utils/markdown'
+import { submitFeedback } from '@/api/chat'
 import type { Message } from '@/types'
 
 const props = defineProps<{
@@ -78,11 +104,29 @@ const emit = defineEmits<{
 }>()
 
 const copied = ref(false)
+const feedbackState = ref<'helpful' | 'not_helpful' | ''>('')
 let copyTimer: ReturnType<typeof setTimeout> | null = null
 
 onBeforeUnmount(() => {
   if (copyTimer) clearTimeout(copyTimer)
 })
+
+async function sendFeedback(kind: 'helpful' | 'not_helpful') {
+  if (!props.sessionId || feedbackState.value || props.isStreaming) return
+  feedbackState.value = kind
+  const videoIds = (props.message.videos || []).map(v => v.videoId).filter(Boolean)
+  try {
+    await submitFeedback({
+      session_id: props.sessionId,
+      message_index: props.messageIndex ?? 0,
+      feedback: kind,
+      video_ids: videoIds,
+    })
+  } catch (e) {
+    console.warn('提交反馈失败:', e)
+    feedbackState.value = ''
+  }
+}
 
 function handleRetry() {
   emit('retry', props.message.id)
@@ -297,7 +341,7 @@ function previewImage(url: string) {
   border: none;
   cursor: pointer;
   transition: all var(--transition-fast);
-  opacity: 0;
+  opacity: 1;
 }
 
 .message-bubble:hover .feedback-btn {
