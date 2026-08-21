@@ -1,4 +1,6 @@
-from app.agents.router import Router
+from unittest.mock import patch
+
+from app.agents.router import RouteDecision, Router
 from app.agents.supervisor import Supervisor
 
 
@@ -11,7 +13,21 @@ class TestRouter:
         assert result == "video_qa_workflow"
 
     def test_route_video_question_without_context(self):
+        """回归：无 video_id 时，明确视频疑问句也应判 video_qa（中置信度），
+        而非落 chat 拿到泛泛回答。演示第一句「这个视频讲了什么」靠这条。
+        """
         result = self.router.route("这个视频讲了什么")
+        assert result == "video_qa_workflow"
+
+    def test_route_video_question_without_context_medium_conf(self):
+        candidates = self.router.route_candidates("这个视频讲了什么")
+        vqa = next((c for c in candidates if c[0] == "video_qa_workflow"), None)
+        assert vqa is not None
+        assert 0.5 <= vqa[1] <= 0.7
+
+    def test_route_vague_no_video_words_stays_chat(self):
+        """无视频词的模糊问题仍走 chat（不误伤）。"""
+        result = self.router.route("你好")
         assert result == "chat_workflow"
 
     def test_route_recommend_question(self):
@@ -25,6 +41,67 @@ class TestRouter:
     def test_route_default(self):
         result = self.router.route("你好")
         assert result == "chat_workflow"
+
+    def test_semantic_scores_low_margin_returns_empty(self):
+        """回归护栏：语义分 top1-top2 区分度过低（病态 embedding）时返回 {}，
+        路由降级纯关键词，不被假向量带偏。"""
+        with patch.object(self.router, "_exemplar_embeddings", {
+            "video_qa_workflow": [[1.0, 0.0]],
+            "recommend_workflow": [[0.98, 0.01]],
+        }), patch.object(self.router, "_get_embedding", return_value=[[1.0, 0.0]]):
+            scores = self.router._semantic_scores("测试")
+        assert scores == {}
+
+    def test_semantic_scores_good_margin_kept(self):
+        """语义分区分度足够时不降级。"""
+        with patch.object(self.router, "_exemplar_embeddings", {
+            "video_qa_workflow": [[1.0, 0.0]],
+            "recommend_workflow": [[0.0, 1.0]],
+        }), patch.object(self.router, "_get_embedding", return_value=[[1.0, 0.0]]):
+            scores = self.router._semantic_scores("测试")
+        assert "video_qa_workflow" in scores
+        assert scores["video_qa_workflow"] > scores["recommend_workflow"]
+
+    def test_semantic_margin_threshold(self):
+        assert Router._semantic_margin() == 0.03
+
+    def test_route_cache_hit_skips_impl(self):
+        """回归：相同 (question, video_id) 在 TTL 内命中缓存，不再重复计算（省 LLM）。"""
+        r = Router()
+        r.clear_route_cache()
+        with patch.object(r, "_hybrid_route_full_impl", return_value=RouteDecision("video_qa_workflow", 0.9, "consensus")) as impl:
+            d1 = r.hybrid_route_full("这个视频讲了什么", {"video_id": "v1"})
+            d2 = r.hybrid_route_full("这个视频讲了什么", {"video_id": "v1"})
+            assert d1 is d2
+            assert impl.call_count == 1
+        r.clear_route_cache()
+
+    def test_route_cache_miss_on_different_video(self):
+        """video_id 不同视为不同 key，不命中缓存。"""
+        r = Router()
+        r.clear_route_cache()
+        with patch.object(r, "_hybrid_route_full_impl", return_value=RouteDecision("chat_workflow", 0.5, "keyword_only")) as impl:
+            r.hybrid_route_full("这个视频讲了什么", {"video_id": "v1"})
+            r.hybrid_route_full("这个视频讲了什么", {"video_id": "v2"})
+            assert impl.call_count == 2
+        r.clear_route_cache()
+
+    def test_route_cache_expiry(self):
+        """超过 TTL 后重新计算。"""
+
+        r = Router()
+        r.clear_route_cache()
+        with patch.object(r, "_hybrid_route_full_impl", return_value=RouteDecision("chat_workflow", 0.5, "keyword_only")) as impl:
+            r.hybrid_route_full("q1", {})
+            # 手动把缓存时间戳改到很久以前 → 下次视为过期
+            with r._route_cache_lock:
+                key = "q1::"
+                if key in r._route_cache:
+                    ts, dec = r._route_cache[key]
+                    r._route_cache[key] = (ts - 1000, dec)
+            r.hybrid_route_full("q1", {})
+            assert impl.call_count == 2
+        r.clear_route_cache()
 
     def test_route_candidates_video_qa(self):
         candidates = self.router.route_candidates("这个视频讲了什么", {"video_id": "123"})
@@ -182,8 +259,9 @@ class TestRouterUserData:
         assert result == "user_data_workflow"
 
     def test_route_video_without_context(self):
+        """回归：无 video_id 的明确视频疑问句判 video_qa，不落 chat。"""
         result = self.router.route("这个视频讲解")
-        assert result == "chat_workflow"
+        assert result == "video_qa_workflow"
 
     def test_route_normal_chat_not_trigger(self):
         result = self.router.route("你好")

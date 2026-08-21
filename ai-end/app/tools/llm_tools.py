@@ -360,43 +360,8 @@ def _call_with_retry_sync(call_fn, op_name: str):
     return None
 
 
-class _HashEmbedder:
-    """
-    兜底 embedding：当 sentence_transformers 不可用时使用。
-    基于哈希 + 数学归一化生成 384 维向量。**仅用于服务启动和测试**，不用于生产。
-    接口兼容：model.encode([text]) -> ndarray of shape (n, dim)
-    """
-    def __init__(self, dim: int = 384):
-        self.dim = dim
-
-    def encode(self, texts):
-        import hashlib
-        import math
-
-        import numpy as np
-        results = []
-        for text in texts:
-            v = np.zeros(self.dim, dtype=np.float32)
-            tokens = [t for t in text.split() if t]
-            if not tokens:
-                results.append(v)
-                continue
-            for tok in tokens:
-                h = hashlib.md5(tok.encode("utf-8")).digest()
-                for i in range(0, len(h), 4):
-                    idx = int.from_bytes(h[i:i+4], "big") % self.dim
-                    sign = 1.0 if (h[i // 4] & 1) else -1.0
-                    v[idx] += sign * (1.0 / math.sqrt(len(tokens)))
-            norm = np.linalg.norm(v)
-            if norm > 0:
-                v = v / norm
-            results.append(v)
-        return np.stack(results)
-
-
 class LLM_tools:
-    _embed_model = None
-    _embed_lock = threading.Lock()
+    # embedding 相关已拆分到 embed_tools.py（LLM_tools.embed/embedding_is_fallback 为转发）
 
     @staticmethod
     async def chat(messages: List[Dict[str, str]], temperature: float = 0.7,
@@ -780,92 +745,27 @@ class LLM_tools:
             messages, tools, temperature, max_tokens,
             provider=settings.router_llm_provider or settings.llm_provider,
         )
-
     @classmethod
     def _get_embed_model(cls):
-        if cls._embed_model is not None:
-            return cls._embed_model
-        with cls._embed_lock:
-            if cls._embed_model is not None:
-                return cls._embed_model
-            # 1. FastEmbed（ONNX 轻量，无需 PyTorch，本地模型）
-            try:
-                from app.tools.fastembed_embeddings import FastEmbedEmbeddings
-                cls._embed_model = FastEmbedEmbeddings()
-                logger.info("Embedding 模型加载完成（FastEmbed / ONNX）")
-                return cls._embed_model
-            except Exception as e:
-                logger.debug(f"加载 FastEmbed 失败: {e}")
-            # 2. sentence-transformers（有 PyTorch 环境时）
-            try:
-                from sentence_transformers import SentenceTransformer
-                cls._embed_model = SentenceTransformer(settings.embed_model_name)
-                logger.info("Embedding 模型加载完成（sentence-transformers）")
-                return cls._embed_model
-            except Exception as e:
-                logger.debug(f"加载 sentence_transformers 失败: {e}")
-            # 3. Hash fallback（兜底）
-            logger.warning("Embedding 降级到 hash-based fallback")
-            cls._embed_model = _HashEmbedder(dim=384)
-        return cls._embed_model
+        """转发 embed_tools.get_embed_model（拆出 llm_tools 瘦身）。"""
+        from app.tools.embed_tools import get_embed_model
+        return get_embed_model()
 
     @classmethod
     def warmup_embedding(cls, timeout: float = 30.0) -> bool:
-        """
-        启动期预热 Embedding 模型。
-
-        收益：避免首请求冷启动（模型加载 + warmup 通常 5-15s）。
-        失败不抛异常——预热失败应让首请求重试，而不是阻塞启动。
-
-        timeout：超过这个时间就放弃预热（首请求仍会触发加载）。
-        """
-        try:
-            import signal
-
-            class _TimeoutError(Exception):
-                pass
-
-            def _alarm_handler(signum, frame):
-                raise _TimeoutError("warmup timeout")
-
-            old_handler = signal.signal(signal.SIGALRM, _alarm_handler)
-            signal.alarm(int(timeout))
-            try:
-                model = cls._get_embed_model()
-                if model is None:
-                    logger.warning("Embedding 预热跳过：模型加载失败")
-                    return False
-                _ = model.encode(["warmup"])
-                logger.info("Embedding 模型预热完成")
-                return True
-            except _TimeoutError:
-                logger.warning(f"Embedding 预热超时（>{timeout}s），跳过；首请求会触发加载")
-                return False
-            finally:
-                signal.alarm(0)
-                signal.signal(signal.SIGALRM, old_handler)
-        except Exception as e:
-            # signal 在非 Unix 系统不可用——降级到不带超时
-            logger.debug(f"Embedding 预热（无超时模式）异常: {e}")
-            try:
-                model = cls._get_embed_model()
-                if model is None:
-                    return False
-                _ = model.encode(["warmup"])
-                logger.info("Embedding 模型预热完成（无超时模式）")
-                return True
-            except Exception as e2:
-                logger.warning(f"Embedding 预热失败: {e2}")
-                return False
+        """转发 embed_tools.warmup_embedding。"""
+        from app.tools.embed_tools import warmup_embedding
+        return warmup_embedding(timeout=timeout)
 
     @classmethod
     def embed(cls, texts: List[str]) -> Optional[List[List[float]]]:
-        try:
-            model = cls._get_embed_model()
-            if model is None:
-                return None
-            embeddings = model.encode(texts)
-            return embeddings.tolist()
-        except Exception as e:
-            logger.error(f"Embedding失败: {e}")
-            return None
+        """转发 embed_tools.embed。"""
+        from app.tools.embed_tools import embed as _embed
+        return _embed(texts)
+
+    @classmethod
+    @property
+    def embedding_is_fallback(cls) -> bool:
+        """embedding 是否为 hash 兜底（语义不可用）。"""
+        from app.tools.embed_tools import embedding_is_fallback as _flag
+        return _flag

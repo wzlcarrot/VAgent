@@ -15,13 +15,13 @@ import httpx
 import pytest
 from pydantic import BaseModel
 
+from app.tools.embed_tools import _HashEmbedder, _reset_for_tests, get_embed_model
 from app.tools.llm_tools import (
     LLM_tools,
     _abortable_http_client,
     _build_payload,
     _call_with_retry_sync,
     _get_headers,
-    _HashEmbedder,
     _is_retryable_http_status,
     _resolve_provider,
     _safe_get_content,
@@ -379,9 +379,9 @@ def test_build_vision_messages():
     assert LLM_tools._build_vision_messages(msgs, []) == msgs
 
 
-# ─── embedding ───
+# ─── embedding（已拆到 embed_tools）───
 def test_embed_hash_fallback():
-    with patch.object(LLM_tools, "_get_embed_model", return_value=_HashEmbedder()):
+    with patch("app.tools.embed_tools.get_embed_model", return_value=_HashEmbedder()):
         vecs = LLM_tools.embed(["hello world", "hello"])
     assert vecs is not None
     assert len(vecs) == 2
@@ -389,7 +389,7 @@ def test_embed_hash_fallback():
 
 
 def test_embed_returns_none_when_model_none():
-    with patch.object(LLM_tools, "_get_embed_model", return_value=None):
+    with patch("app.tools.embed_tools.get_embed_model", return_value=None):
         assert LLM_tools.embed(["x"]) is None
 
 
@@ -397,12 +397,12 @@ def test_embed_failure_returns_none():
     class BadModel:
         def encode(self, texts):
             raise RuntimeError("boom")
-    with patch.object(LLM_tools, "_get_embed_model", return_value=BadModel()):
+    with patch("app.tools.embed_tools.get_embed_model", return_value=BadModel()):
         assert LLM_tools.embed(["x"]) is None
 
 
 def test_get_embed_model_caches_and_falls_back_to_hash():
-    LLM_tools._embed_model = None
+    _reset_for_tests()
     patches = [patch("app.tools.fastembed_embeddings.FastEmbedEmbeddings", side_effect=Exception("no onnx"))]
     try:
         # sentence_transformers 可能未安装；装了也一样 patch 成抛错，确保走 hash fallback
@@ -410,10 +410,12 @@ def test_get_embed_model_caches_and_falls_back_to_hash():
     except ModuleNotFoundError:
         pass
     with patches[0]:
-        model = LLM_tools._get_embed_model()
+        model = get_embed_model()
     assert isinstance(model, _HashEmbedder)
-    assert LLM_tools._get_embed_model() is model  # 命中缓存
-    LLM_tools._embed_model = None
+    from app.tools import embed_tools
+    assert embed_tools.embedding_is_fallback is True
+    assert get_embed_model() is model  # 命中缓存
+    _reset_for_tests()
 
 
 # ─── abortable clients / close ───

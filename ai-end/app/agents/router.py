@@ -96,6 +96,25 @@ class Router:
     _embedding_cache: "OrderedDict[str, Tuple[List[float], float]]" = OrderedDict()
     _embedding_cache_lock: threading.Lock = threading.Lock()
 
+    # 路由决策缓存：相同 (question, video_id) 在 TTL 内直接复用决策，
+    # 避免重复问题重复走 embedding/LLM 裁决（LLM 慢且烧配额）。
+    _route_cache: "OrderedDict[str, Tuple[float, RouteDecision]]" = OrderedDict()
+    _route_cache_lock: threading.Lock = threading.Lock()
+
+    @classmethod
+    def _route_cache_max(cls) -> int:
+        return 128
+
+    @classmethod
+    def _route_cache_ttl(cls) -> float:
+        """路由决策缓存 TTL（秒）。太短没意义，太长会让上下文切换后的决策陈旧。"""
+        return 10.0
+
+    def clear_route_cache(self) -> None:
+        """清空路由决策缓存（测试/需要强制重新路由时用）。"""
+        with self._route_cache_lock:
+            self._route_cache.clear()
+
     @classmethod
     def _cache_max(cls) -> int:
         from app.config import settings
@@ -105,6 +124,16 @@ class Router:
     def _cache_ttl(cls) -> int:
         from app.config import settings
         return settings.embed_cache_ttl
+
+    @classmethod
+    def _semantic_margin(cls) -> float:
+        """语义分最小区分度：top1-top2 小于该值视为无区分度，降级纯关键词。
+
+        阈值选择：病态 embedding（如 FastEmbed 加载了假向量）时所有句子余弦相似度
+        挤在 0.95-1.0，margin≈0-0.02；真实模型同一意图的近似问法 margin 通常 ≥0.03。
+        取 0.03 能识别病态向量又不误伤真实近似句。
+        """
+        return 0.03
 
     def __new__(cls) -> "Router":
         if cls._instance is None:
@@ -194,7 +223,16 @@ class Router:
         return best
 
     def _load_exemplar_embeddings(self) -> None:
-        """加载意图示例的 embedding（单例，只加载一次）"""
+        """加载意图示例的 embedding（单例，只加载一次）
+
+        embedding 是 hash 兜底时跳过：hash 不是语义模型，示例向量全是噪音，
+        加载只会浪费启动时间，语义分已在 _semantic_scores 统一降级为纯关键词。
+        """
+        from app.tools.embed_tools import embedding_is_fallback
+        if embedding_is_fallback:
+            logger.warning("embedding 为 hash 兜底，跳过意图示例加载，路由走纯关键词")
+            self._exemplar_embeddings = {}
+            return
         if self._exemplar_embeddings is not None:
             return
         with self._embed_lock:
@@ -219,7 +257,18 @@ class Router:
                 self._exemplar_embeddings = {}
 
     def _semantic_scores(self, question: str) -> Dict[str, float]:
-        """计算语义相似度得分"""
+        """计算语义相似度得分。
+
+        若 embedding 是 hash 兜底（非真实语义模型），返回 {} 强制走纯关键词路径，
+        避免 hash 噪音制造假语义分、扭曲路由置信度。
+
+        额外护栏：即便 embedding 标志为正常（如 FastEmbed 加载了但向量质量差），
+        若语义分 top1 与 top2 区分度过小（< _SEMANTIC_MARGIN），视为无区分度，
+        同样返回 {} 降级纯关键词——避免假向量把路由带偏。
+        """
+        from app.tools.embed_tools import embedding_is_fallback
+        if embedding_is_fallback:
+            return {}
         if not self._exemplar_embeddings:
             return {}
         query_vecs: Optional[List[List[float]]] = self._get_embedding([question])
@@ -229,6 +278,15 @@ class Router:
         result: Dict[str, float] = {}
         for intent, exemplar_vecs in self._exemplar_embeddings.items():
             result[intent] = self._max_similarity(query_vec, exemplar_vecs)
+        if result:
+            top_vals = sorted(result.values(), reverse=True)
+            margin = top_vals[0] - top_vals[1] if len(top_vals) > 1 else 1.0
+            if margin < self._semantic_margin():
+                logger.warning(
+                    f"语义分区分度过低 (top1-top2={margin:.3f})，判定 embedding 无区分度，"
+                    f"降级纯关键词路由"
+                )
+                return {}
         return result
 
     def _is_about_current_video(self, question: str) -> bool:
@@ -261,8 +319,15 @@ class Router:
         ctx: Dict[str, Any] = context or {}
         candidates: List[Tuple[str, float]] = []
 
+        # video_qa：
+        # - 有 video_id 且命中强视频词 → 高置信度 1.0
+        # - 无 video_id 但命中强视频词（如「这个视频讲了什么」）→ 中置信度 0.6。
+        #   否则演示第一句「这个视频讲了什么」会因前端不传 video_id 而落到 chat，
+        #   拿到泛泛客服回答而非视频问答（再引导用户提供视频）。
         if ctx.get("video_id") and self._is_about_current_video(question):
             candidates.append((WorkflowType.VIDEO_QA, 1.0))
+        elif self._is_about_current_video(question):
+            candidates.append((WorkflowType.VIDEO_QA, 0.6))
 
         if self._is_personal_data_query(question):
             candidates.append((WorkflowType.USER_DATA, 0.9))
@@ -291,8 +356,34 @@ class Router:
         return self.hybrid_route_full(question, context).workflow_type
 
     def hybrid_route_full(self, question: str, context: Optional[Dict[str, Any]] = None) -> RouteDecision:
+        """两阶段融合路由（带问题级缓存）。
+
+        相同 (question, video_id) 在 TTL 内直接复用决策，避免重复问题重复走
+        embedding/LLM 裁决（LLM 慢且烧配额）。
         """
-        两阶段融合路由（返回完整决策：意图 + 置信度 + 判定方式）。
+        ctx = context or {}
+        cache_key = f"{question}::{(ctx.get('video_id') or '')}"
+
+        now = time.time()
+        with self._route_cache_lock:
+            cached = self._route_cache.get(cache_key)
+            if cached is not None:
+                ts, decision = cached
+                if now - ts < self._route_cache_ttl():
+                    self._route_cache.move_to_end(cache_key)
+                    return decision
+                self._route_cache.pop(cache_key, None)
+
+        decision = self._hybrid_route_full_impl(question, context)
+
+        with self._route_cache_lock:
+            self._route_cache[cache_key] = (now, decision)
+            if len(self._route_cache) > self._route_cache_max():
+                self._route_cache.popitem(last=False)
+        return decision
+
+    def _hybrid_route_full_impl(self, question: str, context: Optional[Dict[str, Any]] = None) -> RouteDecision:
+        """两阶段融合路由（无缓存，实际计算）。
 
         阶段一（共识检测）：关键词 Top-1 与语义 Top-1 一致 → 直接返回
         阶段二（分歧裁决）：不一致时 → LLM 裁决，LLM 结果直接覆盖
