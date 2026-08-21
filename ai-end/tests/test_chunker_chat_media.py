@@ -132,6 +132,24 @@ def test_media_cover_default_and_traversal():
     assert r3.media_type == "image/svg+xml"
 
 
+def test_media_cover_rejects_sibling_prefix(tmp_path, monkeypatch):
+    import asyncio
+
+    from app.config import settings
+    from app.routers import media as media_mod
+
+    cover = tmp_path / "cover"
+    cover.mkdir()
+    evil = tmp_path / "cover-evil"
+    evil.mkdir()
+    (evil / "x.jpg").write_bytes(b"jpeg-bytes")
+    monkeypatch.setattr(settings, "cover_dir", str(cover))
+    with patch.object(media_mod, "is_safe_cover_source_name", return_value=True):
+        r = asyncio.run(media_mod.media_cover("../cover-evil/x.jpg"))
+    assert r.media_type == "image/svg+xml"
+    assert r.body != b"jpeg-bytes"
+
+
 def test_context_manager_memory_and_resolve():
     from app.conversation import context_manager as cm
     cm._memory_store.clear()

@@ -25,14 +25,14 @@
 ```bash
 git clone https://github.com/wzlcarrot/VAgent.git
 cd VAgent
-cp .env.example .env      # 填 LLM API Key + 强 POSTGRES_PASSWORD / ADMIN_API_KEY
+cp .env.example .env      # 填 LLM Key + POSTGRES_PASSWORD / REDIS_PASSWORD / ADMIN_API_KEY
 docker compose up -d --build
 ```
 
 - 前端：http://localhost:4091
 - API 文档：http://localhost:9090/docs
 
-> 生产安全默认：测试账户关闭、数据库口令/管理 key 强制设置、/metrics 鉴权、登录限流。
+> 生产安全默认：测试账户关闭且无弱口令默认值；Postgres/Redis 口令强制设置；库端口只绑本机；登录限流走 Redis；/metrics 鉴权。
 
 ## 测试
 
@@ -52,7 +52,7 @@ cd ai-frontend && npx vitest run --coverage
 
 ## 面试叙事
 
-工程亮点、可追问点的标准回答、三分钟演示剧本见 [docs/interview.md](docs/interview.md)。
+面试提纲见 [docs/interview.md](docs/interview.md)。
 
 ## License
 

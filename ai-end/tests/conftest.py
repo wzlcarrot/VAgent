@@ -19,15 +19,13 @@ def _reset_login_rate_limit():
     """
     try:
         from app.routers import auth as auth_module
-        with auth_module._login_lock:
-            auth_module._login_attempts.clear()
+        auth_module._clear_login_failures()
     except Exception:
         pass
     yield
     try:
         from app.routers import auth as auth_module
-        with auth_module._login_lock:
-            auth_module._login_attempts.clear()
+        auth_module._clear_login_failures()
     except Exception:
         pass
 

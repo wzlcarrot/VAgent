@@ -2,10 +2,12 @@
 登录鉴权路由
 """
 import hashlib
+import hmac
 import logging
 import secrets
 import threading
 import time
+from typing import Optional
 
 import bcrypt
 from fastapi import APIRouter, HTTPException, Request, Response
@@ -20,16 +22,31 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-# ─── 登录限流（内存滑动窗口）───
-# 防止暴力破解：按 IP 限频。单实例内存实现，跨实例请换 Redis。
+# 登录限流：优先 Redis INCR（跨 worker），Redis 不可用时降级内存。
 _LOGIN_LIMIT_MAX = 10          # 窗口内最大尝试次数
 _LOGIN_LIMIT_WINDOW = 900      # 窗口 15 分钟
+_LOGIN_KEY_PREFIX = "login:fail:"
 _login_attempts: dict = {}
 _login_lock = threading.Lock()
 
 
+def _login_redis():
+    try:
+        from app.tools.context_tools import _get_redis
+        return _get_redis()
+    except Exception:
+        return None
+
+
 def _rate_limited(ip: str) -> bool:
     """返回 True 表示超过限流（应拒绝）。只统计失败次数，成功登录不占配额。"""
+    r = _login_redis()
+    if r is not None:
+        try:
+            val = r.get(f"{_LOGIN_KEY_PREFIX}{ip}")
+            return int(val or 0) >= _LOGIN_LIMIT_MAX
+        except Exception as e:
+            logger.debug(f"登录限流读 Redis 失败，降级内存: {e}")
     now = time.time()
     with _login_lock:
         bucket = [t for t in _login_attempts.get(ip, []) if now - t < _LOGIN_LIMIT_WINDOW]
@@ -38,13 +55,43 @@ def _rate_limited(ip: str) -> bool:
 
 
 def _record_login_failure(ip: str) -> None:
-    """登录失败时立即把该 IP 的窗口计数推进一次。"""
+    """登录失败时把该 IP 的窗口计数推进一次。"""
+    r = _login_redis()
+    if r is not None:
+        try:
+            key = f"{_LOGIN_KEY_PREFIX}{ip}"
+            pipe = r.pipeline()
+            pipe.incr(key)
+            pipe.expire(key, _LOGIN_LIMIT_WINDOW)
+            pipe.execute()
+            return
+        except Exception as e:
+            logger.debug(f"登录限流写 Redis 失败，降级内存: {e}")
     now = time.time()
     with _login_lock:
         bucket = _login_attempts.get(ip, [])
         bucket = [t for t in bucket if now - t < _LOGIN_LIMIT_WINDOW]
         bucket.append(now)
         _login_attempts[ip] = bucket
+
+
+def _clear_login_failures(ip: Optional[str] = None) -> None:
+    """测试用：清空限流计数。"""
+    r = _login_redis()
+    if r is not None:
+        try:
+            if ip:
+                r.delete(f"{_LOGIN_KEY_PREFIX}{ip}")
+            else:
+                for key in r.scan_iter(f"{_LOGIN_KEY_PREFIX}*"):
+                    r.delete(key)
+        except Exception:
+            pass
+    with _login_lock:
+        if ip:
+            _login_attempts.pop(ip, None)
+        else:
+            _login_attempts.clear()
 
 
 def _client_ip(request: Request) -> str:
@@ -67,7 +114,10 @@ def _verify_password(plain: str, stored: str) -> bool:
             return bcrypt.checkpw(plain.encode("utf-8"), stored.encode("utf-8"))
         except ValueError:
             return False
-    return hashlib.md5(plain.encode()).hexdigest() == stored
+    digest = hashlib.md5(plain.encode()).hexdigest()
+    if len(digest) != len(stored):
+        return False
+    return hmac.compare_digest(digest, stored)
 
 
 def _auth_cookie_kwargs(expiry: float) -> dict:

@@ -146,7 +146,7 @@ class Settings(BaseSettings):
     @property
     def test_account(self) -> Optional[dict]:
         """获取测试账户配置，未启用时返回 None"""
-        if not self.test_account_enabled or not self.test_account_email:
+        if not self.test_account_enabled or not self.test_account_email or not self.test_account_password_md5:
             return None
         return {
             "email": self.test_account_email,

@@ -12,7 +12,7 @@ from fastapi import APIRouter
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import Response
 
-from app.config import settings
+from app.config import is_safe_cover_source_name, settings
 
 logger = logging.getLogger(__name__)
 
@@ -45,11 +45,17 @@ _CONTENT_TYPES = {
 async def media_cover(sourceName: str = ""):
     """返回封面图：优先读取真实文件，缺失时返回占位封面。"""
     if sourceName:
+        if not is_safe_cover_source_name(sourceName):
+            return Response(content=_DEFAULT_COVER_SVG, media_type="image/svg+xml")
         # sourceName 形如 cover/2026/08/02/BV1x.jpg → 去 cover/ 前缀
         rel = sourceName.replace("cover/", "", 1)
-        path = os.path.join(settings.cover_dir, rel)
-        # 防路径穿越
-        if not os.path.abspath(path).startswith(os.path.abspath(settings.cover_dir)):
+        cover_root = os.path.abspath(settings.cover_dir)
+        path = os.path.abspath(os.path.join(cover_root, rel))
+        try:
+            inside = os.path.commonpath([cover_root, path]) == cover_root
+        except ValueError:
+            inside = False
+        if not inside:
             return Response(content=_DEFAULT_COVER_SVG, media_type="image/svg+xml")
         if os.path.isfile(path):
             try:
