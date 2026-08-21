@@ -39,6 +39,8 @@ export async function login(data: LoginRequest): Promise<AuthResponse> {
       'Content-Type': 'application/json',
     },
     body: JSON.stringify(data),
+    // 携带/种下 httpOnly auth_token cookie（同源默认带；include 兼容跨源直连 :9090）
+    credentials: 'include',
   })
 
   if (!response.ok) {

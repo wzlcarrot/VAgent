@@ -308,6 +308,7 @@ def get_context_for_query(session_id: str, question: str) -> Dict[str, Any]:
     ctx = _load_context(session_id)
     return {
         "question": question,
+        "resolved": resolution["resolved"],
         "resolved_question": resolution["resolved_question"],
         "referenced_video": resolution["referenced_video"],
         "reference_type": resolution["reference_type"],

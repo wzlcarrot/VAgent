@@ -80,22 +80,48 @@ class ChatTools:
                     return []
                 if user_id:
                     cursor.execute("""
-                        SELECT session_id, user_id, MIN(created_at) as first_message_at,
-                               COUNT(*) as message_count, MIN(question) as first_question
-                        FROM chat_history
-                        WHERE user_id = %s AND session_id IS NOT NULL
-                        GROUP BY session_id, user_id
-                        ORDER BY first_message_at DESC
+                        SELECT s.session_id, s.user_id,
+                               s.first_message_at, s.message_count,
+                               c.question as first_question
+                        FROM (
+                            SELECT session_id, user_id,
+                                   MIN(created_at) as first_message_at,
+                                   COUNT(*) as message_count
+                            FROM chat_history
+                            WHERE user_id = %s AND session_id IS NOT NULL
+                            GROUP BY session_id, user_id
+                        ) s
+                        LEFT JOIN LATERAL (
+                            SELECT question FROM chat_history c
+                            WHERE c.session_id = s.session_id AND c.user_id = s.user_id
+                              AND c.created_at = s.first_message_at
+                            ORDER BY c.created_at ASC, c.id ASC
+                            LIMIT 1
+                        ) c ON true
+                        ORDER BY s.first_message_at DESC
                         LIMIT %s OFFSET %s
                     """, (user_id, limit, offset))
                 else:
                     cursor.execute("""
-                        SELECT session_id, user_id, MIN(created_at) as first_message_at,
-                               COUNT(*) as message_count, MIN(question) as first_question
-                        FROM chat_history
-                        WHERE session_id IS NOT NULL
-                        GROUP BY session_id, user_id
-                        ORDER BY first_message_at DESC
+                        SELECT s.session_id, s.user_id,
+                               s.first_message_at, s.message_count,
+                               c.question as first_question
+                        FROM (
+                            SELECT session_id, user_id,
+                                   MIN(created_at) as first_message_at,
+                                   COUNT(*) as message_count
+                            FROM chat_history
+                            WHERE session_id IS NOT NULL
+                            GROUP BY session_id, user_id
+                        ) s
+                        LEFT JOIN LATERAL (
+                            SELECT question FROM chat_history c
+                            WHERE c.session_id = s.session_id
+                              AND c.created_at = s.first_message_at
+                            ORDER BY c.created_at ASC, c.id ASC
+                            LIMIT 1
+                        ) c ON true
+                        ORDER BY s.first_message_at DESC
                         LIMIT %s OFFSET %s
                     """, (limit, offset))
                 rows = cursor.fetchall()

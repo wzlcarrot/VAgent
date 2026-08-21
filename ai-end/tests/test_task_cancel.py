@@ -190,6 +190,54 @@ def test_pipeline_recommend_fallback_meta():
     assert any(e.get("content") == "兜底回答" for e in events)
 
 
+def test_pipeline_recommend_emits_videos_event():
+    """回归：RECOMMEND 胜出且带回推荐时，必须发结构化 videos 事件给前端。
+
+    否则前端 VideoCard 永远接不到，推荐卡片/历史存不上 recommended_videos。
+    """
+    route = SimpleNamespace(
+        workflow_type=WorkflowType.RECOMMEND,
+        confidence=0.85,
+        method="consensus",
+    )
+    rec_videos = [
+        {"video_id": "v1", "title": "一号", "author": "up主A", "tags": "AI,算法"},
+        {"video_id": "v2", "title": "二号", "author": "up主B", "tags": "科普"},
+    ]
+
+    async def fake_run(wf, *args, **kwargs):
+        if wf == WorkflowType.RECOMMEND:
+            return {
+                "workflow_type": wf,
+                "answer": "为你找到 2 个相关视频：\n\n**1. 一号**\n\n**2. 二号**",
+                "confidence": 0.85,
+                "recommended_videos": rec_videos,
+                "reasons": ["你常看「AI」", "热门内容"],
+            }
+        return {
+            "workflow_type": WorkflowType.CHAT,
+            "answer": "兜底回答",
+            "confidence": 0.5,
+            "recommended_videos": [],
+            "reasons": [],
+        }
+
+    async def collect():
+        events = []
+        async for e in parallel_agent_pipeline(
+            WorkflowType.RECOMMEND, "推荐视频", user_id="u1", route_decision=route,
+        ):
+            events.append(e)
+        return events
+
+    with patch("app.routers.chat_pipeline.run_workflow_to_result", side_effect=fake_run):
+        events = asyncio.run(collect())
+    video_events = [e for e in events if e.get("type") == "videos"]
+    assert video_events, "pipeline 未发出 videos 事件"
+    assert video_events[0]["videos"] == rec_videos
+    assert video_events[0]["reasons"] == ["你常看「AI」", "热门内容"]
+
+
 def test_pipeline_all_failed():
     async def boom(*args, **kwargs):
         raise RuntimeError("down")

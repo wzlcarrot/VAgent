@@ -81,6 +81,7 @@ import ChatInput from '@/components/chat/ChatInput.vue'
 import WorkflowIndicator from '@/components/chat/WorkflowIndicator.vue'
 import QuickActions from '@/components/chat/QuickActions.vue'
 import VideoCard from '@/components/video/VideoCard.vue'
+import { normalizeVideos, resolveVideoId } from '@/utils/videos'
 
 const chatStore = useChatStore()
 const userStore = useUserStore()
@@ -95,14 +96,19 @@ const workflowLabel = ref('')
 const workflowRoute = ref<{ winner_type: string; confidence: number; method: string } | null>(null)
 const recommendationReasons = ref<Record<string, string>>({})
 const videoServiceAvailable = ref(true)
+// 当前上下文视频（来自 URL ?video=<id>，如从 ViewHub 播放页带参跳入）。
+// 用户问「这个视频讲了什么」时即使不手动贴 ID 也能路由到视频问答。
+const currentVideoId = ref<string>('')
+
+// 从 Vue Router query 里取 video id：string 直接用，数组取第一个，空则回退 ''
+function _videoIdFromQuery(v: unknown): string {
+  if (typeof v === 'string') return v
+  if (Array.isArray(v) && v.length > 0) return String(v[0])
+  return ''
+}
 
 // 当前进行中的流式请求控制器（session 切换 / 卸载时 abort，避免浪费 LLM token）
 let activeStreamController: AbortController | null = null
-
-const _videoIdPatterns = [
-  /(?:视频)?id[号是:：\s]*([\w-]+)/i,
-  /video[_-]?id[号是:：\s]*([\w-]+)/i,
-]
 
 async function checkVideoService() {
   try {
@@ -115,26 +121,6 @@ async function checkVideoService() {
   } catch {
     videoServiceAvailable.value = false
   }
-}
-
-function _extractVideoId(text: string): string | null {
-  for (const pattern of _videoIdPatterns) {
-    const m = text.match(pattern)
-    if (m && m[1] && m[1].length >= 4) return m[1]
-  }
-  return null
-}
-
-function normalizeVideos(videos: any[] | null | undefined): any[] {
-  if (!Array.isArray(videos)) return []
-  // DB 存量存的是 snake_case（video_id），实时流是 camelCase（videoId），统一为 camelCase
-  return videos.map(v => ({
-    videoId: v.videoId ?? v.video_id,
-    title: v.title ?? '',
-    cover: v.cover ?? '',
-    author: v.author ?? '',
-    tags: v.tags ?? [],
-  }))
 }
 
 function _needsWorkflowIndicator(text: string): boolean {
@@ -165,7 +151,7 @@ const _onSessionSwitched = (e: Event) => {
 
 // 初始化会话
 onMounted(() => {
-  // 优先使用 URL query 中的 sessionId（来自 HistoryView 跳转）
+  // URL query 中的 sessionId（来自 HistoryView 跳转）
   const querySessionId = route.query.session as string | undefined
   if (querySessionId) {
     chatStore.setCurrentSessionId(querySessionId)
@@ -177,9 +163,22 @@ onMounted(() => {
     chatStore.createSession()
   }
 
+  // URL query 中的当前视频（?video=<id>，从 ViewHub 播放页带参跳入），
+  // 供「这个视频讲了什么」这类问题路由到视频问答。
+  // 数组防抖：?video=a&video=b 时 Vue Router 返回 string[]，取第一个。
+  currentVideoId.value = _videoIdFromQuery(route.query.video)
+
   checkVideoService()
   window.addEventListener('session-switched', _onSessionSwitched)
 })
+
+// 同页从 ?video=A 换成 ?video=B（如 SPA 内切片）时同步 currentVideoId，避免串台
+watch(
+  () => route.query.video,
+  (v) => {
+    currentVideoId.value = _videoIdFromQuery(v)
+  },
+)
 
 onUnmounted(() => {
   window.removeEventListener('session-switched', _onSessionSwitched)
@@ -250,7 +249,7 @@ async function handleSend(text: string) {
   const imgUrls = [...pendingImages.value]
   pendingImages.value = []
 
-  const extractedVideoId = _extractVideoId(text)
+  const videoId = resolveVideoId(text, currentVideoId.value)
   const needsWorkflow = _needsWorkflowIndicator(text)
 
   chatStore.addMessage({
@@ -270,7 +269,7 @@ async function handleSend(text: string) {
     status: 'sending',
   }).id
 
-  await streamAiResponse(text, aiMessageId, extractedVideoId, imgUrls)
+  await streamAiResponse(text, aiMessageId, videoId, imgUrls)
 }
 
 async function handleRetry(messageId: string) {
@@ -292,7 +291,7 @@ async function handleRetry(messageId: string) {
     videos: undefined,
   })
 
-  await streamAiResponse(text, messageId, _extractVideoId(text), imgUrls)
+  await streamAiResponse(text, messageId, resolveVideoId(text, currentVideoId.value), imgUrls)
 }
 
 // 当前进行中的流式请求控制器（session 切换 / 卸载时 abort，避免浪费 LLM token）
@@ -320,9 +319,12 @@ async function streamAiResponse(text: string, aiMessageId: string, extractedVide
         fullContent += event.content
         batchedUpdateContent({ content: fullContent, status: 'sending' })
       } else if (event.type === 'videos') {
-        chatStore.updateMessage(aiMessageId, { videos: event.videos })
-        event.videos.forEach((v, i) => {
-          if (event.reasons[i]) {
+        // 实时流后端推的是 snake_case（video_id），必须 normalize 成 camelCase（videoId），
+        // 否则卡片 key / 理由 / 播放链接 / 负反馈 video_ids 全部读不到（历史加载已 normalize）。
+        const normVideos = normalizeVideos(event.videos)
+        chatStore.updateMessage(aiMessageId, { videos: normVideos })
+        normVideos.forEach((v, i) => {
+          if (event.reasons[i] && v.videoId) {
             recommendationReasons.value[v.videoId] = event.reasons[i]
           }
         })

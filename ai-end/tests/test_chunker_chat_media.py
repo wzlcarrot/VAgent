@@ -171,6 +171,12 @@ def test_context_manager_memory_and_resolve():
         assert r4["resolved"] is False
         ctx = cm.get_context_for_query(sid, "第二个")
         assert ctx["has_history"] is True
+        # 回归：get_context_for_query 必须透传 resolved，否则 chat.py 读 ctx["resolved"] 会 KeyError
+        assert ctx["resolved"] is True
+        assert "二号" in ctx["resolved_question"]
+        ctx2 = cm.get_context_for_query(sid, "随便问问")
+        assert ctx2["resolved"] is False
+        assert ctx2["resolved_question"] == "随便问问"
         cm.update_recommendations("", [])
         cm.update_video_qa("", {})
         n = cm._parse_chinese_number("二十一")

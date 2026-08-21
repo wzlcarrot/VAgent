@@ -61,6 +61,42 @@ def _format_categories(limit: int = 6) -> str:
     return "、".join(f"【{name}】" for name, _ in _PREFERENCE_CATEGORIES[:limit])
 
 
+# 相似意图词：问题含这些词说明用户想要"同类/类似"推荐（基于当前观看或上下文），
+# 已足够具体，不应追问。如「推荐两个类似的」「像这个的」。
+_SIMILAR_INTENT_KEYWORDS = ["类似", "相似", "同款", "差不多", "像这个", "这种", "同类"]
+
+# 空泛招呼词：chat 意图下仅命中这些（无实质功能诉求）才追问引导。
+# 中文 `question.split()` 会把整句当一个 token，不能用分词结果判断"有无关键词"，
+# 改为：问题本身不含任何功能/疑问实质词时才视为模糊。
+_VAGUE_GREETINGS = ["你好", "您好", "在吗", "在么", "hi", "hello", "help", "哈喽", "嗨", "有人吗"]
+
+
+def has_category_keyword(question: str) -> bool:
+    """判断问题里是否已经写明了偏好类别（科技/美食/AI/教程…）。
+
+    用包含匹配而非分词：中文无空格，`question.split()` 会把整句当一个 token，
+    永远匹配不到类别别名。直接对整句做子串包含。
+    """
+    if not question:
+        return False
+    for _, aliases in _PREFERENCE_CATEGORIES:
+        for alias in aliases:
+            if alias and alias in question:
+                return True
+    return False
+
+
+def has_similar_intent(question: str) -> bool:
+    """判断问题是否表达了"想要类似/同类推荐"的意图（如「推荐两个类似的」）。
+
+    这类问题已足够具体（用户要的是与当前观看/上文相关的同类内容），
+    不需要追问偏好类别。
+    """
+    if not question:
+        return False
+    return any(kw in question for kw in _SIMILAR_INTENT_KEYWORDS)
+
+
 class IntentClarifier:
     """
     意图澄清器：根据上下文判断是否需要追问用户。
@@ -74,6 +110,7 @@ class IntentClarifier:
         user_preference: Optional[Dict[str, Any]] = None,
         video_id: Optional[str] = None,
         mentioned_keywords: Optional[List[str]] = None,
+        question: Optional[str] = None,
     ) -> bool:
         """
         判断是否需要追问。
@@ -84,17 +121,24 @@ class IntentClarifier:
             user_preference: 用户偏好 dict（直接传入，避免重复查 DB）
             video_id: 当前视频上下文
             mentioned_keywords: 问题中提取的关键词（用于判断歧义）
+            question: 原始问题。用于判断是否已写明偏好类别（推荐意图）
 
         Returns:
             True 表示应该追问
         """
         # recommend：新用户 + 无偏好记忆 → 追问
+        # 但问题已写明类别（「推荐科技类的」）或表达了相似意图（「推荐两个类似的」、
+        # 「像这个的」）时不再追问，直接让推荐流程跑（画像/query 会用这些关键词）。
         if intent == WorkflowType.RECOMMEND:
             has_pref = bool(user_preference and (
                 user_preference.get("favorite_tags")
                 or user_preference.get("favorite_video_ids")
                 or user_preference.get("liked_video_ids")
             ))
+            if not has_pref and (
+                has_category_keyword(question or "") or has_similar_intent(question or "")
+            ):
+                return False
             if not has_pref:
                 return True
 
@@ -102,9 +146,14 @@ class IntentClarifier:
         if intent == WorkflowType.VIDEO_QA and not video_id:
             return True
 
-        # chat：模糊平台问题（无具体关键词） → 引导
+        # chat：仅空泛招呼（你好/在吗）且无实质功能诉求 → 引导
+        # 中文不能靠 question.split() 判断"有无关键词"（整句一个 token），
+        # 改为直接对问题做子串匹配：命中空泛招呼词且问题很短（≤8 字）才追问。
         if intent == WorkflowType.CHAT and not mentioned_keywords:
-            return True
+            q = (question or "").strip()
+            if any(g in q for g in _VAGUE_GREETINGS) and len(q) <= 8:
+                return True
+            return False
 
         return False
 

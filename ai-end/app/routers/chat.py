@@ -135,7 +135,7 @@ async def chat_stream(request: ChatRequest, http_request: Request, authed_user_i
             mentioned = [w for w in question.split() if len(w) > 1]
             if clarifier.need_clarification(
                 intent=workflow_type, user_id=user_id, user_preference=user_pref,
-                video_id=video_id, mentioned_keywords=mentioned,
+                video_id=video_id, mentioned_keywords=mentioned, question=question,
             ):
                 clarification_text = clarifier.get_clarification(
                     intent=workflow_type, video_id=video_id,
@@ -179,8 +179,9 @@ async def chat_stream(request: ChatRequest, http_request: Request, authed_user_i
                         meta = event.get("meta", {})
                         recommended_videos = meta.get("recommended_videos", []) or recommended_videos
                         winner_type_meta = meta.get("winner_type", "") or winner_type_meta
-                        continue
                     elif event_type == "videos":
+                        if event.get("videos"):
+                            recommended_videos = event["videos"]
                         if event.get("reasons"):
                             recommended_reasons = event["reasons"]
                     record_streaming(event)
@@ -201,7 +202,7 @@ async def chat_stream(request: ChatRequest, http_request: Request, authed_user_i
                     if recommended_videos:
                         from app.conversation.context_manager import update_recommendations
                         await _rse(update_recommendations, session_id, recommended_videos)
-                    if winner_type_meta == "video_qa" and video_id:
+                    if winner_type_meta == WorkflowType.VIDEO_QA and video_id:
                         from app.conversation.context_manager import update_video_qa
                         from app.tools import VideoTools
                         _video = await _rse(VideoTools.get_video_info, video_id)

@@ -218,6 +218,17 @@ async def parallel_agent_pipeline(
         reformatted = supervisor.format_result(full_outputs, winner_type)
         if reformatted and reformatted != FALLBACK_RESPONSE:
             winner_text = reformatted
+        # 结构化推荐视频：单独发 videos 事件，前端 VideoCard 直接消费
+        # （而不是只靠 markdown 文本里嵌的标题）
+        if winner_type == WorkflowType.RECOMMEND:
+            rec_videos = winner_result.get("recommended_videos") or []
+            rec_reasons = winner_result.get("reasons") or []
+            if rec_videos:
+                yield {
+                    "type": "videos",
+                    "videos": rec_videos,
+                    "reasons": rec_reasons,
+                }
     winner_text = re.sub(r"<think>.*?</think>\s*", "", winner_text, flags=re.DOTALL).strip()
     from app.agents.workflows.chat_graph import _sanitize_platform
     winner_text = _sanitize_platform(winner_text)
