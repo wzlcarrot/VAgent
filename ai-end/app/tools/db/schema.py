@@ -32,7 +32,12 @@ def init_agent_tables():
             )
         """)
 
-        cursor.execute("CREATE EXTENSION IF NOT EXISTS vector")
+        # vector（pgvector）：语义检索/向量召回依赖；CI 的 pgvector 镜像必带，
+        # 但仍有极少数环境未预装，故与其它扩展一致用 try/except 兜底，避免建表直接崩。
+        try:
+            cursor.execute("CREATE EXTENSION IF NOT EXISTS vector")
+        except Exception as e:
+            logger.warning(f"vector 扩展不可用（向量召回将降级）: {e}")
         # pg_search（ParadeDB BM25）：与 init.sql 保持一致，确保任意初始化路径都有该扩展
         try:
             cursor.execute("CREATE EXTENSION IF NOT EXISTS pg_search")

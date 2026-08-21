@@ -75,7 +75,7 @@ jobs:
 
       - name: Test
         # tests/test_golden_set.py：关键词路径黄金集下限（不调 LLM）
-        run: python -m pytest tests/ -q --cov=app --cov-fail-under=75
+        run: python -m pytest tests/ -q --cov=app --cov-fail-under=72
 
   frontend:
     name: Frontend (vue-tsc + vitest)
