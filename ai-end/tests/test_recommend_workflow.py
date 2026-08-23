@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 
 from app.agents.workflows.recommend_workflow import (
     _build_recommend_markdown,
+    _rank_candidate_ids,
     cold_start_node,
     has_history_router,
     profile_node,
@@ -133,11 +134,12 @@ class TestSearchNode:
              patch("app.agents.workflows.recommend_workflow.invoke_with_governor", side_effect=lambda *a, **k: a[3]()):
             assert search_node(_state(top_k=3)) == {"candidate_videos": []}
 
-    def test_excludes_negative_feedback_videos(self):
+    def test_negative_feedback_videos_are_demoted_not_dropped(self):
         from app.models import VideoInfo
         results = [{"video_id": "v_bad"}, {"video_id": "v_ok"}]
         infos = [
             VideoInfo(videoId="v_ok", videoName="好视频", tags="AI"),
+            VideoInfo(videoId="v_bad", videoName="踩过"),
         ]
         with patch("app.tools.ranker.dual_recall_and_rerank", return_value=results), \
              patch("app.agents.workflows.recommend_workflow.VideoTools.get_video_info_batch", return_value=infos), \
@@ -146,8 +148,41 @@ class TestSearchNode:
              patch("app.tools.memory_tools.MemoryTools.get_negative_feedback_video_ids", return_value=["v_bad"]):
             result = search_node(_state(top_k=3, user_id="u1", user_profile={"favorite_tags": ["AI"]}))
         vids = [v["video_id"] for v in result["candidate_videos"]]
-        assert vids == ["v_ok"]
-        assert "v_bad" not in vids
+        assert vids == ["v_ok", "v_bad"]
+
+    def test_watched_videos_are_demoted_not_dropped(self):
+        from app.models import VideoInfo
+        results = [{"video_id": "v_seen"}, {"video_id": "v_new"}]
+        infos = [
+            VideoInfo(videoId="v_seen", videoName="看过"),
+            VideoInfo(videoId="v_new", videoName="没看"),
+        ]
+        profile = {"favorite_tags": ["AI"], "watched_video_ids": ["v_seen"]}
+        with patch("app.tools.ranker.dual_recall_and_rerank", return_value=results), \
+             patch("app.agents.workflows.recommend_workflow.VideoTools.get_video_info_batch", return_value=infos), \
+             patch("app.agents.workflows.recommend_workflow.invoke_with_governor", side_effect=lambda *a, **k: a[3]()), \
+             patch("app.tools.memory_tools.MemoryTools.recall_memories", return_value=[]), \
+             patch("app.tools.memory_tools.MemoryTools.get_negative_feedback_video_ids", return_value=[]):
+            result = search_node(_state(top_k=3, user_profile=profile))
+        vids = [v["video_id"] for v in result["candidate_videos"]]
+        assert vids == ["v_new", "v_seen"]
+
+
+class TestRankCandidateIds:
+    def test_demotes_watched_behind_unseen(self):
+        assert _rank_candidate_ids(
+            ["seen", "fresh"], watched={"seen"}, not_helpful=set(), limit=5
+        ) == ["fresh", "seen"]
+
+    def test_keeps_watched_when_all_seen(self):
+        assert _rank_candidate_ids(
+            ["a", "b"], watched={"a", "b"}, not_helpful=set(), limit=5
+        ) == ["a", "b"]
+
+    def test_demotes_not_helpful_behind_others(self):
+        assert _rank_candidate_ids(
+            ["bad", "ok", "seen"], watched={"seen"}, not_helpful={"bad"}, limit=5
+        ) == ["ok", "seen", "bad"]
 
 
 class TestReasonNode:

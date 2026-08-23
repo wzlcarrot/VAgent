@@ -122,10 +122,10 @@ class MemoryTools:
 
     @staticmethod
     def get_negative_feedback_video_ids(user_id: str, limit: int = 50) -> List[str]:
-        """召回用户标记"没用"的推荐视频 ID（用于下次推荐降权/剔除）。
+        """召回用户标记「没用」的推荐视频 ID（下次推荐降权，不硬剔除）。
 
         负反馈记忆的 tags 形如 ["not_helpful", session_id, "video:<id>", ...]。
-        只取 not_helpful，避免把点过「有用」的视频也剔除。
+        只取 not_helpful，避免把点过「有用」的也压分。
         """
         try:
             with get_cursor() as cursor:

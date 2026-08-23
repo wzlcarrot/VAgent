@@ -369,6 +369,21 @@ class TestUserDataWorkflow:
         assert intent["data_type"] == "history"
         assert intent["aggregation"] == "list"
 
+    def test_intent_node_keyword_history_colloquial(self):
+        from app.agents.workflows.user_data_workflow import UserDataState, intent_node
+
+        for question in ("我最近看了哪些视频", "我看了什么视频", "我看过哪些视频", "我的观看记录", "我的浏览记录", "我最近播放过的视频"):
+            state: UserDataState = {
+                "question": question,
+                "user_id": "u1", "session_id": "",
+                "intent": {}, "query_result": {},
+                "response": "", "answer": "", "workflow_type": "user_data_workflow"
+            }
+            result = intent_node(state)
+            intent = result["intent"]
+            assert intent["data_type"] == "history", f"{question} 未识别为 history: {intent}"
+            assert intent["aggregation"] == "list", f"{question} 未识别为 list: {intent}"
+
     def test_intent_node_keyword_top_liked(self):
         from app.agents.workflows.user_data_workflow import UserDataState, intent_node
 

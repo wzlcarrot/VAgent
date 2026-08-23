@@ -30,7 +30,7 @@ async def submit_feedback(request: Request, authed_user_id: str = Depends(requir
         if not isinstance(message_index, int) or message_index < 0 or message_index > 1000:
             logger.warning(f"feedback 非法 message_index: {message_index}")
             raise HTTPException(status_code=400, detail="message_index 必须为 0-1000 的整数")
-        # 可选的推荐视频 ID 列表：负反馈时记录，供下次推荐降权/剔除
+        # 可选的推荐视频 ID 列表：负反馈时记录，供下次推荐降权
         video_ids = body.get("video_ids") or []
         if not isinstance(video_ids, list):
             raise HTTPException(status_code=400, detail="video_ids 必须是数组")

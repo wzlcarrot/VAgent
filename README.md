@@ -22,22 +22,23 @@
 
 ## 快速开始
 
+Docker 已收进 ViewHub 仓。本仓只保留应用代码；一键启动：
+
 ```bash
-git clone https://github.com/wzlcarrot/VAgent.git
-cd VAgent
-cp .env.example .env      # 填 LLM Key + POSTGRES_PASSWORD / REDIS_PASSWORD / ADMIN_API_KEY
+# 在 ViewHub 目录（.env 里 VAGENT_ROOT 指向本仓）
+cd /path/to/ViewHub
 docker compose up -d --build
 ```
 
 - 前端：http://localhost:4091
 - API 文档：http://localhost:9090/docs
 
-> 生产安全默认：测试账户关闭且无弱口令默认值；Postgres/Redis 口令强制设置；库端口只绑本机；登录限流走 Redis；/metrics 鉴权。
+本地开发（不起本仓 compose）：`ai-end` 用 uvicorn，`ai-frontend` 用 Vite，数据库连 ViewHub 的 Postgres。
 
 ## 测试
 
 ```bash
-# 后端（覆盖率门槛 75%，无 omit）
+# 后端（覆盖率门槛 72%，无 omit）
 cd ai-end && python -m pytest tests/ -q --cov=app
 
 # 路由黄金集（离线，分方法命中表）

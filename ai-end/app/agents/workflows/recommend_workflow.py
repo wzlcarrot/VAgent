@@ -17,6 +17,38 @@ logger = logging.getLogger(__name__)
 RECOMMEND_STEP_ORDER = ["profile_node", "search_node", "reason_node", "summary_node", "supervisor_node"]
 RECOMMEND_COLD_START_ORDER = ["profile_node", "cold_start_node", "supervisor_node"]
 
+# 都不硬剔除：按「没用 < 已看 < 未看」分层降权，同层保持召回原始顺序。
+# 用分层而非乘系数，避免位置靠前的视频被轻惩罚后仍压过位置靠后的视频。
+WATCHED_RANK = 1
+NOT_HELPFUL_RANK = 2
+
+
+def _rank_candidate_ids(
+    video_ids: List[str],
+    watched: set,
+    not_helpful: set,
+    limit: int,
+) -> List[str]:
+    """已看和「没用」都只降权。没用压得更狠（回复踩的是这批推荐），但不踢出候选。
+
+    分层规则：不感兴趣的排最后，已看次之，未看优先；同层内保持召回原始顺序。
+    """
+    ranked = []
+    seen = set()
+    for i, vid in enumerate(video_ids):
+        if not vid or vid in seen:
+            continue
+        seen.add(vid)
+        if vid in not_helpful:
+            rank = NOT_HELPFUL_RANK
+        elif vid in watched:
+            rank = WATCHED_RANK
+        else:
+            rank = 0
+        ranked.append((rank, i, vid))
+    ranked.sort(key=lambda x: (x[0], x[1]))
+    return [vid for _, _, vid in ranked[:limit]]
+
 
 def _build_recommend_markdown(videos: List[Dict[str, Any]], reasons: List[str] = None) -> str:
     """推荐结果生成纯 Markdown 文本（标题/封面/关键词/作者/创建时间/播放量/理由）。
@@ -175,16 +207,17 @@ def search_node(state: RecommendState) -> dict:
         return {"candidate_videos": []}
 
     watched = set(user_profile.get("watched_video_ids", []))
-    # 负反馈视频（用户标记过"没用"的推荐）从候选剔除，让赞踩真正影响下次排序
-    excluded = watched
+    not_helpful = set()
     if user_id:
         try:
             from app.tools.memory_tools import MemoryTools
-            excluded = watched | set(MemoryTools.get_negative_feedback_video_ids(user_id))
+            not_helpful = set(MemoryTools.get_negative_feedback_video_ids(user_id))
         except Exception:
-            excluded = watched
+            not_helpful = set()
     top_k = state.get("top_k", 5)
-    candidate_ids = [vid for vid in candidate_videos if vid not in excluded][:min(top_k + 3, 10)]
+    candidate_ids = _rank_candidate_ids(
+        candidate_videos, watched, not_helpful, min(top_k + 3, 10)
+    )
 
     if not candidate_ids:
         return {"candidate_videos": []}

@@ -254,6 +254,22 @@ class TestRouterUserData:
         result = self.router.route("我点赞最多的视频")
         assert result == "user_data_workflow"
 
+    def test_route_user_data_recent_watched_colloquial(self):
+        result = self.router.route("我最近看了哪些视频")
+        assert result == "user_data_workflow"
+
+    def test_route_user_data_watched_what(self):
+        result = self.router.route("我看过什么视频")
+        assert result == "user_data_workflow"
+
+    def test_route_user_data_browse_history(self):
+        result = self.router.route("我的浏览记录")
+        assert result == "user_data_workflow"
+
+    def test_route_user_data_recent_played(self):
+        result = self.router.route("我最近播放过的")
+        assert result == "user_data_workflow"
+
     def test_route_user_data_not_recommend_conflict(self):
         result = self.router.route("推荐我的收藏")
         assert result == "user_data_workflow"

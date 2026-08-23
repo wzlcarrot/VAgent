@@ -16,6 +16,6 @@ ignore = [
 "tests/*" = ["E401"]
 
 [tool.pytest.ini_options]
-# 覆盖率门槛：低于 75% 则本地 pytest 直接失败（与 CI --cov-fail-under 一致）
+# 覆盖率门槛：低于 72% 则本地 pytest 直接失败（与 CI --cov-fail-under 一致）
 addopts = "--cov=app --cov-report=term-missing --cov-fail-under=72"
 testpaths = ["tests"]
