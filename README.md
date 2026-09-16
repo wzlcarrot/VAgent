@@ -47,13 +47,57 @@ cd ai-end && python scripts/golden_set.py --no-llm
 # 双路召回对比（BM25-only / vector-only / 融合）
 cd ai-end && python scripts/ablate_recall.py --top-k 5
 
+# Run Trace 离线回放
+cd ai-end && python scripts/replay_trace.py --session <session_id> --run <run_id>
+
+# Behavior Golden Set（路由 + 指代 + Tool Policy）
+cd ai-end && python scripts/behavior_golden_set.py
+
+# 全链路 Workflow Golden（mock DB/LLM）
+cd ai-end && python scripts/workflow_golden_set.py
+
+# 同义口语片内问答（改写命中 / 硬负例拒答）
+cd ai-end && python scripts/synonym_video_qa_eval.py
+
 # 前端（statements/lines 75%）
 cd ai-frontend && npx vitest run --coverage
 ```
 
-## 面试叙事
+## Agentic Video RAG
 
-面试提纲见 [docs/interview.md](docs/interview.md)。
+片内问答不是一次性 RAG，而是轻量 Agent 闭环：
+
+1. **Query rewrite**：规则口语扩展 + 可选 LLM 关键词改写  
+2. **检索漏斗**：`recall_budget` → `rerank_candidate_limit` → `default_top_k`（启动校验单调收窄）  
+3. **批级 EvidenceGate**：最高精排分低于阈值则整批不进 LLM（借鉴 Ragent）  
+4. **片内混合召回**：`pgvector` + ParadeDB BM25，证据不足则多轮补搜  
+5. **Corrective**：启发式 + 可选 LLM judge 校验证据支撑，不支撑则补搜一轮或拒答  
+6. **Bounded ReAct**：检索节点最多 3 次 `search_video_chunks` tool call（`video_qa_react`）  
+7. **Citations**：结构化引用经 SSE 回传并**持久化到 chat_history**，刷新会话仍可展示  
+
+检索-only 调试：`GET /ai/rag/eval?question=...&video_id=...`（需登录，不调用答案生成 LLM）。
+
+检索预热：`python3 ai-end/scripts/demo_warmup.py --base http://127.0.0.1:4091 --token <jwt>`
+
+SSE 回归（离线 CI）：`python3 ai-end/scripts/sse_regression.py --offline`  
+端到端证据校验：`python3 ai-end/scripts/demo_evidence.py --base ... --video-id ... --admin-key ...`  
+Live 五五开验证：`python3 ai-end/scripts/sse_live_suite.py --base ... --video-id ...`  
+15 轮 live：`python3 ai-end/scripts/viewhub_live_regression.py --full ...`  
+
+**Java 索引回调 SLA**：见 [`docs/java-index-callback.md`](docs/java-index-callback.md)  
+**运维质量看板**：Admin →「本周质量」或 `GET /ai/admin/business-quality`
+
+Playwright E2E：`cd ai-frontend && npm run test:e2e`（mock SSE）；`E2E_LIVE=1 npm run test:e2e`（真实登录）
+
+离线评测：
+
+| 脚本 | 用途 |
+|------|------|
+| `workflow_golden_set.py` | 全链路 workflow 输出（6/6） |
+| `behavior_golden_set.py` | 路由 + 指代 + Tool Policy（22/22） |
+| `synonym_video_qa_eval.py` | 口语 hit / 硬负例拒答（9/9） |
+
+演示：`export VAGENT_DEMO_MODE=1` 启用 LLM replay（**仅 mock LLM**；检索改写 / EvidenceGate / grounding 与生产一致）。片内问答支持 **Bounded ReAct**（默认最多 3 次 `search_video_chunks`）。
 
 ## License
 
