@@ -24,6 +24,13 @@ export interface HistoryMessage {
     tags?: string[]
   }> | null
   reasons?: string[] | null
+  citations?: Array<{
+    id: number
+    snippet: string
+    score?: number
+    block_type?: string
+    video_id?: string
+  }> | null
 }
 
 export async function getChatHistory(
@@ -98,9 +105,35 @@ export async function submitFeedback(params: {
   message_index: number
   feedback: 'helpful' | 'not_helpful'
   video_ids?: string[]
-}): Promise<{ success: boolean }> {
+  question?: string
+  answer?: string
+  workflow_type?: string
+  reason?: string
+}): Promise<{ success: boolean; weekly_golden?: Record<string, unknown>; suggest_rebatch?: boolean }> {
   const url = getStreamUrl('/ai/feedback')
   const response = await http.post(url, params)
+  return response.data
+}
+
+export async function trackRecommendClick(params: {
+  video_id: string
+  session_id?: string
+  source?: string
+}): Promise<void> {
+  const url = getStreamUrl('/ai/analytics/recommend-click')
+  await http.post(url, params)
+}
+
+export async function submitApproval(params: {
+  approval_id: string
+  decision: 'approve' | 'deny'
+  session_id?: string
+}): Promise<{ ok: boolean; decision?: string }> {
+  const url = getStreamUrl(`/ai/approval/${encodeURIComponent(params.approval_id)}`)
+  const response = await http.post(url, {
+    decision: params.decision,
+    session_id: params.session_id || '',
+  })
   return response.data
 }
 
@@ -114,6 +147,36 @@ export async function resumeWorkflow(sessionId: string): Promise<{
 }> {
   const url = getStreamUrl('/ai/chat/resume')
   const response = await http.post(url, { session_id: sessionId })
+  return response.data
+}
+
+export interface TraceRun {
+  run_id: string
+  started_at?: number
+  status: string
+  event_count: number
+}
+
+export async function getSessionTraces(sessionId: string): Promise<{
+  session_id: string
+  runs: TraceRun[]
+}> {
+  const params = new URLSearchParams()
+  params.append('session_id', sessionId)
+  const url = `${getStreamUrl('/ai/chat/traces')}?${params.toString()}`
+  const response = await http.get(url)
+  return response.data
+}
+
+export async function getSessionTrace(sessionId: string, runId: string): Promise<{
+  session_id: string
+  run_id: string
+  events: Array<{ seq: number; type: string; payload: Record<string, unknown> }>
+}> {
+  const params = new URLSearchParams()
+  params.append('session_id', sessionId)
+  const url = `${getStreamUrl(`/ai/chat/traces/${runId}`)}?${params.toString()}`
+  const response = await http.get(url)
   return response.data
 }
 
@@ -140,6 +203,17 @@ export type StreamVideosEvent = {
   reasons: string[]
 }
 
+export type StreamCitationsEvent = {
+  type: 'citations'
+  citations: Array<{
+    id: number
+    snippet: string
+    score?: number
+    block_type?: string
+    video_id?: string
+  }>
+}
+
 export type StreamMetaEvent = {
   type: 'meta'
   meta: {
@@ -149,7 +223,51 @@ export type StreamMetaEvent = {
   }
 }
 
-export type StreamEvent = StreamStatusEvent | StreamTextEvent | StreamVideosEvent | StreamMetaEvent
+export type StreamToolEvent = {
+  type: 'tool'
+  name: string
+  status: 'start' | 'end' | string
+  label: string
+  ok?: boolean
+  duration_ms?: number
+}
+
+export type HarnessEvent = {
+  type: 'harness'
+  event: string
+  payload: Record<string, unknown>
+}
+
+export type StreamRetryEvent = {
+  type: 'retry'
+  op: string
+  next_attempt: number
+  max_attempts: number
+  wait_s: number
+  status_code?: number
+  error_type?: string
+}
+
+export type StreamApprovalEvent = {
+  type: 'approval'
+  approval_id: string
+  tool: string
+  label: string
+  agent: string
+  arguments_preview: string
+  timeout_s: number
+}
+
+export type StreamEvent =
+  | StreamStatusEvent
+  | StreamTextEvent
+  | StreamVideosEvent
+  | StreamCitationsEvent
+  | StreamMetaEvent
+  | StreamToolEvent
+  | StreamRetryEvent
+  | StreamApprovalEvent
+  | HarnessEvent
 
 export type ParsedSSELine =
   | { kind: 'done' }
@@ -192,6 +310,24 @@ export function parseSSELine(line: string): ParsedSSELine | null {
           event: { type: 'videos', videos: parsed.videos || [], reasons: parsed.reasons || [] },
         }
       }
+      if (parsed.type === 'citations') {
+        const raw = Array.isArray(parsed.citations) ? parsed.citations : []
+        return {
+          kind: 'event',
+          event: {
+            type: 'citations',
+            citations: raw.map((c: Record<string, unknown>, i: number) => ({
+              id: typeof c?.id === 'number' ? c.id : i + 1,
+              snippet: typeof c?.snippet === 'string' ? c.snippet : '',
+              score: typeof c?.score === 'number' ? c.score : undefined,
+              block_type: typeof c?.block_type === 'string' ? c.block_type : undefined,
+              video_id: typeof c?.video_id === 'string' ? c.video_id : undefined,
+              start_s: typeof c?.start_s === 'number' ? c.start_s : undefined,
+              end_s: typeof c?.end_s === 'number' ? c.end_s : undefined,
+            })).filter((c: { snippet: string }) => c.snippet),
+          },
+        }
+      }
       if (parsed.type === 'meta') {
         const m = parsed.meta || {}
         return {
@@ -203,6 +339,57 @@ export function parseSSELine(line: string): ParsedSSELine | null {
               confidence: typeof m.confidence === 'number' ? m.confidence : 0,
               method: typeof m.method === 'string' ? m.method : '',
             },
+          },
+        }
+      }
+      if (parsed.type === 'tool') {
+        return {
+          kind: 'event',
+          event: {
+            type: 'tool',
+            name: typeof parsed.name === 'string' ? parsed.name : '',
+            status: typeof parsed.status === 'string' ? parsed.status : '',
+            label: typeof parsed.label === 'string' ? parsed.label : '',
+            ok: typeof parsed.ok === 'boolean' ? parsed.ok : undefined,
+            duration_ms: typeof parsed.duration_ms === 'number' ? parsed.duration_ms : undefined,
+          },
+        }
+      }
+      if (parsed.type === 'retry') {
+        return {
+          kind: 'event',
+          event: {
+            type: 'retry',
+            op: typeof parsed.op === 'string' ? parsed.op : '',
+            next_attempt: typeof parsed.next_attempt === 'number' ? parsed.next_attempt : 0,
+            max_attempts: typeof parsed.max_attempts === 'number' ? parsed.max_attempts : 0,
+            wait_s: typeof parsed.wait_s === 'number' ? parsed.wait_s : 0,
+            status_code: typeof parsed.status_code === 'number' ? parsed.status_code : undefined,
+            error_type: typeof parsed.error_type === 'string' ? parsed.error_type : undefined,
+          },
+        }
+      }
+      if (parsed.type === 'approval') {
+        return {
+          kind: 'event',
+          event: {
+            type: 'approval',
+            approval_id: typeof parsed.approval_id === 'string' ? parsed.approval_id : '',
+            tool: typeof parsed.tool === 'string' ? parsed.tool : '',
+            label: typeof parsed.label === 'string' ? parsed.label : '',
+            agent: typeof parsed.agent === 'string' ? parsed.agent : '',
+            arguments_preview: typeof parsed.arguments_preview === 'string' ? parsed.arguments_preview : '',
+            timeout_s: typeof parsed.timeout_s === 'number' ? parsed.timeout_s : 60,
+          },
+        }
+      }
+      if (parsed.type === 'harness') {
+        return {
+          kind: 'event',
+          event: {
+            type: 'harness',
+            event: typeof parsed.event === 'string' ? parsed.event : '',
+            payload: (parsed.payload && typeof parsed.payload === 'object') ? parsed.payload : {},
           },
         }
       }
@@ -221,6 +408,37 @@ export function triggerUnauthorized() {
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent('auth:unauthorized'))
   }
+}
+
+function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new DOMException('Aborted', 'AbortError'))
+      return
+    }
+    const t = setTimeout(resolve, ms)
+    signal?.addEventListener('abort', () => {
+      clearTimeout(t)
+      reject(new DOMException('Aborted', 'AbortError'))
+    }, { once: true })
+  })
+}
+
+async function parseStreamBusy(response: Response): Promise<{ position: number; retryAfter: number }> {
+  const headerRetry = Number(response.headers.get('Retry-After') || 0)
+  let position = 1
+  let retryAfter = headerRetry > 0 ? headerRetry : 2
+  try {
+    const data = await response.json()
+    const detail = data?.detail ?? data
+    if (detail && typeof detail === 'object') {
+      if (typeof detail.queue_position === 'number') position = detail.queue_position
+      if (typeof detail.retry_after === 'number') retryAfter = detail.retry_after
+    }
+  } catch {
+    /* ignore */
+  }
+  return { position, retryAfter: Math.max(1, Math.min(30, retryAfter)) }
 }
 
 export async function* smartChatStream(
@@ -246,22 +464,45 @@ export async function* smartChatStream(
     body.image_urls = imageUrls
   }
 
-  const response = await fetch(url, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(body),
-    signal,
-    // 携带 httpOnly auth_token cookie（同源默认带；include 兼容跨源直连）
-    credentials: 'include',
-  })
+  const maxBusyRetries = 4
+  let response: Response | null = null
+  for (let attempt = 0; attempt <= maxBusyRetries; attempt++) {
+    response = await fetch(url, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(body),
+      signal,
+      credentials: 'include',
+    })
 
-  if (!response.ok) {
+    if (response.ok) break
+
     if (response.status === 401) {
-      // token 过期，清理并跳转登录页
       try { localStorage.removeItem('user') } catch {}
       triggerUnauthorized()
+      throw new Error('HTTP 401')
     }
-    throw new Error(`HTTP ${response.status}`)
+
+    if (response.status === 429 && attempt < maxBusyRetries) {
+      const { position, retryAfter } = await parseStreamBusy(response)
+      yield {
+        type: 'status',
+        stage: 'queued',
+        label: `服务繁忙，排队第 ${position} 位，${retryAfter}s 后重试…`,
+      }
+      await sleep(retryAfter * 1000, signal)
+      continue
+    }
+
+    throw new Error(
+      response.status === 429
+        ? '服务繁忙，请稍后再试'
+        : `HTTP ${response.status}`,
+    )
+  }
+
+  if (!response || !response.ok) {
+    throw new Error('HTTP request failed')
   }
 
   const reader = response.body?.getReader()

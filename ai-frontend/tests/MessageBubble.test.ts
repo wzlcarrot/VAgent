@@ -90,7 +90,7 @@ describe('MessageBubble XSS 防护', () => {
     expect(html).not.toContain('<iframe')
   })
 
-  it('应该过滤 MiniMax-M3 的 <think> 块', () => {
+  it('应该过滤推理模型的 <think> 块', () => {
     const wrapper = mount(MessageBubble, {
       props: {
         message: {

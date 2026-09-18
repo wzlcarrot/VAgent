@@ -25,7 +25,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 
 interface Props {
   visible: boolean
@@ -43,16 +43,16 @@ const props = withDefaults(defineProps<Props>(), {
   variant: 'default',
 })
 
-// 防止 vue-tsc 报未使用变量
-const _props = props
-void _props
-
 const emit = defineEmits<{
   (e: 'confirm'): void
   (e: 'cancel'): void
 }>()
 
 const loading = ref(false)
+
+watch(() => props.visible, (v) => {
+  if (!v) loading.value = false
+})
 
 function onConfirm() {
   loading.value = true

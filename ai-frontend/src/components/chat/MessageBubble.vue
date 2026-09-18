@@ -37,6 +37,35 @@
           </div>
         </a>
       </div>
+
+      <div
+        class="citations-block"
+        data-testid="citations-block"
+        v-if="message.citations && message.citations.length > 0"
+      >
+        <div class="citations-title">依据</div>
+        <div
+          class="citation-item"
+          v-for="c in message.citations"
+          :key="c.id"
+        >
+          <span class="citation-id">[{{ c.id }}]</span>
+          <a
+            v-if="citationHref(c)"
+            class="citation-link"
+            :href="citationHref(c)!"
+            target="_blank"
+            rel="noopener noreferrer"
+            :title="citationTitle(c)"
+          >
+            <span class="citation-snippet">{{ c.snippet }}</span>
+            <span v-if="c.start_s != null" class="citation-time">{{ formatStart(c.start_s) }}</span>
+          </a>
+          <template v-else>
+            <span class="citation-snippet">{{ c.snippet }}</span>
+          </template>
+        </div>
+      </div>
       
       <div class="bubble-meta">
         <span class="source-tag" v-if="message.source">{{ message.source.toUpperCase() }}</span>
@@ -76,11 +105,30 @@
             :disabled="feedbackState !== ''"
             title="没用"
             aria-label="没用"
-            @click="sendFeedback('not_helpful')"
+            @click="onNotHelpfulClick"
           >
             没用
           </button>
         </div>
+      </div>
+      <div
+        v-if="showReasonPicker"
+        class="feedback-reasons"
+        data-testid="feedback-reasons"
+      >
+        <span class="reason-hint">哪里不对？</span>
+        <button
+          v-for="r in reasonOptions"
+          :key="r.id"
+          type="button"
+          class="reason-chip"
+          @click="sendFeedback('not_helpful', r.id)"
+        >
+          {{ r.label }}
+        </button>
+      </div>
+      <div v-if="showRebatch" class="rebatch-row">
+        <button type="button" class="rebatch-btn" @click="emitRebatch">换一批推荐</button>
       </div>
     </div>
   </div>
@@ -90,38 +138,65 @@
 import { ref, computed, onBeforeUnmount } from 'vue'
 import { renderMarkdown } from '@/utils/markdown'
 import { submitFeedback } from '@/api/chat'
-import type { Message } from '@/types'
+import type { Citation, Message } from '@/types'
 
 const props = defineProps<{
   message: Message
   sessionId?: string
   messageIndex?: number
   isStreaming?: boolean
+  userQuestion?: string
 }>()
 
 const emit = defineEmits<{
   retry: [messageId: string]
+  rebatch: []
 }>()
 
 const copied = ref(false)
 const feedbackState = ref<'helpful' | 'not_helpful' | ''>('')
+const showReasonPicker = ref(false)
+const showRebatch = ref(false)
+const reasonOptions = [
+  { id: 'off_topic', label: '没答到点' },
+  { id: 'bad_recommend', label: '推荐不准' },
+  { id: 'outdated', label: '信息过时' },
+  { id: 'other', label: '其他' },
+]
 let copyTimer: ReturnType<typeof setTimeout> | null = null
 
 onBeforeUnmount(() => {
   if (copyTimer) clearTimeout(copyTimer)
 })
 
-async function sendFeedback(kind: 'helpful' | 'not_helpful') {
+function onNotHelpfulClick() {
+  if (!props.sessionId || feedbackState.value || props.isStreaming) return
+  showReasonPicker.value = true
+}
+
+function emitRebatch() {
+  showRebatch.value = false
+  emit('rebatch')
+}
+
+async function sendFeedback(kind: 'helpful' | 'not_helpful', reason = '') {
   if (!props.sessionId || feedbackState.value || props.isStreaming) return
   feedbackState.value = kind
+  showReasonPicker.value = false
   const videoIds = (props.message.videos || []).map(v => v.videoId).filter(Boolean)
   try {
-    await submitFeedback({
+    const res = await submitFeedback({
       session_id: props.sessionId,
       message_index: props.messageIndex ?? 0,
       feedback: kind,
       video_ids: videoIds,
+      question: props.userQuestion || '',
+      answer: props.message.content || '',
+      reason: reason || undefined,
     })
+    if (kind === 'not_helpful' && (res.suggest_rebatch || videoIds.length > 0)) {
+      showRebatch.value = true
+    }
   } catch (e) {
     console.warn('提交反馈失败:', e)
     feedbackState.value = ''
@@ -179,7 +254,7 @@ const videoLinks = computed<VideoLink[]>(() => {
 
 const renderedContent = computed(() => {
   let content = props.message.content
-  // 过滤 MiniMax-M3 推理模型痕迹
+  // 过滤推理模型（DeepSeek 思考模式等）的 <think> 痕迹
   content = content.replace(/<think>[\s\S]*?<\/think>/g, '')
   // 过滤历史脏数据：recommend workflow 之前会拼一段"为你推荐以下视频：..."文本
   // 现在改用 videos 事件直接给视频卡了，但 DB 里的旧记录还有这段文字
@@ -204,6 +279,25 @@ function formatTime(date: Date): string {
     month: '2-digit', day: '2-digit',
     hour: '2-digit', minute: '2-digit'
   })
+}
+
+function formatStart(seconds: number): string {
+  const s = Math.max(0, Math.floor(seconds))
+  const m = Math.floor(s / 60)
+  const r = s % 60
+  return `${m}:${String(r).padStart(2, '0')}`
+}
+
+function citationHref(c: Citation): string | null {
+  if (!c.video_id || c.start_s == null) return null
+  const base = import.meta.env.VITE_VIDEO_BASE_URL || 'http://localhost:7071'
+  const t = Math.max(0, Math.floor(c.start_s))
+  return `${base.replace(/\/$/, '')}/video/${encodeURIComponent(c.video_id)}?t=${t}`
+}
+
+function citationTitle(c: Citation): string {
+  if (c.start_s == null) return '查看依据'
+  return `跳转到约 ${formatStart(c.start_s)}`
 }
 
 async function copyContent() {
@@ -370,6 +464,54 @@ function previewImage(url: string) {
   cursor: default;
 }
 
+.feedback-reasons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  margin-top: 8px;
+  padding-top: 4px;
+}
+
+.reason-hint {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  margin-right: 4px;
+}
+
+.reason-chip {
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--color-border, #ddd);
+  background: var(--color-bg, #fafafa);
+  cursor: pointer;
+}
+
+.reason-chip:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.rebatch-row {
+  margin-top: 8px;
+}
+
+.rebatch-btn {
+  font-size: 13px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--color-primary);
+  background: transparent;
+  color: var(--color-primary);
+  cursor: pointer;
+}
+
+.rebatch-btn:hover {
+  background: var(--color-primary);
+  color: #fff;
+}
+
 .copy-btn {
   padding: 4px;
   border-radius: 4px;
@@ -441,6 +583,64 @@ function previewImage(url: string) {
   flex-direction: column;
   gap: var(--space-sm);
   margin-top: var(--space-md);
+}
+
+.citations-block {
+  margin-top: var(--space-md);
+  padding: var(--space-sm) var(--space-md);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-btn);
+  background: var(--color-bg);
+  font-size: 0.85em;
+  color: var(--color-text-secondary);
+}
+
+.citations-title {
+  font-weight: 600;
+  margin-bottom: var(--space-xs);
+  color: var(--color-text);
+}
+
+.citation-item {
+  display: flex;
+  gap: var(--space-xs);
+  margin: 0.2em 0;
+  line-height: 1.45;
+}
+
+.citation-id {
+  flex-shrink: 0;
+  font-weight: 600;
+  color: var(--color-primary);
+}
+
+.citation-snippet {
+  word-break: break-word;
+}
+
+.citation-link {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: baseline;
+  color: inherit;
+  text-decoration: none;
+  border-bottom: 1px dashed var(--color-primary);
+}
+
+.citation-link:hover {
+  color: var(--color-primary);
+}
+
+.citation-time {
+  flex-shrink: 0;
+  font-size: 0.9em;
+  color: var(--color-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.citation-time::before {
+  content: '↗ ';
 }
 
 .video-card {

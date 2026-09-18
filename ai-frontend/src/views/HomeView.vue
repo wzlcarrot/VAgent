@@ -10,12 +10,18 @@
             <span class="welcome-icon">🤖</span>
           </div>
           <h2>你好！我是 ViewHub AI</h2>
-          <p class="welcome-text">
-            我可以帮你<span class="highlight">推荐视频</span>、<span class="highlight">查询播放数据</span>、<span class="highlight">解答平台问题</span>。
-            试试点击下面的快捷操作👇
+          <p class="welcome-text" v-if="currentVideoId">
+            当前视频上下文已就绪，我可以帮你<span class="highlight">回答片内问题</span>、
+            <span class="highlight">推荐类似视频</span>，也可以<span class="highlight">查询你的播放数据</span>。
           </p>
+          <p class="welcome-text" v-else>
+            我可以帮你<span class="highlight">推荐视频</span>、<span class="highlight">查询播放数据</span>、
+            <span class="highlight">解答平台问题</span>。从播放页进入可自动带入当前视频。
+          </p>
+          <p class="disclaimer-text">AI 回答仅供参考；个人数据仅用于你的账号内查询。</p>
           <QuickActions
             class="quick-actions-container"
+            :current-video-id="currentVideoId"
             @select="handleQuickAction"
           />
         </div>
@@ -28,7 +34,9 @@
               :sessionId="currentSessionId ?? undefined"
               :messageIndex="msgIndex"
               :isStreaming="msgIndex === messages.length - 1 && chatStore.isStreaming"
+              :userQuestion="msgIndex > 0 && messages[msgIndex - 1]?.role === 'user' ? messages[msgIndex - 1].content : ''"
               @retry="handleRetry"
+              @rebatch="handleRebatch"
             />
 
             <!-- Video Cards for Recommendations -->
@@ -46,6 +54,7 @@
                   :videoUrl="getVideoUrl(video.videoId)"
                   :disabled="!videoServiceAvailable"
                   @play="handleVideoPlay"
+                  @navigate="trackVideoClick"
                 />
               </div>
             </div>
@@ -53,52 +62,132 @@
         </div>
 
         <WorkflowIndicator
-          :visible="showWorkflow"
+          :visible="showWorkflow || chatStore.isStreaming"
           :stage="workflowStage"
           :label="workflowLabel"
           :route="workflowRoute"
         />
+        <ToolProgressBar v-if="chatStore.isStreaming" :tools="activeTools" />
 
         <!-- Input -->
         <ChatInput :isStreaming="chatStore.isStreaming" @send="handleSendWithImages" />
+
+        <ConfirmDialog
+          :visible="!!pendingApproval"
+          title="工具调用需确认"
+          :message="approvalMessage"
+          confirm-text="允许执行"
+          cancel-text="拒绝"
+          @confirm="onApprovalConfirm"
+          @cancel="onApprovalDeny"
+        />
+
+        <button
+          v-if="isDev"
+          class="harness-debug-btn"
+          type="button"
+          title="Harness 调试"
+          @click="showHarnessDebug = true"
+        >
+          Harness
+        </button>
+        <HarnessDebugPanel
+          :visible="showHarnessDebug"
+          :session-id="currentSessionId"
+          :live-events="harnessLiveEvents"
+          @close="showHarnessDebug = false"
+        />
       </main>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, nextTick, watch, onMounted, onUnmounted } from 'vue'
+import { ref, computed, nextTick, watch, onMounted, onUnmounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import { useChatStore } from '@/stores/chat'
 import { useUserStore } from '@/stores/user'
-import { smartChatStream, getChatHistory } from '@/api/chat'
+import { smartChatStream, getChatHistory, submitApproval, trackRecommendClick } from '@/api/chat'
 import type { Message } from '@/types'
 import AppHeader from '@/components/layout/AppHeader.vue'
 import AppSidebar from '@/components/layout/AppSidebar.vue'
 import MessageBubble from '@/components/chat/MessageBubble.vue'
 import ChatInput from '@/components/chat/ChatInput.vue'
 import WorkflowIndicator from '@/components/chat/WorkflowIndicator.vue'
+import HarnessDebugPanel from '@/components/chat/HarnessDebugPanel.vue'
+import ToolProgressBar from '@/components/chat/ToolProgressBar.vue'
 import QuickActions from '@/components/chat/QuickActions.vue'
 import VideoCard from '@/components/video/VideoCard.vue'
+import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import { normalizeVideos, resolveVideoId } from '@/utils/videos'
+import { useChatStream } from '@/composables/useChatStream'
 
 const chatStore = useChatStore()
 const userStore = useUserStore()
 const route = useRoute()
 const { messages, currentSessionId } = storeToRefs(chatStore)
+const isDev = import.meta.env.DEV
 
 const messagesContainer = ref<HTMLElement>()
 const pendingImages = ref<string[]>([])
 const showWorkflow = ref(false)
-const workflowStage = ref('')
-const workflowLabel = ref('')
-const workflowRoute = ref<{ winner_type: string; confidence: number; method: string } | null>(null)
+const {
+  workflowStage,
+  workflowLabel,
+  workflowRoute,
+  harnessLiveEvents,
+  pendingApproval,
+  activeTools,
+  resetStreamUi,
+  clearPendingApproval,
+  applyStreamEvent,
+} = useChatStream()
+const showHarnessDebug = ref(false)
 const recommendationReasons = ref<Record<string, string>>({})
 const videoServiceAvailable = ref(true)
 // 当前上下文视频（来自 URL ?video=<id>，如从 ViewHub 播放页带参跳入）。
 // 用户问「这个视频讲了什么」时即使不手动贴 ID 也能路由到视频问答。
 const currentVideoId = ref<string>('')
+
+const approvalMessage = computed(() => {
+  const a = pendingApproval.value
+  if (!a) return ''
+  const preview = a.arguments_preview ? `\n参数：${a.arguments_preview}` : ''
+  return `助手想调用「${a.label || a.tool}」${preview}\n\n允许后继续执行（${Math.round(a.timeout_s)}s 内有效）。`
+})
+
+async function onApprovalConfirm() {
+  const a = pendingApproval.value
+  if (!a) return
+  try {
+    await submitApproval({
+      approval_id: a.approval_id,
+      decision: 'approve',
+      session_id: currentSessionId.value || undefined,
+    })
+  } catch (e) {
+    console.warn('审批失败', e)
+  } finally {
+    clearPendingApproval()
+  }
+}
+
+async function onApprovalDeny() {
+  const a = pendingApproval.value
+  if (!a) return
+  try {
+    await submitApproval({
+      approval_id: a.approval_id,
+      decision: 'deny',
+      session_id: currentSessionId.value || undefined,
+    })
+  } catch (e) {
+    console.warn('拒绝审批失败', e)
+  } finally {
+    clearPendingApproval()
+  }
+}
 
 // 从 Vue Router query 里取 video id：string 直接用，数组取第一个，空则回退 ''
 function _videoIdFromQuery(v: unknown): string {
@@ -213,6 +302,7 @@ async function loadSessionHistory(sessionId: string) {
         // DB 存的是 snake_case（video_id），实时流是 camelCase（videoId），统一为 camelCase
         videos: normalizeVideos(msg.videos) || undefined,
         reasons: msg.reasons || undefined,
+        citations: msg.citations || undefined,
         // 后端历史接口返回 image_urls（snake_case）
         imageUrls: (msg.image_urls || msg.imageUrls) as any,
       } as any)
@@ -289,6 +379,7 @@ async function handleRetry(messageId: string) {
     content: '',
     status: 'sending',
     videos: undefined,
+    citations: undefined,
   })
 
   await streamAiResponse(text, messageId, resolveVideoId(text, currentVideoId.value), imgUrls)
@@ -299,9 +390,7 @@ async function streamAiResponse(text: string, aiMessageId: string, extractedVide
   chatStore.isStreaming = true
 
   let fullContent = ''
-  workflowStage.value = ''
-  workflowLabel.value = ''
-  workflowRoute.value = null
+  resetStreamUi()
 
   const controller = new AbortController()
   activeStreamController = controller
@@ -312,24 +401,21 @@ async function streamAiResponse(text: string, aiMessageId: string, extractedVide
 
   try {
     for await (const event of smartChatStream(text, currentSessionId.value || undefined, extractedVideoId || undefined, userStore.user?.userId, userStore.user?.token, imgUrls.length > 0 ? imgUrls : undefined, controller.signal)) {
-      if (event.type === 'status') {
-        workflowStage.value = event.stage
-        workflowLabel.value = event.label
-      } else if (event.type === 'text') {
-        fullContent += event.content
+      const actionable = applyStreamEvent(event)
+      if (!actionable) continue
+      if (actionable.type === 'text') {
+        fullContent += actionable.content
         batchedUpdateContent({ content: fullContent, status: 'sending' })
-      } else if (event.type === 'videos') {
-        // 实时流后端推的是 snake_case（video_id），必须 normalize 成 camelCase（videoId），
-        // 否则卡片 key / 理由 / 播放链接 / 负反馈 video_ids 全部读不到（历史加载已 normalize）。
-        const normVideos = normalizeVideos(event.videos)
+      } else if (actionable.type === 'videos') {
+        const normVideos = normalizeVideos(actionable.videos)
         chatStore.updateMessage(aiMessageId, { videos: normVideos })
         normVideos.forEach((v, i) => {
-          if (event.reasons[i] && v.videoId) {
-            recommendationReasons.value[v.videoId] = event.reasons[i]
+          if (actionable.reasons[i] && v.videoId) {
+            recommendationReasons.value[v.videoId] = actionable.reasons[i]
           }
         })
-      } else if (event.type === 'meta') {
-        workflowRoute.value = event.meta
+      } else if (actionable.type === 'citations') {
+        chatStore.updateMessage(aiMessageId, { citations: actionable.citations })
       }
     }
 
@@ -355,10 +441,7 @@ async function streamAiResponse(text: string, aiMessageId: string, extractedVide
     chatStore.isStreaming = false
     chatStore.finalizeStreaming()
     showWorkflow.value = false
-
-    workflowStage.value = ''
-    workflowLabel.value = ''
-    workflowRoute.value = null
+    resetStreamUi()
     chatStore.needsSidebarRefresh = true
   }
 }
@@ -384,7 +467,25 @@ function getVideoUrl(videoId: string): string {
   return `${base}/video/${videoId}`
 }
 
+function handleRebatch() {
+  void handleSend('换一批推荐，避开我刚才觉得没用的')
+}
+
+async function trackVideoClick(video: { videoId: string }) {
+  if (!video?.videoId) return
+  try {
+    await trackRecommendClick({
+      video_id: video.videoId,
+      session_id: currentSessionId.value || undefined,
+      source: 'video_card',
+    })
+  } catch (e) {
+    console.warn('推荐点击埋点失败', e)
+  }
+}
+
 function handleVideoPlay(video: { videoId: string }) {
+  void trackVideoClick(video)
   const url = getVideoUrl(video.videoId)
   window.open(url, '_blank', 'noopener,noreferrer')
 }
@@ -460,6 +561,15 @@ function handleVideoPlay(video: { videoId: string }) {
 .welcome-text .highlight {
   color: var(--color-primary-light);
   font-weight: 500;
+}
+
+.disclaimer-text {
+  margin: -12px 0 20px;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  opacity: 0.85;
+  max-width: 420px;
+  line-height: 1.5;
 }
 
 .empty-icon {
@@ -550,5 +660,25 @@ function handleVideoPlay(video: { videoId: string }) {
   display: flex;
   flex-direction: column;
   gap: var(--space-sm);
+}
+
+.harness-debug-btn {
+  position: fixed;
+  right: 16px;
+  bottom: 88px;
+  z-index: 100;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-card);
+  color: var(--color-primary);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+.harness-debug-btn:hover {
+  background: var(--color-primary);
+  color: #fff;
 }
 </style>

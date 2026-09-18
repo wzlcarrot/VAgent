@@ -53,6 +53,41 @@ describe('parseSSELine', () => {
     })
   })
 
+  it('解析 citations 事件，缺省时兜底为空数组', () => {
+    expect(parseSSELine('data: {"type":"citations"}')).toEqual({
+      kind: 'event',
+      event: { type: 'citations', citations: [] },
+    })
+  })
+
+  it('解析 citations 事件并规范化字段（含 start_s）', () => {
+    const line = 'data: {"type":"citations","citations":[{"id":1,"snippet":"证据A","score":0.9,"block_type":"introduction_0","video_id":"v1","start_s":12.5,"end_s":40}]}'
+    expect(parseSSELine(line)).toEqual({
+      kind: 'event',
+      event: {
+        type: 'citations',
+        citations: [{
+          id: 1, snippet: '证据A', score: 0.9, block_type: 'introduction_0',
+          video_id: 'v1', start_s: 12.5, end_s: 40,
+        }],
+      },
+    })
+  })
+
+  it('citations 无 snippet 的项被过滤', () => {
+    const line = 'data: {"type":"citations","citations":[{"id":1,"snippet":""},{"snippet":"ok"}]}'
+    expect(parseSSELine(line)).toEqual({
+      kind: 'event',
+      event: {
+        type: 'citations',
+        citations: [{
+          id: 2, snippet: 'ok', score: undefined, block_type: undefined,
+          video_id: undefined, start_s: undefined, end_s: undefined,
+        }],
+      },
+    })
+  })
+
   it('解析 meta 事件（路由决策）', () => {
     const line = 'data: {"type":"meta","meta":{"winner_type":"recommend_workflow","confidence":0.85,"method":"consensus"}}'
     expect(parseSSELine(line)).toEqual({
@@ -60,6 +95,51 @@ describe('parseSSELine', () => {
       event: {
         type: 'meta',
         meta: { winner_type: 'recommend_workflow', confidence: 0.85, method: 'consensus' },
+      },
+    })
+  })
+
+  it('解析 tool 事件（工具进度）', () => {
+    const line = 'data: {"type":"tool","name":"search_video_chunks","status":"start","label":"检索视频片段"}'
+    expect(parseSSELine(line)).toEqual({
+      kind: 'event',
+      event: {
+        type: 'tool',
+        name: 'search_video_chunks',
+        status: 'start',
+        label: '检索视频片段',
+        ok: undefined,
+      },
+    })
+  })
+
+  it('解析 tool end 事件含 duration_ms', () => {
+    const line = 'data: {"type":"tool","name":"search_video_chunks","status":"end","label":"检索视频片段","ok":true,"duration_ms":42}'
+    expect(parseSSELine(line)).toEqual({
+      kind: 'event',
+      event: {
+        type: 'tool',
+        name: 'search_video_chunks',
+        status: 'end',
+        label: '检索视频片段',
+        ok: true,
+        duration_ms: 42,
+      },
+    })
+  })
+
+  it('解析 approval HITL 事件', () => {
+    const line = 'data: {"type":"approval","approval_id":"a1","tool":"recommend_videos","label":"个性化推荐","agent":"recommend_workflow","arguments_preview":"{}","timeout_s":60}'
+    expect(parseSSELine(line)).toEqual({
+      kind: 'event',
+      event: {
+        type: 'approval',
+        approval_id: 'a1',
+        tool: 'recommend_videos',
+        label: '个性化推荐',
+        agent: 'recommend_workflow',
+        arguments_preview: '{}',
+        timeout_s: 60,
       },
     })
   })

@@ -1,44 +1,57 @@
 <template>
   <div class="quick-actions" v-if="visible">
     <div class="actions-header">
-      <span class="hint-text">快捷操作 👇</span>
+      <span class="hint-text">{{ headerText }}</span>
     </div>
-    <div class="actions-grid">
+    <div class="actions-grid" :class="{ 'video-mode': !!currentVideoId }">
       <button
+        v-for="action in actions"
+        :key="action.key"
         class="action-btn"
-        @click="$emit('select', '推荐一些适合我的视频')"
+        @click="$emit('select', action.prompt)"
       >
-        <span class="action-icon">🎬</span>
-        <span class="action-text">视频推荐</span>
-      </button>
-      <button
-        class="action-btn"
-        @click="$emit('select', '这个网站有哪些特色功能？')"
-      >
-        <span class="action-icon">🌐</span>
-        <span class="action-text">网站介绍</span>
-      </button>
-      <button
-        class="action-btn"
-        @click="$emit('select', '这个平台怎么使用？')"
-      >
-        <span class="action-icon">❓</span>
-        <span class="action-text">使用帮助</span>
+        <span class="action-icon">{{ action.icon }}</span>
+        <span class="action-text">{{ action.label }}</span>
       </button>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-withDefaults(defineProps<{
+import { computed } from 'vue'
+
+const props = withDefaults(defineProps<{
   visible?: boolean
+  /** 播放页 URL 带入的 video_id，有值时展示片内问答快捷入口 */
+  currentVideoId?: string
 }>(), {
   visible: true,
+  currentVideoId: '',
 })
 
 defineEmits<{
   select: [prompt: string]
 }>()
+
+const headerText = computed(() =>
+  props.currentVideoId
+    ? '当前视频已带入上下文，试试片内问答 👇'
+    : '快捷操作 👇',
+)
+
+const defaultActions = [
+  { key: 'recommend', icon: '🎬', label: '视频推荐', prompt: '推荐一些适合我的视频' },
+  { key: 'intro', icon: '🌐', label: '网站介绍', prompt: '这个网站有哪些特色功能？' },
+  { key: 'help', icon: '❓', label: '使用帮助', prompt: '这个平台怎么使用？' },
+]
+
+const videoActions = [
+  { key: 'video-qa', icon: '📺', label: '视频讲了什么', prompt: '这个视频讲了什么' },
+  { key: 'similar', icon: '🎯', label: '推荐类似', prompt: '推荐和当前视频类似的视频' },
+  { key: 'help', icon: '❓', label: '使用帮助', prompt: '这个平台怎么使用？' },
+]
+
+const actions = computed(() => (props.currentVideoId ? videoActions : defaultActions))
 </script>
 
 <style scoped>
@@ -64,6 +77,10 @@ defineEmits<{
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: var(--space-sm);
+}
+
+.actions-grid.video-mode {
+  grid-template-columns: repeat(3, 1fr);
 }
 
 .action-btn {

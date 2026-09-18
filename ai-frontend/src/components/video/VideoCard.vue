@@ -5,6 +5,7 @@
     target="_blank"
     rel="noopener noreferrer"
     class="video-card"
+    @click="onCardNavigate"
   >
     <div class="video-cover">
       <img :src="video.cover || defaultCover" :alt="video.title" loading="lazy" @error="onImgError($event)" />
@@ -91,6 +92,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   play: [video: VideoInfo]
+  navigate: [video: VideoInfo]
 }>()
 
 function onImgError(e: Event) {
@@ -98,7 +100,12 @@ function onImgError(e: Event) {
   if (img) img.src = defaultCover
 }
 
+function onCardNavigate() {
+  emit('navigate', props.video)
+}
+
 function handlePlay(e: Event) {
+  e.preventDefault()
   e.stopPropagation()
   if (!props.disabled) {
     emit('play', props.video)

@@ -6,13 +6,30 @@ import { mount } from '@vue/test-utils'
 import QuickActions from '@/components/chat/QuickActions.vue'
 
 describe('QuickActions', () => {
-  it('默认渲染 3 个快捷操作按钮', () => {
+  it('默认渲染 3 个通用快捷操作按钮', () => {
     const wrapper = mount(QuickActions)
     const btns = wrapper.findAll('.action-btn')
     expect(btns).toHaveLength(3)
     expect(wrapper.text()).toContain('视频推荐')
     expect(wrapper.text()).toContain('网站介绍')
     expect(wrapper.text()).toContain('使用帮助')
+    expect(wrapper.text()).toContain('快捷操作')
+  })
+
+  it('有 currentVideoId 时渲染播放页快捷入口', () => {
+    const wrapper = mount(QuickActions, { props: { currentVideoId: 'v123' } })
+    expect(wrapper.text()).toContain('当前视频已带入上下文')
+    expect(wrapper.text()).toContain('视频讲了什么')
+    expect(wrapper.text()).toContain('推荐类似')
+    const btns = wrapper.findAll('.action-btn')
+    expect(btns).toHaveLength(3)
+  })
+
+  it('播放页点击「视频讲了什么」触发 select', async () => {
+    const wrapper = mount(QuickActions, { props: { currentVideoId: 'v123' } })
+    const btn = wrapper.findAll('.action-btn')[0]
+    await btn.trigger('click')
+    expect(wrapper.emitted('select')![0][0]).toBe('这个视频讲了什么')
   })
 
   it('点击"视频推荐"触发 select 事件且 payload 正确', async () => {

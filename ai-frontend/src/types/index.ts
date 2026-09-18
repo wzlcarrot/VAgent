@@ -55,6 +55,16 @@ export interface FallbackLog {
   responseTime?: number
 }
 
+export interface Citation {
+  id: number
+  snippet: string
+  score?: number
+  block_type?: string
+  video_id?: string
+  start_s?: number
+  end_s?: number
+}
+
 export interface Message {
   id: string
   role: 'user' | 'assistant'
@@ -63,6 +73,7 @@ export interface Message {
   status: 'sending' | 'success' | 'error'
   source?: 'java' | 'python'
   videos?: VideoInfo[]
+  citations?: Citation[]
   imageUrls?: string[]
 }
 
