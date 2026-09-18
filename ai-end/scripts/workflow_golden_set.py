@@ -95,6 +95,7 @@ CASES = [
                     True,
                     1,
                     "",
+                    "answered",
                 ),
             ),
             (
@@ -119,7 +120,7 @@ CASES = [
             ),
             (
                 "app.agents.workflows.video_qa_workflow.run_video_qa_react_retrieval",
-                lambda **kw: ([], False, 1, ""),
+                lambda **kw: ([], False, 1, "", "answered"),
             ),
         ],
         "check": _check_video_qa_refuse,

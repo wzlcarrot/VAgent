@@ -136,7 +136,7 @@
         <div class="card" v-if="traceSummary">
           <h2>Trace 摘要 · {{ traceSummary.run_id }}</h2>
           <div class="trace-meta">
-            <span class="badge" :class="traceSummary.status">{{ traceSummary.status }}</span>
+            <span class="badge" :class="String(traceSummary.status)">{{ traceSummary.status }}</span>
             <span v-if="traceSummary.duration_ms != null">{{ Math.round(Number(traceSummary.duration_ms)) }} ms</span>
             <span v-if="traceSummary.stop_reason">winner: {{ traceSummary.stop_reason }}</span>
           </div>
