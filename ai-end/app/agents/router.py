@@ -148,6 +148,7 @@ class Router:
             return
         self._initialized = True
         self.video_keywords: List[str] = ["这个视频", "讲解", "重点", "讲了什么", "说了什么",
+                               "讲了啥", "说了啥", "讲的啥", "说了点啥",
                                "作者是谁", "up主是谁", "up主", "主播是谁", "视频简介",
                                "视频的简介", "时长"]
         self.video_exclude: List[str] = ["功能", "怎么用", "怎么使用", "如何使用", "是什么", "有什么用",
