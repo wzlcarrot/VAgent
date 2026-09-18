@@ -118,10 +118,11 @@ class TestVideoQAWorkflow:
         }
         assert router_need_knowledge(state_without) == "summary_node"
 
+    @patch("app.services.video_indexing.is_video_indexed", return_value=True)
     @patch("app.agents.workflows.video_qa_workflow.VideoTools.get_video_info")
     @patch("app.agents.workflows.video_qa_workflow.run_video_qa_react_retrieval")
     @patch("app.agents.workflows.video_qa_workflow.LLM_tools.chat_sync", return_value="这是一门 Python 入门课[1]。")
-    def test_video_qa_graph_invoke(self, mock_llm, mock_react, mock_video):
+    def test_video_qa_graph_invoke(self, mock_llm, mock_react, mock_video, mock_indexed):
         from app.agents.workflows.video_qa_workflow import VideoQAState, video_qa_graph
 
         mock_video.return_value = VideoInfo(
