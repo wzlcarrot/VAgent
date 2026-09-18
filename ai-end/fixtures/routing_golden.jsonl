@@ -1,0 +1,357 @@
+{"q": "这个视频讲了什么", "expected": "video_qa_workflow", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "这个视频讲了啥", "expected": "video_qa_workflow", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "这个视频在讲什么", "expected": "video_qa_workflow", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "这个视频说了什么", "expected": "video_qa_workflow", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "视频里说了什么", "expected": "video_qa_workflow", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "视频里讲了什么", "expected": "video_qa_workflow", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "视频里讲了啥", "expected": "video_qa_workflow", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "视频讲了什么内容", "expected": "video_qa_workflow", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "帮我总结这个视频", "expected": "video_qa_workflow", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "总结一下这个视频", "expected": "video_qa_workflow", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "请总结这个视频", "expected": "video_qa_workflow", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "给这个视频做个总结", "expected": "video_qa_workflow", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "讲解一下这个视频", "expected": "video_qa_workflow", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "讲解一下这个视频的内容", "expected": "video_qa_workflow", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "帮我讲解这个视频", "expected": "video_qa_workflow", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "这个视频的重点是什么", "expected": "video_qa_workflow", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "视频的重点是什么", "expected": "video_qa_workflow", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "重点讲了什么", "expected": "video_qa_workflow", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "这个视频的作者是谁", "expected": "video_qa_workflow", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "作者是谁", "expected": "video_qa_workflow", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "这视频是哪个up主发的", "expected": "video_qa_workflow", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "up主是谁", "expected": "video_qa_workflow", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "这个视频的简介是什么", "expected": "video_qa_workflow", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "视频的简介是什么", "expected": "video_qa_workflow", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "视频简介是啥", "expected": "video_qa_workflow", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "视频的时长是多少", "expected": "video_qa_workflow", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "这个视频时长多少", "expected": "video_qa_workflow", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "多久能看完这个视频", "expected": "video_qa_workflow", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "给我讲讲这个视频", "expected": "video_qa_workflow", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "你帮我看看这个视频讲了啥", "expected": "video_qa_workflow", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "介绍一下这个视频内容", "expected": "video_qa_workflow", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "这个视频在讲什么主题", "expected": "video_qa_workflow", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "视频主题是什么", "expected": "video_qa_workflow", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "主题讲的是什么", "expected": "video_qa_workflow", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "这个视频开头讲了什么", "expected": "video_qa_workflow", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "这个视频结尾说了什么", "expected": "video_qa_workflow", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "视频中间提到了什么", "expected": "video_qa_workflow", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "帮我提炼这个视频要点", "expected": "video_qa_workflow", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "这个视频核心观点是什么", "expected": "video_qa_workflow", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "视频主要内容概括一下", "expected": "video_qa_workflow", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "这个视频讲清楚了没", "expected": "video_qa_workflow", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "视频里有没有目录", "expected": "video_qa_workflow", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "这个视频分几部分讲", "expected": "video_qa_workflow", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "up主在视频里说了啥", "expected": "video_qa_workflow", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "主播是谁", "expected": "video_qa_workflow", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "这个视频的up主叫什么", "expected": "video_qa_workflow", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "把这个视频用三句话说清楚", "expected": "video_qa_workflow", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "一句话概括这个视频", "expected": "video_qa_workflow", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "这个视频适合谁看吗从内容看", "expected": "video_qa_workflow", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "这个视频好看吗", "expected": "video_qa_workflow", "tier": "ambiguous", "ctx": {"video_id": "video_demo_001"}}
+{"q": "这个视频值不值得看", "expected": "video_qa_workflow", "tier": "ambiguous", "ctx": {"video_id": "video_demo_001"}}
+{"q": "这个视频讲得怎么样", "expected": "video_qa_workflow", "tier": "ambiguous", "ctx": {"video_id": "video_demo_001"}}
+{"q": "这个视频好不好看", "expected": "video_qa_workflow", "tier": "ambiguous", "ctx": {"video_id": "video_demo_001"}}
+{"q": "这个视频里有没有提到AI", "expected": "video_qa_workflow", "tier": "ambiguous", "ctx": {"video_id": "video_demo_001"}}
+{"q": "这个视频里有没有提到Python", "expected": "video_qa_workflow", "tier": "ambiguous", "ctx": {"video_id": "video_demo_001"}}
+{"q": "这个视频和那个视频比哪个好", "expected": "video_qa_workflow", "tier": "ambiguous", "ctx": {"video_id": "video_demo_001"}}
+{"q": "帮我分析一下这个视频的数据", "expected": "video_qa_workflow", "tier": "ambiguous", "ctx": {"video_id": "video_demo_001"}}
+{"q": "点赞多的是哪些视频", "expected": "video_qa_workflow", "tier": "ambiguous", "ctx": {"video_id": "video_demo_001"}}
+{"q": "这个视频里的up主", "expected": "video_qa_workflow", "tier": "ambiguous", "ctx": {"video_id": "video_demo_001"}}
+{"q": "说说这个视频", "expected": "video_qa_workflow", "tier": "ambiguous", "ctx": {"video_id": "video_demo_001"}}
+{"q": "这个视频质量如何", "expected": "video_qa_workflow", "tier": "ambiguous", "ctx": {"video_id": "video_demo_001"}}
+{"q": "内容深不深", "expected": "video_qa_workflow", "tier": "ambiguous", "ctx": {"video_id": "video_demo_001"}}
+{"q": "讲得细不细", "expected": "video_qa_workflow", "tier": "ambiguous", "ctx": {"video_id": "video_demo_001"}}
+{"q": "这个视频有没有干货", "expected": "video_qa_workflow", "tier": "ambiguous", "ctx": {"video_id": "video_demo_001"}}
+{"q": "有没有提到实战案例", "expected": "video_qa_workflow", "tier": "ambiguous", "ctx": {"video_id": "video_demo_001"}}
+{"q": "有没有讲到部署", "expected": "video_qa_workflow", "tier": "ambiguous", "ctx": {"video_id": "video_demo_001"}}
+{"q": "推荐一些好看的视频", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "推荐几个视频看看", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "推荐两个视频", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "推荐三个视频", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "给我推荐点内容", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "给我推荐几个视频", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "帮我推荐视频", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "来点推荐", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "有什么推荐的", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "有什么好看的视频", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "有啥好看的", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "有什么好看的", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "热门视频有哪些", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "有什么热门视频", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "最近热门有哪些", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "有什么新出的视频", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "新出了什么视频", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "有没有新视频", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "推荐一点科普类的", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "推荐一个科技区的", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "推荐点轻松的视频", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "我想看点别的视频", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "我想换个视频看", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "再推几个呗", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "帮我找找好看的", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "找点好看的视频", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "推几个类似风格的", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "有什么值得一看的", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "今晚看什么视频", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "周末看点什么", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "推荐下编程相关视频", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "推荐机器学习入门视频", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "推荐前端相关内容", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "有没有高分视频", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "播放量高的推荐几个", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "推荐收藏多的视频", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "给我推点短一点的", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "推荐长视频也行", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "按热度推荐几个", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "这个视频有没有类似的", "expected": "recommend_workflow", "tier": "ambiguous", "ctx": {"user_id": "u_golden", "video_id": "video_demo_001"}}
+{"q": "喜欢看这个视频的人还会看什么", "expected": "recommend_workflow", "tier": "ambiguous", "ctx": {"user_id": "u_golden", "video_id": "video_demo_001"}}
+{"q": "给我推荐个轻松点的", "expected": "recommend_workflow", "tier": "ambiguous", "ctx": {"user_id": "u_golden"}}
+{"q": "我该看什么", "expected": "recommend_workflow", "tier": "ambiguous", "ctx": {"user_id": "u_golden"}}
+{"q": "有没有差不多的内容", "expected": "recommend_workflow", "tier": "ambiguous", "ctx": {"user_id": "u_golden"}}
+{"q": "同类型再来几个", "expected": "recommend_workflow", "tier": "ambiguous", "ctx": {"user_id": "u_golden"}}
+{"q": "换一批推荐", "expected": "recommend_workflow", "tier": "ambiguous", "ctx": {"user_id": "u_golden"}}
+{"q": "还有类似的吗", "expected": "recommend_workflow", "tier": "ambiguous", "ctx": {"user_id": "u_golden", "video_id": "video_demo_001"}}
+{"q": "我看过的视频里推荐几个", "expected": "recommend_workflow", "tier": "ambiguous", "ctx": {"user_id": "u_golden"}}
+{"q": "根据我的喜好推荐", "expected": "recommend_workflow", "tier": "ambiguous", "ctx": {"user_id": "u_golden"}}
+{"q": "猜我喜欢什么", "expected": "recommend_workflow", "tier": "ambiguous", "ctx": {"user_id": "u_golden"}}
+{"q": "不要太硬核的推荐", "expected": "recommend_workflow", "tier": "ambiguous", "ctx": {"user_id": "u_golden"}}
+{"q": "来点娱乐向的", "expected": "recommend_workflow", "tier": "ambiguous", "ctx": {"user_id": "u_golden"}}
+{"q": "适合新手的推荐", "expected": "recommend_workflow", "tier": "ambiguous", "ctx": {"user_id": "u_golden"}}
+{"q": "我今天的点赞数", "expected": "user_data_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "我本周点赞了多少", "expected": "user_data_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "我点赞了哪些视频", "expected": "user_data_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "我点过赞的视频", "expected": "user_data_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "我的收藏记录", "expected": "user_data_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "我最近收藏了什么", "expected": "user_data_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "我收藏了哪些视频", "expected": "user_data_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "收藏夹里有什么", "expected": "user_data_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "我看过哪些视频", "expected": "user_data_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "我最近看了什么", "expected": "user_data_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "我的播放历史", "expected": "user_data_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "我的播放记录", "expected": "user_data_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "我的数据统计", "expected": "user_data_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "我的硬币有多少", "expected": "user_data_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "我还有多少硬币", "expected": "user_data_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "硬币余额", "expected": "user_data_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "我关注的up主有哪些", "expected": "user_data_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "我关注了谁", "expected": "user_data_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "我的关注列表", "expected": "user_data_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "我今天看了多久", "expected": "user_data_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "我的观看时长", "expected": "user_data_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "我的点赞总数", "expected": "user_data_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "帮我看看我的数据", "expected": "user_data_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "查一下我的收藏", "expected": "user_data_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "查我的点赞", "expected": "user_data_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "我昨天点赞了吗", "expected": "user_data_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "本月收藏统计", "expected": "user_data_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "我的历史记录清空了吗", "expected": "user_data_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "我有没有收藏这个分区的视频", "expected": "user_data_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "我最近互动过哪些", "expected": "user_data_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "我的账号数据概览", "expected": "user_data_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "推荐我的收藏", "expected": "user_data_workflow", "tier": "ambiguous", "ctx": {"user_id": "u_golden"}}
+{"q": "我看视频的记录", "expected": "user_data_workflow", "tier": "ambiguous", "ctx": {"user_id": "u_golden"}}
+{"q": "我点过哪些视频", "expected": "user_data_workflow", "tier": "ambiguous", "ctx": {"user_id": "u_golden"}}
+{"q": "我的账号数据", "expected": "user_data_workflow", "tier": "ambiguous", "ctx": {"user_id": "u_golden"}}
+{"q": "看看我的资产", "expected": "user_data_workflow", "tier": "ambiguous", "ctx": {"user_id": "u_golden"}}
+{"q": "我的主页数据", "expected": "user_data_workflow", "tier": "ambiguous", "ctx": {"user_id": "u_golden"}}
+{"q": "点和藏分别多少", "expected": "user_data_workflow", "tier": "ambiguous", "ctx": {"user_id": "u_golden"}}
+{"q": "历史和收藏有啥区别在我这", "expected": "user_data_workflow", "tier": "ambiguous", "ctx": {"user_id": "u_golden"}}
+{"q": "你们平台有什么功能", "expected": "chat_workflow", "tier": "easy"}
+{"q": "你们支持哪些功能", "expected": "chat_workflow", "tier": "easy"}
+{"q": "平台有什么功能", "expected": "chat_workflow", "tier": "easy"}
+{"q": "有什么功能可以用", "expected": "chat_workflow", "tier": "easy"}
+{"q": "怎么使用这个平台", "expected": "chat_workflow", "tier": "easy"}
+{"q": "如何使用ViewHub", "expected": "chat_workflow", "tier": "easy"}
+{"q": "怎么注册账号", "expected": "chat_workflow", "tier": "easy"}
+{"q": "怎么登录", "expected": "chat_workflow", "tier": "easy"}
+{"q": "什么是ViewHub", "expected": "chat_workflow", "tier": "easy"}
+{"q": "介绍一下ViewHub", "expected": "chat_workflow", "tier": "easy"}
+{"q": "这个助手能做什么", "expected": "chat_workflow", "tier": "easy"}
+{"q": "你会做什么", "expected": "chat_workflow", "tier": "easy"}
+{"q": "怎么上传视频", "expected": "chat_workflow", "tier": "easy"}
+{"q": "怎么删除视频", "expected": "chat_workflow", "tier": "easy"}
+{"q": "怎么下载视频", "expected": "chat_workflow", "tier": "easy"}
+{"q": "如何投稿", "expected": "chat_workflow", "tier": "easy"}
+{"q": "帮助", "expected": "chat_workflow", "tier": "easy"}
+{"q": "你好", "expected": "chat_workflow", "tier": "easy"}
+{"q": "在吗", "expected": "chat_workflow", "tier": "easy"}
+{"q": "嗨", "expected": "chat_workflow", "tier": "easy"}
+{"q": "hello", "expected": "chat_workflow", "tier": "easy"}
+{"q": "平台介绍", "expected": "chat_workflow", "tier": "easy"}
+{"q": "使用说明", "expected": "chat_workflow", "tier": "easy"}
+{"q": "新手指引", "expected": "chat_workflow", "tier": "easy"}
+{"q": "有没有帮助文档", "expected": "chat_workflow", "tier": "easy"}
+{"q": "支持弹幕吗", "expected": "chat_workflow", "tier": "easy"}
+{"q": "支持分片上传吗", "expected": "chat_workflow", "tier": "easy"}
+{"q": "AI助手怎么打开", "expected": "chat_workflow", "tier": "easy"}
+{"q": "账号怎么注销", "expected": "chat_workflow", "tier": "easy"}
+{"q": "密码怎么改", "expected": "chat_workflow", "tier": "easy"}
+{"q": "怎么改昵称", "expected": "chat_workflow", "tier": "easy"}
+{"q": "客服在哪", "expected": "chat_workflow", "tier": "easy"}
+{"q": "反馈问题找谁", "expected": "chat_workflow", "tier": "easy"}
+{"q": "社区公约是什么", "expected": "chat_workflow", "tier": "easy"}
+{"q": "今天天气怎么样", "expected": "chat_workflow", "tier": "offtopic"}
+{"q": "明天会下雨吗", "expected": "chat_workflow", "tier": "offtopic"}
+{"q": "北京气温多少", "expected": "chat_workflow", "tier": "offtopic"}
+{"q": "你会写代码吗", "expected": "chat_workflow", "tier": "offtopic"}
+{"q": "帮我写首诗", "expected": "chat_workflow", "tier": "offtopic"}
+{"q": "讲个笑话", "expected": "chat_workflow", "tier": "offtopic"}
+{"q": "推荐一个餐厅给我", "expected": "chat_workflow", "tier": "offtopic"}
+{"q": "附近有什么好吃的", "expected": "chat_workflow", "tier": "offtopic"}
+{"q": "火锅店推荐", "expected": "chat_workflow", "tier": "offtopic"}
+{"q": "你知道b站吗", "expected": "chat_workflow", "tier": "offtopic"}
+{"q": "对比一下抖音", "expected": "chat_workflow", "tier": "offtopic"}
+{"q": "优酷怎么样", "expected": "chat_workflow", "tier": "offtopic"}
+{"q": "你吃饭了吗", "expected": "chat_workflow", "tier": "offtopic"}
+{"q": "你几岁了", "expected": "chat_workflow", "tier": "offtopic"}
+{"q": "你是机器人吗", "expected": "chat_workflow", "tier": "offtopic"}
+{"q": "帮我算一道数学题", "expected": "chat_workflow", "tier": "offtopic"}
+{"q": "1+1等于几", "expected": "chat_workflow", "tier": "offtopic"}
+{"q": "翻译这句话成英文", "expected": "chat_workflow", "tier": "offtopic"}
+{"q": "股票怎么买", "expected": "chat_workflow", "tier": "offtopic"}
+{"q": "比特币行情", "expected": "chat_workflow", "tier": "offtopic"}
+{"q": "世界杯谁赢了", "expected": "chat_workflow", "tier": "offtopic"}
+{"q": "怎么谈恋爱", "expected": "chat_workflow", "tier": "offtopic"}
+{"q": "星座运势", "expected": "chat_workflow", "tier": "offtopic"}
+{"q": "今日运势", "expected": "chat_workflow", "tier": "offtopic"}
+{"q": "我的账号", "expected": "chat_workflow", "tier": "ambiguous", "ctx": {"user_id": "u_golden"}}
+{"q": "帮我介绍一下平台功能", "expected": "chat_workflow", "tier": "ambiguous", "ctx": {"user_id": "u_golden"}}
+{"q": "这个系统怎么用", "expected": "chat_workflow", "tier": "ambiguous"}
+{"q": "我该从哪开始", "expected": "chat_workflow", "tier": "ambiguous"}
+{"q": "新手看什么文档", "expected": "chat_workflow", "tier": "ambiguous"}
+{"q": "推荐几个摄影相关视频", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "有没有好看的摄影视频", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "推荐几个美食相关视频", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "有没有好看的美食视频", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "推荐几个旅行相关视频", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "有没有好看的旅行视频", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "推荐几个健身相关视频", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "有没有好看的健身视频", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "推荐几个音乐相关视频", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "有没有好看的音乐视频", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "推荐几个历史相关视频", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "有没有好看的历史视频", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "推荐几个英语相关视频", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "有没有好看的英语视频", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "推荐几个考研相关视频", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "有没有好看的考研视频", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "推荐几个面试相关视频", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "有没有好看的面试视频", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "推荐几个算法相关视频", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "有没有好看的算法视频", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "推荐几个数据库相关视频", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "有没有好看的数据库视频", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "推荐几个Redis相关视频", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "有没有好看的Redis视频", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "推荐几个JVM相关视频", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "有没有好看的JVM视频", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "推荐几个网络相关视频", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "有没有好看的网络视频", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "推荐几个操作系统相关视频", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "有没有好看的操作系统视频", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "推荐几个设计模式相关视频", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "有没有好看的设计模式视频", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "推荐几个微服务相关视频", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "有没有好看的微服务视频", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "推荐几个Docker相关视频", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "有没有好看的Docker视频", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "推荐几个K8s相关视频", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "有没有好看的K8s视频", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "推荐几个前端相关视频", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "有没有好看的前端视频", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "推荐几个Vue相关视频", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "有没有好看的Vue视频", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "推荐几个React相关视频", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "有没有好看的React视频", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "推荐几个Android相关视频", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "有没有好看的Android视频", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "推荐几个iOS相关视频", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "有没有好看的iOS视频", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "推荐几个游戏相关视频", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "有没有好看的游戏视频", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "推荐几个动漫相关视频", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "有没有好看的动漫视频", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "推荐几个纪录片相关视频", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "有没有好看的纪录片视频", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "推荐几个科普相关视频", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "有没有好看的科普视频", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "推荐几个财经相关视频", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "有没有好看的财经视频", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "推荐几个汽车相关视频", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "有没有好看的汽车视频", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "推荐几个数码相关视频", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "有没有好看的数码视频", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "推荐几个手机相关视频", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "有没有好看的手机视频", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "推荐几个相机相关视频", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "有没有好看的相机视频", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "推荐几个剪辑相关视频", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "有没有好看的剪辑视频", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "推荐几个直播相关视频", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "有没有好看的直播视频", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "推荐几个开箱相关视频", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "有没有好看的开箱视频", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "推荐几个评测相关视频", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "有没有好看的评测视频", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "推荐几个教程相关视频", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "有没有好看的教程视频", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "推荐几个入门相关视频", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "有没有好看的入门视频", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "推荐几个进阶相关视频", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "有没有好看的进阶视频", "expected": "recommend_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "我的点赞列表", "expected": "user_data_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "导出我的收藏", "expected": "user_data_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "我昨天看了什么", "expected": "user_data_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "我上周播放记录", "expected": "user_data_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "我关注数是多少", "expected": "user_data_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "粉丝数呢我的", "expected": "user_data_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "我的投稿有多少", "expected": "user_data_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "我发过几个视频", "expected": "user_data_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "我的消息未读数", "expected": "user_data_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "私信有几条", "expected": "user_data_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "我的通知", "expected": "user_data_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "系统通知看一下", "expected": "user_data_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "我的积分多少", "expected": "user_data_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "经验值多少", "expected": "user_data_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "等级是多少", "expected": "user_data_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "会员到期没有", "expected": "user_data_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "我屏蔽了谁", "expected": "user_data_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "黑名单列表", "expected": "user_data_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "稍后再看列表", "expected": "user_data_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "稍后再看有哪些", "expected": "user_data_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "我的点踩记录", "expected": "user_data_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "不感兴趣的记录", "expected": "user_data_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "我的搜索历史", "expected": "user_data_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "最近搜过什么", "expected": "user_data_workflow", "tier": "easy", "ctx": {"user_id": "u_golden"}}
+{"q": "如何开通会员", "expected": "chat_workflow", "tier": "easy"}
+{"q": "会员有什么权益", "expected": "chat_workflow", "tier": "easy"}
+{"q": "充值怎么弄", "expected": "chat_workflow", "tier": "easy"}
+{"q": "发票怎么开", "expected": "chat_workflow", "tier": "easy"}
+{"q": "弹幕礼仪是什么", "expected": "chat_workflow", "tier": "easy"}
+{"q": "能不能关推荐", "expected": "chat_workflow", "tier": "easy"}
+{"q": "深色模式怎么开", "expected": "chat_workflow", "tier": "easy"}
+{"q": "多语言支持吗", "expected": "chat_workflow", "tier": "easy"}
+{"q": "App下载地址", "expected": "chat_workflow", "tier": "easy"}
+{"q": "有没有桌面端", "expected": "chat_workflow", "tier": "easy"}
+{"q": "API对外开放吗", "expected": "chat_workflow", "tier": "easy"}
+{"q": "开发者文档在哪", "expected": "chat_workflow", "tier": "easy"}
+{"q": "今天星期几", "expected": "chat_workflow", "tier": "offtopic"}
+{"q": "现在几点了", "expected": "chat_workflow", "tier": "offtopic"}
+{"q": "你喜欢什么颜色", "expected": "chat_workflow", "tier": "offtopic"}
+{"q": "背一首唐诗", "expected": "chat_workflow", "tier": "offtopic"}
+{"q": "拿破仑是谁", "expected": "chat_workflow", "tier": "offtopic"}
+{"q": "光速是多少", "expected": "chat_workflow", "tier": "offtopic"}
+{"q": "水的沸点", "expected": "chat_workflow", "tier": "offtopic"}
+{"q": "帮我起公司名", "expected": "chat_workflow", "tier": "offtopic"}
+{"q": "这个视频提到了哪些概念", "expected": "video_qa_workflow", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "视频里举例了什么", "expected": "video_qa_workflow", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "这个视频的结论是什么", "expected": "video_qa_workflow", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "作者在视频里怎么论证的", "expected": "video_qa_workflow", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "视频有没有作业或练习", "expected": "video_qa_workflow", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "这个视频配没配字幕信息", "expected": "video_qa_workflow", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "片头广告说了什么", "expected": "video_qa_workflow", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "片尾征稿说了啥", "expected": "video_qa_workflow", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "视频章节标题有哪些", "expected": "video_qa_workflow", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "这个视频适合几倍速", "expected": "video_qa_workflow", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "有没有勘误说明", "expected": "video_qa_workflow", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "视频引用了哪些资料", "expected": "video_qa_workflow", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
