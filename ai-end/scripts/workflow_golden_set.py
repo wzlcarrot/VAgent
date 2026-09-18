@@ -81,6 +81,7 @@ CASES = [
         "run": "video_qa",
         "kwargs": {"question": "这个视频讲了什么", "video_id": "v1", "user_id": "u1"},
         "patches": [
+            ("app.services.video_indexing.is_video_indexed", lambda *_: True),
             (
                 "app.agents.workflows.video_qa_workflow.VideoTools.get_video_info",
                 lambda *_: type("V", (), {
@@ -111,6 +112,7 @@ CASES = [
         "run": "video_qa",
         "kwargs": {"question": "第三个实验参数是多少", "video_id": "v1", "user_id": "u1"},
         "patches": [
+            ("app.services.video_indexing.is_video_indexed", lambda *_: True),
             (
                 "app.agents.workflows.video_qa_workflow.VideoTools.get_video_info",
                 lambda *_: type("V", (), {
