@@ -29,3 +29,28 @@ def _reset_login_rate_limit():
     except Exception:
         pass
 
+
+@pytest.fixture(autouse=True)
+def _reset_llm_circuit():
+    """每个测试前后重置 LLM 熔断器，避免某个测试打到 open 污染后续依赖 LLM 的测试。"""
+    from app.tools.llm_circuit import reset_circuit
+    reset_circuit()
+    yield
+    reset_circuit()
+
+
+@pytest.fixture(autouse=True)
+def _reset_tool_governor():
+    """每个测试前后清空工具调用配额，避免 Redis 计数跨测试/跨运行累积触发 ToolCallLimitExceeded。"""
+    try:
+        from app.harness.tool_governor import ToolGovernor
+        ToolGovernor().reset_all()
+    except Exception:
+        pass
+    yield
+    try:
+        from app.harness.tool_governor import ToolGovernor
+        ToolGovernor().reset_all()
+    except Exception:
+        pass
+

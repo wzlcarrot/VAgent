@@ -11,7 +11,7 @@ from typing import Any, Callable, Dict
 
 from app.agents.workflows.constants import WorkflowType
 from app.config import settings
-from app.exceptions import ToolCallLimitExceeded, ToolCallTimeout
+from app.exceptions import ToolAccessDenied, ToolApprovalRequired, ToolCallLimitExceeded, ToolCallTimeout
 from app.harness.checkpoint import Checkpoint, CheckpointManager
 from app.harness.tool_governor import ToolGovernor
 
@@ -42,6 +42,17 @@ def save_checkpoint(
             error=error,
         )
         CheckpointManager().save(cp)
+        try:
+            from app.harness.run_trace import trace_event
+            trace_event(
+                "checkpoint",
+                workflow=workflow_type,
+                step=step_name,
+                status=status,
+                error=error,
+            )
+        except Exception:
+            pass
     except Exception as e:
         logger.warning(f"checkpoint save failed for {step_name}: {e}")
 
@@ -109,6 +120,8 @@ def invoke_with_governor(
     agent: str,
     tool_name: str,
     fn: Callable,
+    user_id: str = "",
+    arguments: Dict[str, Any] | None = None,
 ):
     from app.utils.task_cancel import WorkflowCancelled, check_cancelled
     try:
@@ -123,9 +136,10 @@ def invoke_with_governor(
             session_id=session_id,
             agent=agent,
             tool_name=tool_name,
-            arguments={},
+            arguments=arguments or {},
             execute_fn=fn,
             record_artifact=True,
+            user_id=user_id or "",
         )
         # before_tool_call 拦截钩子可能返回 None：兜底为空结果，避免破坏 workflow
         return result if result is not None else []
@@ -134,4 +148,7 @@ def invoke_with_governor(
         return []
     except ToolCallTimeout as e:
         logger.warning(f"tool {tool_name} timeout: {e}")
+        return []
+    except (ToolAccessDenied, ToolApprovalRequired) as e:
+        logger.warning(f"tool {tool_name} blocked: {e}")
         return []

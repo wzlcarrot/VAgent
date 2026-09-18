@@ -1,0 +1,6 @@
+# SSE 回归剧本：平台功能问答（meta 可能先于 status，按 stage 断言）
+QUESTION "平台有什么功能"
+EXPECT stage=routing
+EXPECT stage=parallel
+EXPECT type=text
+EXPECT stage=done

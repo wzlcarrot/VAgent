@@ -1,0 +1,161 @@
+{"q": "这个视频讲了什么", "expected": "video_qa_workflow", "expected_tool": "search_video_chunks", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "这个视频讲了啥", "expected": "video_qa_workflow", "expected_tool": "search_video_chunks", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "这个视频在讲什么", "expected": "video_qa_workflow", "expected_tool": "search_video_chunks", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "这个视频说了什么", "expected": "video_qa_workflow", "expected_tool": "search_video_chunks", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "视频里说了什么", "expected": "video_qa_workflow", "expected_tool": "search_video_chunks", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "视频里讲了什么", "expected": "video_qa_workflow", "expected_tool": "search_video_chunks", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "视频里讲了啥", "expected": "video_qa_workflow", "expected_tool": "search_video_chunks", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "视频讲了什么内容", "expected": "video_qa_workflow", "expected_tool": "search_video_chunks", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "帮我总结这个视频", "expected": "video_qa_workflow", "expected_tool": "search_video_chunks", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "总结一下这个视频", "expected": "video_qa_workflow", "expected_tool": "search_video_chunks", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "请总结这个视频", "expected": "video_qa_workflow", "expected_tool": "search_video_chunks", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "给这个视频做个总结", "expected": "video_qa_workflow", "expected_tool": "search_video_chunks", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "讲解一下这个视频", "expected": "video_qa_workflow", "expected_tool": "search_video_chunks", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "讲解一下这个视频的内容", "expected": "video_qa_workflow", "expected_tool": "search_video_chunks", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "帮我讲解这个视频", "expected": "video_qa_workflow", "expected_tool": "search_video_chunks", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "这个视频的重点是什么", "expected": "video_qa_workflow", "expected_tool": "search_video_chunks", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "视频的重点是什么", "expected": "video_qa_workflow", "expected_tool": "search_video_chunks", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "重点讲了什么", "expected": "video_qa_workflow", "expected_tool": "search_video_chunks", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "这个视频的作者是谁", "expected": "video_qa_workflow", "expected_tool": "search_video_chunks", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "作者是谁", "expected": "video_qa_workflow", "expected_tool": "search_video_chunks", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "这视频是哪个up主发的", "expected": "video_qa_workflow", "expected_tool": "search_video_chunks", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "up主是谁", "expected": "video_qa_workflow", "expected_tool": "search_video_chunks", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "这个视频的简介是什么", "expected": "video_qa_workflow", "expected_tool": "search_video_chunks", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "视频的简介是什么", "expected": "video_qa_workflow", "expected_tool": "search_video_chunks", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "视频简介是啥", "expected": "video_qa_workflow", "expected_tool": "search_video_chunks", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "视频的时长是多少", "expected": "video_qa_workflow", "expected_tool": "search_video_chunks", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "这个视频时长多少", "expected": "video_qa_workflow", "expected_tool": "search_video_chunks", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "多久能看完这个视频", "expected": "video_qa_workflow", "expected_tool": "search_video_chunks", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "给我讲讲这个视频", "expected": "video_qa_workflow", "expected_tool": "search_video_chunks", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "你帮我看看这个视频讲了啥", "expected": "video_qa_workflow", "expected_tool": "search_video_chunks", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "介绍一下这个视频内容", "expected": "video_qa_workflow", "expected_tool": "search_video_chunks", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "这个视频在讲什么主题", "expected": "video_qa_workflow", "expected_tool": "search_video_chunks", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "视频主题是什么", "expected": "video_qa_workflow", "expected_tool": "search_video_chunks", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "主题讲的是什么", "expected": "video_qa_workflow", "expected_tool": "search_video_chunks", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "这个视频开头讲了什么", "expected": "video_qa_workflow", "expected_tool": "search_video_chunks", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "这个视频结尾说了什么", "expected": "video_qa_workflow", "expected_tool": "search_video_chunks", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "视频中间提到了什么", "expected": "video_qa_workflow", "expected_tool": "search_video_chunks", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "帮我提炼这个视频要点", "expected": "video_qa_workflow", "expected_tool": "search_video_chunks", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "这个视频核心观点是什么", "expected": "video_qa_workflow", "expected_tool": "search_video_chunks", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "视频主要内容概括一下", "expected": "video_qa_workflow", "expected_tool": "search_video_chunks", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "这个视频讲清楚了没", "expected": "video_qa_workflow", "expected_tool": "search_video_chunks", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "视频里有没有目录", "expected": "video_qa_workflow", "expected_tool": "search_video_chunks", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "这个视频分几部分讲", "expected": "video_qa_workflow", "expected_tool": "search_video_chunks", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "up主在视频里说了啥", "expected": "video_qa_workflow", "expected_tool": "search_video_chunks", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "主播是谁", "expected": "video_qa_workflow", "expected_tool": "search_video_chunks", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "这个视频的up主叫什么", "expected": "video_qa_workflow", "expected_tool": "search_video_chunks", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "把这个视频用三句话说清楚", "expected": "video_qa_workflow", "expected_tool": "search_video_chunks", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "一句话概括这个视频", "expected": "video_qa_workflow", "expected_tool": "search_video_chunks", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "这个视频适合谁看吗从内容看", "expected": "video_qa_workflow", "expected_tool": "search_video_chunks", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "这个视频好看吗", "expected": "video_qa_workflow", "expected_tool": "search_video_chunks", "tier": "ambiguous", "ctx": {"video_id": "video_demo_001"}}
+{"q": "这个视频值不值得看", "expected": "video_qa_workflow", "expected_tool": "search_video_chunks", "tier": "ambiguous", "ctx": {"video_id": "video_demo_001"}}
+{"q": "这个视频讲得怎么样", "expected": "video_qa_workflow", "expected_tool": "search_video_chunks", "tier": "ambiguous", "ctx": {"video_id": "video_demo_001"}}
+{"q": "这个视频好不好看", "expected": "video_qa_workflow", "expected_tool": "search_video_chunks", "tier": "ambiguous", "ctx": {"video_id": "video_demo_001"}}
+{"q": "这个视频里有没有提到AI", "expected": "video_qa_workflow", "expected_tool": "search_video_chunks", "tier": "ambiguous", "ctx": {"video_id": "video_demo_001"}}
+{"q": "这个视频里有没有提到Python", "expected": "video_qa_workflow", "expected_tool": "search_video_chunks", "tier": "ambiguous", "ctx": {"video_id": "video_demo_001"}}
+{"q": "这个视频和那个视频比哪个好", "expected": "video_qa_workflow", "expected_tool": "search_video_chunks", "tier": "ambiguous", "ctx": {"video_id": "video_demo_001"}}
+{"q": "帮我分析一下这个视频的数据", "expected": "video_qa_workflow", "expected_tool": "search_video_chunks", "tier": "ambiguous", "ctx": {"video_id": "video_demo_001"}}
+{"q": "点赞多的是哪些视频", "expected": "video_qa_workflow", "expected_tool": "search_video_chunks", "tier": "ambiguous", "ctx": {"video_id": "video_demo_001"}}
+{"q": "这个视频里的up主", "expected": "video_qa_workflow", "expected_tool": "search_video_chunks", "tier": "ambiguous", "ctx": {"video_id": "video_demo_001"}}
+{"q": "说说这个视频", "expected": "video_qa_workflow", "expected_tool": "search_video_chunks", "tier": "ambiguous", "ctx": {"video_id": "video_demo_001"}}
+{"q": "这个视频质量如何", "expected": "video_qa_workflow", "expected_tool": "search_video_chunks", "tier": "ambiguous", "ctx": {"video_id": "video_demo_001"}}
+{"q": "内容深不深", "expected": "video_qa_workflow", "expected_tool": "search_video_chunks", "tier": "ambiguous", "ctx": {"video_id": "video_demo_001"}}
+{"q": "讲得细不细", "expected": "video_qa_workflow", "expected_tool": "search_video_chunks", "tier": "ambiguous", "ctx": {"video_id": "video_demo_001"}}
+{"q": "这个视频有没有干货", "expected": "video_qa_workflow", "expected_tool": "search_video_chunks", "tier": "ambiguous", "ctx": {"video_id": "video_demo_001"}}
+{"q": "有没有提到实战案例", "expected": "video_qa_workflow", "expected_tool": "search_video_chunks", "tier": "ambiguous", "ctx": {"video_id": "video_demo_001"}}
+{"q": "有没有讲到部署", "expected": "video_qa_workflow", "expected_tool": "search_video_chunks", "tier": "ambiguous", "ctx": {"video_id": "video_demo_001"}}
+{"q": "你们平台有什么功能", "expected": "chat_workflow", "expected_tool": "retrieve_knowledge", "tier": "easy", "ctx": {}}
+{"q": "你们支持哪些功能", "expected": "chat_workflow", "expected_tool": "retrieve_knowledge", "tier": "easy", "ctx": {}}
+{"q": "平台有什么功能", "expected": "chat_workflow", "expected_tool": "retrieve_knowledge", "tier": "easy", "ctx": {}}
+{"q": "有什么功能可以用", "expected": "chat_workflow", "expected_tool": "retrieve_knowledge", "tier": "easy", "ctx": {}}
+{"q": "怎么使用这个平台", "expected": "chat_workflow", "expected_tool": "retrieve_knowledge", "tier": "easy", "ctx": {}}
+{"q": "如何使用ViewHub", "expected": "chat_workflow", "expected_tool": "retrieve_knowledge", "tier": "easy", "ctx": {}}
+{"q": "怎么注册账号", "expected": "chat_workflow", "expected_tool": "retrieve_knowledge", "tier": "easy", "ctx": {}}
+{"q": "怎么登录", "expected": "chat_workflow", "expected_tool": "retrieve_knowledge", "tier": "easy", "ctx": {}}
+{"q": "什么是ViewHub", "expected": "chat_workflow", "expected_tool": "retrieve_knowledge", "tier": "easy", "ctx": {}}
+{"q": "介绍一下ViewHub", "expected": "chat_workflow", "expected_tool": "retrieve_knowledge", "tier": "easy", "ctx": {}}
+{"q": "这个助手能做什么", "expected": "chat_workflow", "expected_tool": "retrieve_knowledge", "tier": "easy", "ctx": {}}
+{"q": "你会做什么", "expected": "chat_workflow", "expected_tool": "retrieve_knowledge", "tier": "easy", "ctx": {}}
+{"q": "怎么上传视频", "expected": "chat_workflow", "expected_tool": "retrieve_knowledge", "tier": "easy", "ctx": {}}
+{"q": "怎么删除视频", "expected": "chat_workflow", "expected_tool": "retrieve_knowledge", "tier": "easy", "ctx": {}}
+{"q": "怎么下载视频", "expected": "chat_workflow", "expected_tool": "retrieve_knowledge", "tier": "easy", "ctx": {}}
+{"q": "如何投稿", "expected": "chat_workflow", "expected_tool": "retrieve_knowledge", "tier": "easy", "ctx": {}}
+{"q": "帮助", "expected": "chat_workflow", "expected_tool": "retrieve_knowledge", "tier": "easy", "ctx": {}}
+{"q": "你好", "expected": "chat_workflow", "expected_tool": null, "tier": "easy", "ctx": {}}
+{"q": "在吗", "expected": "chat_workflow", "expected_tool": null, "tier": "easy", "ctx": {}}
+{"q": "嗨", "expected": "chat_workflow", "expected_tool": null, "tier": "easy", "ctx": {}}
+{"q": "hello", "expected": "chat_workflow", "expected_tool": null, "tier": "easy", "ctx": {}}
+{"q": "平台介绍", "expected": "chat_workflow", "expected_tool": "retrieve_knowledge", "tier": "easy", "ctx": {}}
+{"q": "使用说明", "expected": "chat_workflow", "expected_tool": "retrieve_knowledge", "tier": "easy", "ctx": {}}
+{"q": "新手指引", "expected": "chat_workflow", "expected_tool": "retrieve_knowledge", "tier": "easy", "ctx": {}}
+{"q": "有没有帮助文档", "expected": "chat_workflow", "expected_tool": "retrieve_knowledge", "tier": "easy", "ctx": {}}
+{"q": "支持弹幕吗", "expected": "chat_workflow", "expected_tool": "retrieve_knowledge", "tier": "easy", "ctx": {}}
+{"q": "支持分片上传吗", "expected": "chat_workflow", "expected_tool": "retrieve_knowledge", "tier": "easy", "ctx": {}}
+{"q": "AI助手怎么打开", "expected": "chat_workflow", "expected_tool": "retrieve_knowledge", "tier": "easy", "ctx": {}}
+{"q": "账号怎么注销", "expected": "chat_workflow", "expected_tool": "retrieve_knowledge", "tier": "easy", "ctx": {}}
+{"q": "密码怎么改", "expected": "chat_workflow", "expected_tool": "retrieve_knowledge", "tier": "easy", "ctx": {}}
+{"q": "怎么改昵称", "expected": "chat_workflow", "expected_tool": "retrieve_knowledge", "tier": "easy", "ctx": {}}
+{"q": "客服在哪", "expected": "chat_workflow", "expected_tool": "retrieve_knowledge", "tier": "easy", "ctx": {}}
+{"q": "反馈问题找谁", "expected": "chat_workflow", "expected_tool": "retrieve_knowledge", "tier": "easy", "ctx": {}}
+{"q": "社区公约是什么", "expected": "chat_workflow", "expected_tool": "retrieve_knowledge", "tier": "easy", "ctx": {}}
+{"q": "今天天气怎么样", "expected": "chat_workflow", "expected_tool": null, "tier": "offtopic", "ctx": {}}
+{"q": "明天会下雨吗", "expected": "chat_workflow", "expected_tool": null, "tier": "offtopic", "ctx": {}}
+{"q": "北京气温多少", "expected": "chat_workflow", "expected_tool": null, "tier": "offtopic", "ctx": {}}
+{"q": "你会写代码吗", "expected": "chat_workflow", "expected_tool": null, "tier": "offtopic", "ctx": {}}
+{"q": "帮我写首诗", "expected": "chat_workflow", "expected_tool": null, "tier": "offtopic", "ctx": {}}
+{"q": "讲个笑话", "expected": "chat_workflow", "expected_tool": null, "tier": "offtopic", "ctx": {}}
+{"q": "推荐一个餐厅给我", "expected": "chat_workflow", "expected_tool": null, "tier": "offtopic", "ctx": {}}
+{"q": "附近有什么好吃的", "expected": "chat_workflow", "expected_tool": null, "tier": "offtopic", "ctx": {}}
+{"q": "火锅店推荐", "expected": "chat_workflow", "expected_tool": null, "tier": "offtopic", "ctx": {}}
+{"q": "你知道b站吗", "expected": "chat_workflow", "expected_tool": null, "tier": "offtopic", "ctx": {}}
+{"q": "对比一下抖音", "expected": "chat_workflow", "expected_tool": null, "tier": "offtopic", "ctx": {}}
+{"q": "优酷怎么样", "expected": "chat_workflow", "expected_tool": null, "tier": "offtopic", "ctx": {}}
+{"q": "你吃饭了吗", "expected": "chat_workflow", "expected_tool": null, "tier": "offtopic", "ctx": {}}
+{"q": "你几岁了", "expected": "chat_workflow", "expected_tool": null, "tier": "offtopic", "ctx": {}}
+{"q": "你是机器人吗", "expected": "chat_workflow", "expected_tool": null, "tier": "offtopic", "ctx": {}}
+{"q": "帮我算一道数学题", "expected": "chat_workflow", "expected_tool": null, "tier": "offtopic", "ctx": {}}
+{"q": "1+1等于几", "expected": "chat_workflow", "expected_tool": null, "tier": "offtopic", "ctx": {}}
+{"q": "翻译这句话成英文", "expected": "chat_workflow", "expected_tool": null, "tier": "offtopic", "ctx": {}}
+{"q": "股票怎么买", "expected": "chat_workflow", "expected_tool": null, "tier": "offtopic", "ctx": {}}
+{"q": "比特币行情", "expected": "chat_workflow", "expected_tool": null, "tier": "offtopic", "ctx": {}}
+{"q": "世界杯谁赢了", "expected": "chat_workflow", "expected_tool": null, "tier": "offtopic", "ctx": {}}
+{"q": "怎么谈恋爱", "expected": "chat_workflow", "expected_tool": null, "tier": "offtopic", "ctx": {}}
+{"q": "星座运势", "expected": "chat_workflow", "expected_tool": null, "tier": "offtopic", "ctx": {}}
+{"q": "今日运势", "expected": "chat_workflow", "expected_tool": null, "tier": "offtopic", "ctx": {}}
+{"q": "我的账号", "expected": "chat_workflow", "expected_tool": "retrieve_knowledge", "tier": "ambiguous", "ctx": {"user_id": "u_golden"}}
+{"q": "帮我介绍一下平台功能", "expected": "chat_workflow", "expected_tool": "retrieve_knowledge", "tier": "ambiguous", "ctx": {"user_id": "u_golden"}}
+{"q": "这个系统怎么用", "expected": "chat_workflow", "expected_tool": "retrieve_knowledge", "tier": "ambiguous", "ctx": {}}
+{"q": "我该从哪开始", "expected": "chat_workflow", "expected_tool": "retrieve_knowledge", "tier": "ambiguous", "ctx": {}}
+{"q": "新手看什么文档", "expected": "chat_workflow", "expected_tool": "retrieve_knowledge", "tier": "ambiguous", "ctx": {}}
+{"q": "如何开通会员", "expected": "chat_workflow", "expected_tool": "retrieve_knowledge", "tier": "easy", "ctx": {}}
+{"q": "会员有什么权益", "expected": "chat_workflow", "expected_tool": "retrieve_knowledge", "tier": "easy", "ctx": {}}
+{"q": "充值怎么弄", "expected": "chat_workflow", "expected_tool": "retrieve_knowledge", "tier": "easy", "ctx": {}}
+{"q": "发票怎么开", "expected": "chat_workflow", "expected_tool": "retrieve_knowledge", "tier": "easy", "ctx": {}}
+{"q": "弹幕礼仪是什么", "expected": "chat_workflow", "expected_tool": "retrieve_knowledge", "tier": "easy", "ctx": {}}
+{"q": "能不能关推荐", "expected": "chat_workflow", "expected_tool": "retrieve_knowledge", "tier": "easy", "ctx": {}}
+{"q": "深色模式怎么开", "expected": "chat_workflow", "expected_tool": "retrieve_knowledge", "tier": "easy", "ctx": {}}
+{"q": "多语言支持吗", "expected": "chat_workflow", "expected_tool": "retrieve_knowledge", "tier": "easy", "ctx": {}}
+{"q": "App下载地址", "expected": "chat_workflow", "expected_tool": "retrieve_knowledge", "tier": "easy", "ctx": {}}
+{"q": "有没有桌面端", "expected": "chat_workflow", "expected_tool": "retrieve_knowledge", "tier": "easy", "ctx": {}}
+{"q": "API对外开放吗", "expected": "chat_workflow", "expected_tool": "retrieve_knowledge", "tier": "easy", "ctx": {}}
+{"q": "开发者文档在哪", "expected": "chat_workflow", "expected_tool": "retrieve_knowledge", "tier": "easy", "ctx": {}}
+{"q": "今天星期几", "expected": "chat_workflow", "expected_tool": null, "tier": "offtopic", "ctx": {}}
+{"q": "现在几点了", "expected": "chat_workflow", "expected_tool": null, "tier": "offtopic", "ctx": {}}
+{"q": "你喜欢什么颜色", "expected": "chat_workflow", "expected_tool": null, "tier": "offtopic", "ctx": {}}
+{"q": "背一首唐诗", "expected": "chat_workflow", "expected_tool": null, "tier": "offtopic", "ctx": {}}
+{"q": "拿破仑是谁", "expected": "chat_workflow", "expected_tool": null, "tier": "offtopic", "ctx": {}}
+{"q": "光速是多少", "expected": "chat_workflow", "expected_tool": null, "tier": "offtopic", "ctx": {}}
+{"q": "水的沸点", "expected": "chat_workflow", "expected_tool": null, "tier": "offtopic", "ctx": {}}
+{"q": "帮我起公司名", "expected": "chat_workflow", "expected_tool": null, "tier": "offtopic", "ctx": {}}
+{"q": "这个视频提到了哪些概念", "expected": "video_qa_workflow", "expected_tool": "search_video_chunks", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "视频里举例了什么", "expected": "video_qa_workflow", "expected_tool": "search_video_chunks", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "这个视频的结论是什么", "expected": "video_qa_workflow", "expected_tool": "search_video_chunks", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "作者在视频里怎么论证的", "expected": "video_qa_workflow", "expected_tool": "search_video_chunks", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "视频有没有作业或练习", "expected": "video_qa_workflow", "expected_tool": "search_video_chunks", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "这个视频配没配字幕信息", "expected": "video_qa_workflow", "expected_tool": "search_video_chunks", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "片头广告说了什么", "expected": "video_qa_workflow", "expected_tool": "search_video_chunks", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "片尾征稿说了啥", "expected": "video_qa_workflow", "expected_tool": "search_video_chunks", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "视频章节标题有哪些", "expected": "video_qa_workflow", "expected_tool": "search_video_chunks", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "这个视频适合几倍速", "expected": "video_qa_workflow", "expected_tool": "search_video_chunks", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "有没有勘误说明", "expected": "video_qa_workflow", "expected_tool": "search_video_chunks", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "视频引用了哪些资料", "expected": "video_qa_workflow", "expected_tool": "search_video_chunks", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}

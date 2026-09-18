@@ -1,0 +1,9 @@
+# MODE offline
+# chat 并行阶段透出 tool start/end（离线夹具保证；live 视召回路径而定）
+QUESTION "平台有什么功能"
+EXPECT stage=routing
+EXPECT stage=parallel
+EXPECT tool_start name=retrieve_knowledge
+EXPECT tool_end name=retrieve_knowledge
+EXPECT type=text
+EXPECT stage=done

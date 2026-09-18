@@ -1,7 +1,7 @@
 import atexit
 import concurrent.futures
 import logging
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional, Tuple
 
 from app.tools.llm_tools import LLM_tools
 
@@ -42,17 +42,98 @@ def safe_prompt_escape(text: str, max_len: int = 1000) -> str:
     return s
 
 
+def resolve_retrieval_budgets(top_k: Optional[int] = None) -> Tuple[int, int, int]:
+    """返回 (recall_budget, rerank_candidate_limit, final_top_k)。"""
+    from app.config import settings
+
+    final_k = top_k if top_k is not None else settings.rag_default_top_k
+    final_k = max(1, final_k)
+    recall = settings.rag_recall_budget if settings.rag_recall_budget > 0 else final_k
+    rerank_limit = (
+        settings.rag_rerank_candidate_limit
+        if settings.rag_rerank_candidate_limit > 0
+        else recall
+    )
+    recall = max(recall, final_k)
+    rerank_limit = max(rerank_limit, final_k)
+    return recall, rerank_limit, final_k
+
+
+def max_rerank_score(chunks: List[Dict[str, Any]]) -> Optional[float]:
+    """全批最高 rerank/BM25 分；无分可读时返回 None。"""
+    best: Optional[float] = None
+    for chunk in chunks:
+        if not isinstance(chunk, dict):
+            continue
+        raw = chunk.get("score")
+        if raw is None:
+            continue
+        try:
+            score = float(raw)
+        except (TypeError, ValueError):
+            continue
+        if not (score == score):  # NaN
+            continue
+        if best is None or score > best:
+            best = score
+    return best
+
+
+def apply_evidence_gate(
+    chunks: List[Dict[str, Any]],
+    min_top_score: Optional[float] = None,
+) -> List[Dict[str, Any]]:
+    """
+    批级 EvidenceGate：最高精排分低于阈值则整批丢弃（借鉴 Ragent EvidenceGatePostProcessor）。
+    min_top_score <= 0 时关闭闸门。
+    """
+    from app.config import settings
+
+    floor = settings.rag_evidence_gate_min_score if min_top_score is None else min_top_score
+    if floor <= 0 or not chunks:
+        return chunks
+
+    top_score = max_rerank_score(chunks)
+    if top_score is None:
+        # 无分可读：默认 fail-closed（避免 BM25 原始分缺失时整批放行污染答案）
+        fail_closed = getattr(settings, "rag_evidence_gate_fail_closed_missing_score", True)
+        if fail_closed and floor > 0:
+            logger.warning(
+                "EvidenceGate: %d 条证据无分可读，fail-closed 丢弃（rag_evidence_gate_fail_closed_missing_score）",
+                len(chunks),
+            )
+            return []
+        logger.warning("EvidenceGate: %d 条证据无分可读，闸门空转放行", len(chunks))
+        return chunks
+    if top_score >= floor:
+        return chunks
+
+    logger.info(
+        "EvidenceGate: 最高精排分 %.3f < 下限 %.3f，丢弃全部 %d 条证据",
+        top_score, floor, len(chunks),
+    )
+    return []
+
+
 def rerank(query: str, candidates: List[Dict[str, Any]], top_k: int = 3) -> List[Dict[str, Any]]:
     if not candidates:
         return []
     if len(candidates) <= 1:
-        return candidates[:top_k]
+        out = [dict(candidates[0])]
+        if "score" not in out[0]:
+            out[0]["score"] = 0.5
+        return out[:top_k]
 
     scored = _batch_llm_score(query, candidates)
 
     scored.sort(key=lambda x: x[1], reverse=True)
 
-    return [doc for doc, _ in scored[:top_k]]
+    result: List[Dict[str, Any]] = []
+    for doc, score in scored[:top_k]:
+        item = dict(doc)
+        item["score"] = score
+        result.append(item)
+    return result
 
 
 def _batch_llm_score(query: str, candidates: List[Dict[str, Any]]) -> List[tuple]:
@@ -96,45 +177,17 @@ def _batch_llm_score(query: str, candidates: List[Dict[str, Any]]) -> List[tuple
         return _fallback_score()
 
 
-def dual_recall_and_rerank(query: str, top_k: int = 5) -> List[Dict[str, Any]]:
-    from app.tools.rag_tools import RAGTools
+def dual_recall_and_rerank(query: str, top_k: int = 5,
+                           video_id: str | None = None) -> List[Dict[str, Any]]:
+    from app.tools.search_channels import multi_channel_recall
 
-    def _keyword_recall():
-        try:
-            return RAGTools.retrieve_knowledge(query, top_k=top_k)
-        except Exception as e:
-            logger.warning(f"BM25 检索失败: {e}")
-            return []
+    recall_budget, rerank_limit, final_k = resolve_retrieval_budgets(top_k)
 
-    def _vector_recall():
-        try:
-            embedding = LLM_tools.embed([query])
-            if embedding:
-                return RAGTools.vector_search(embedding[0], top_k=top_k)
-        except Exception as e:
-            logger.warning(f"向量搜索失败: {e}")
-        return []
+    merged = multi_channel_recall(query, top_k=recall_budget, video_id=video_id)
 
-    future_kw = _recall_executor.submit(_keyword_recall)
-    future_vec = _recall_executor.submit(_vector_recall)
-    try:
-        keyword_results = future_kw.result(timeout=5)
-        vector_results = future_vec.result(timeout=5)
-    except Exception:
-        keyword_results = _keyword_recall()
-        vector_results = _vector_recall()
+    if len(merged) > rerank_limit:
+        merged.sort(key=lambda d: float(d.get("score", 0)), reverse=True)
+        merged = merged[:rerank_limit]
 
-    seen = set()
-    merged = []
-    for doc in keyword_results + vector_results:
-        if not isinstance(doc, dict):
-            continue
-        content = doc.get("content", doc.get("block_content", "")) or ""
-        video_id = doc.get("video_id") or ""
-        doc_id = video_id + ":" + content[:50]
-        if doc_id not in seen and content:
-            seen.add(doc_id)
-            merged.append(doc)
-
-    reranked = rerank(query, merged, top_k=top_k)
-    return reranked
+    reranked = rerank(query, merged, top_k=final_k)
+    return apply_evidence_gate(reranked)

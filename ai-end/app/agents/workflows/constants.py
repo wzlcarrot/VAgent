@@ -27,6 +27,7 @@ class ToolName:
     """工具名常量，与 ToolRegistry 中注册名一致"""
     VECTOR_SEARCH = "vector_search"
     RETRIEVE_KNOWLEDGE = "retrieve_knowledge"
+    SEARCH_VIDEO_CHUNKS = "search_video_chunks"
     GET_VIDEO_INFO = "get_video_info"
     QUERY_USER_DATA = "query_user_data"
     RECOMMEND_VIDEOS = "recommend_videos"

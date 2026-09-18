@@ -99,6 +99,35 @@ def _summary_key(session_id: str) -> str:
     return f"session:{session_id}:summary"
 
 
+def _owner_key(session_id: str) -> str:
+    return f"session:{session_id}:owner"
+
+
+def ensure_session_owner(user_id: str, session_id: str) -> bool:
+    """校验/绑定会话归属，防止用他人 session_id 读取或污染短期记忆。
+
+    session_id 由客户端提供，Redis key 若不绑用户，A 拿到 B 的 session_id
+    就能读到 B 的历史、或往 B 的上下文里写内容（越权/注入）。
+
+    - 首次使用：把 session 绑定到当前 user_id（SET NX，带 TTL）
+    - 已绑定：仅归属者可继续，他人返回 False
+    - Redis 不可用：降级放行（保功能可用），但记录
+    """
+    if not user_id or not session_id:
+        return False
+    client = _get_redis()
+    if not client:
+        return True
+    try:
+        key = _owner_key(session_id)
+        if client.set(key, user_id, nx=True, ex=settings.context_ttl):
+            return True
+        return client.get(key) == user_id
+    except Exception as e:
+        logger.warning(f"会话归属校验失败（降级放行）: {e}")
+        return True
+
+
 def save_message(session_id: str, role: str, content: str) -> bool:
     client = _get_redis()
     if not client:
@@ -327,11 +356,11 @@ def _compact_probe(session_id: str) -> Optional[tuple]:
     return (client, cooldown_key)
 
 
-async def async_summarize_context(session_id: str):
+async def async_summarize_context(session_id: str) -> Optional[dict]:
     import asyncio
     with _compact_lock:
         if session_id in _compact_in_progress:
-            return
+            return None
         _compact_in_progress.add(session_id)
 
     def _release():
@@ -342,7 +371,7 @@ async def async_summarize_context(session_id: str):
     probe = await loop.run_in_executor(None, _compact_probe, session_id)
     if probe is None:
         _release()
-        return
+        return None
 
     try:
         from app.tools.compact_service import compact_conversation
@@ -379,7 +408,24 @@ async def async_summarize_context(session_id: str):
                 None,
                 lambda: client.setex(cooldown_key, _COMPACT_COOLDOWN_SECONDS, str(time.time())),
             )
+            return {
+                "success": True,
+                "tokens_saved": result["tokens_saved"],
+                "pre_tokens": result["pre_tokens"],
+                "post_tokens": result["post_tokens"],
+                "pre_count": result["pre_count"],
+                "post_count": result["post_count"],
+            }
     except Exception as e:
         logger.warning(f"Compact失败: {e}")
     finally:
         _release()
+    return None
+
+
+def get_compact_stats(session_id: Optional[str] = None) -> dict:
+    """Admin：会话压缩统计。"""
+    with _compact_stats_lock:
+        if session_id:
+            return dict(_compact_stats.get(session_id, {}))
+        return {k: dict(v) for k, v in _compact_stats.items()}

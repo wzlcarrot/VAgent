@@ -89,6 +89,7 @@ class ChatHistory(BaseModel):
     image_urls: Optional[List[str]] = None
     videos: Optional[List[dict]] = None
     reasons: Optional[List[str]] = None
+    citations: Optional[List[dict]] = None
     created_at: Optional[datetime] = None
 
     model_config = {"populate_by_name": True}
@@ -105,6 +106,8 @@ class Memory(BaseModel):
     created_at: Optional[datetime] = None
     last_accessed_at: Optional[datetime] = None
     access_count: int = 0
+    invalid_at: Optional[datetime] = None
+    superseded_by: Optional[int] = None
 
     model_config = {"from_attributes": True}
 

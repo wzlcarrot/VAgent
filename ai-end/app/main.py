@@ -82,11 +82,15 @@ def _init_hooks():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    from app.config import settings, validate_rag_config
     from app.tools.db import init_agent_tables
     from app.tools.tool_registry import init_registry
     init_registry()
+    validate_rag_config()
     init_agent_tables()
     start_token_cleanup_task()
+    from app.tasks.memory_archive import start_memory_archive_task
+    start_memory_archive_task()
     _init_hooks()
 
     # 预热 Embedding 模型（避免首请求冷启动 5-15s）
@@ -112,33 +116,21 @@ async def lifespan(app: FastAPI):
                 logger.warning(f"tiktoken 预热失败: {e}")
         await loop.run_in_executor(ex, _warmup_tiktoken)
 
-    # 后台补索引：扫描 video_info 中未被 video_vector_block 覆盖的视频，
-    # 生成向量索引（Java 上传视频后若未来得及回调，由这里兜底）。
-    # 后台线程执行，不阻塞启动。
+    # 后台补索引：扫描 video_info 中未被 video_vector_block 覆盖的视频
     import threading
     def _backfill_video_index():
         try:
-            from app.tools.db import get_cursor
-            from app.tools.rag_tools import RAGTools
-            with get_cursor() as cursor:
-                if cursor is None:
-                    return
-                cursor.execute("""
-                    SELECT v.video_id FROM video_info v
-                    LEFT JOIN video_vector_block b ON v.video_id = b.video_id
-                    WHERE b.video_id IS NULL
-                    LIMIT 50
-                """)
-                pending = [r["video_id"] for r in cursor.fetchall()]
-            if not pending:
-                logger.info("视频索引兜底：无待索引视频")
-                return
-            logger.info(f"视频索引兜底：发现 {len(pending)} 个未索引视频，开始补索引")
-            for vid in pending:
-                try:
-                    RAGTools.index_video(vid)
-                except Exception as e:
-                    logger.warning(f"补索引失败 video_id={vid}: {e}")
+            from app.config import settings
+            from app.services.video_indexing import reindex_pending
+            limit = max(1, min(int(getattr(settings, "index_backfill_limit", 50)), 200))
+            result = reindex_pending(limit=limit)
+            if result.get("indexed_count") or result.get("pending_remaining"):
+                logger.info(
+                    "视频索引兜底：indexed=%s failed=%s pending_remaining=%s",
+                    result.get("indexed_count"),
+                    len(result.get("failed") or []),
+                    result.get("pending_remaining"),
+                )
         except Exception as e:
             logger.warning(f"视频索引兜底扫描失败: {e}")
 
@@ -169,6 +161,11 @@ async def lifespan(app: FastAPI):
         pass
     try:
         stop_token_cleanup_task()
+    except Exception:
+        pass
+    try:
+        from app.tasks.memory_archive import stop_memory_archive_task
+        stop_memory_archive_task()
     except Exception:
         pass
     try:
@@ -298,7 +295,7 @@ async def ready():
     checks["redis"] = await run_in_threadpool(_check_redis)
 
     # LLM provider
-    if settings.deepseek_api_key or settings.minimax_api_key:
+    if settings.deepseek_api_key:
         checks["llm"] = True
 
     ok = all(checks.values())

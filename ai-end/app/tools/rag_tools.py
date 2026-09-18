@@ -104,10 +104,13 @@ class RAGTools:
         cls._available = None
 
     @classmethod
-    def retrieve_knowledge(cls, query: str, top_k: int = 5) -> List[Dict[str, Any]]:
-        """BM25 全文搜索（ParadeDB），降级到 PG tsvector"""
+    def retrieve_knowledge(cls, query: str, top_k: int = 5,
+                           video_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        """BM25 全文搜索（ParadeDB），降级到 PG tsvector；可选 video_id 限定片内检索"""
         if not cls._is_available():
             return []
+        if video_id:
+            return cls._retrieve_video_scoped_knowledge(query, top_k, video_id)
         try:
             pool = get_global_pool()
             if pool is None:
@@ -169,6 +172,87 @@ class RAGTools:
                 pool.putconn(conn)
         except Exception as e:
             logger.error(f"知识库检索失败: {e}")
+            return []
+
+    @classmethod
+    def _retrieve_video_scoped_knowledge(cls, query: str, top_k: int,
+                                         video_id: str) -> List[Dict[str, Any]]:
+        """限定单视频的 keyword 召回：优先 video_vector_block 分块，补充 video_info 元数据。"""
+        if not query or not video_id:
+            return []
+        try:
+            pool = get_global_pool()
+            if pool is None:
+                return []
+            conn = pool.getconn()
+            try:
+                cursor = conn.cursor(cursor_factory=RealDictCursor)
+                rows: List[Dict[str, Any]] = []
+                try:
+                    if _has_chinese(query):
+                        cursor.execute("""
+                            SELECT video_id, block_type, block_content, start_s, end_s,
+                                   similarity(block_content, %s) AS score
+                            FROM video_vector_block
+                            WHERE video_id = %s
+                              AND similarity(block_content, %s) > 0.05
+                            ORDER BY score DESC
+                            LIMIT %s
+                        """, (query, video_id, query, top_k))
+                    else:
+                        cursor.execute("""
+                            SELECT video_id, block_type, block_content, start_s, end_s,
+                                   ts_rank(
+                                       to_tsvector('simple', coalesce(block_content, '')),
+                                       plainto_tsquery('simple', %s)
+                                   ) AS score
+                            FROM video_vector_block
+                            WHERE video_id = %s
+                              AND to_tsvector('simple', coalesce(block_content, ''))
+                                  @@ plainto_tsquery('simple', %s)
+                            ORDER BY score DESC
+                            LIMIT %s
+                        """, (query, video_id, query, top_k))
+                    rows = cursor.fetchall() or []
+                except Exception:
+                    conn.rollback()
+
+                if not rows:
+                    cursor.execute("""
+                        SELECT video_id, video_name, introduction
+                        FROM video_info
+                        WHERE video_id = %s
+                    """, (video_id,))
+                    info = cursor.fetchone()
+                    if info:
+                        text = " ".join(
+                            p for p in [
+                                info.get("video_name") or "",
+                                info.get("introduction") or "",
+                            ] if p
+                        ).strip()
+                        if text:
+                            rows = [{
+                                "video_id": info["video_id"],
+                                "block_type": "introduction",
+                                "block_content": text,
+                                "score": 0.5,
+                                "video_name": info.get("video_name", ""),
+                            }]
+                cursor.close()
+                return [{
+                    "content": r.get("block_content") or r.get("introduction") or r.get("video_name", ""),
+                    "video_id": r["video_id"],
+                    "video_name": r.get("video_name", ""),
+                    "block_type": r.get("block_type", "block"),
+                    "score": float(r.get("score", 0)),
+                    "start_s": r.get("start_s"),
+                    "end_s": r.get("end_s"),
+                } for r in rows if r.get("block_content") or r.get("introduction") or r.get("video_name")]
+            finally:
+                pool.putconn(conn)
+        except Exception as e:
+            logger.error(f"片内 keyword 检索失败 video_id={video_id}: {e}")
             return []
 
     @classmethod
@@ -254,7 +338,8 @@ class RAGTools:
         return _search_faq(query, top_k)
 
     @classmethod
-    def vector_search(cls, query_vector: List[float], top_k: int = 10) -> List[Dict[str, Any]]:
+    def vector_search(cls, query_vector: List[float], top_k: int = 10,
+                      video_id: Optional[str] = None) -> List[Dict[str, Any]]:
         try:
             pool = get_global_pool()
             if pool is None:
@@ -263,6 +348,27 @@ class RAGTools:
             try:
                 cursor = conn.cursor(cursor_factory=RealDictCursor)
                 vector_str = "[" + ",".join(str(v) for v in query_vector) + "]"
+                if video_id:
+                    cursor.execute("""
+                        SELECT video_id, block_type, block_content, start_s, end_s,
+                               (1.0 - (content_vector <=> %s::vector))
+                                   * COALESCE(block_weight, 1.0) AS score
+                        FROM video_vector_block
+                        WHERE video_id = %s
+                        ORDER BY score DESC
+                        LIMIT %s
+                    """, (vector_str, video_id, top_k))
+                    rows = cursor.fetchall()
+                    cursor.close()
+                    return [{
+                        "content": r.get("block_content", ""),
+                        "video_id": r["video_id"],
+                        "video_name": "",
+                        "block_type": r.get("block_type", "vector"),
+                        "score": float(r.get("score", 0)),
+                        "start_s": r.get("start_s"),
+                        "end_s": r.get("end_s"),
+                    } for r in rows if r.get("block_content")]
                 cursor.execute("""
                     WITH weighted AS (
                         SELECT video_id,
@@ -298,7 +404,8 @@ class RAGTools:
 
     @classmethod
     def index_document(cls, video_id: str, block_type: str, content: str,
-                       block_weight: float = 1.0) -> bool:
+                       block_weight: float = 1.0,
+                       duration_s: Optional[float] = None) -> bool:
         """
         索引一段文本到 video_vector_block。
 
@@ -307,12 +414,14 @@ class RAGTools:
         - 索引前清理该视频该类型的旧块（幂等，重复索引不残留）
         - block_type 存 `{base}_{i}` 带序号，检索端用 LIKE 匹配
         - block_weight 供 vector_search 加权（title 1.0 / tags 0.5 / intro 0.3）
+        - start_s/end_s：有 duration 时对 introduction 按块序比例估计，供 citations 跳转
 
         Args:
             video_id: 视频 ID
             block_type: 基础类型（title / tags / introduction）
             content: 待索引文本
             block_weight: 检索加权（写入列，由 vector_search 消费）
+            duration_s: 视频时长（秒）；缺省则不写时间轴
         """
         from app.tools.chunker import chunk_document
         from app.tools.llm_tools import LLM_tools
@@ -330,6 +439,9 @@ class RAGTools:
             logger.error("索引 embedding 数量不匹配")
             return False
 
+        n = len(chunks)
+        dur = float(duration_s) if duration_s and float(duration_s) > 0 else None
+
         pool = get_global_pool()
         if pool is None:
             return False
@@ -343,10 +455,12 @@ class RAGTools:
             )
             for i, (chunk_text, vec) in enumerate(zip(chunks, embeddings, strict=False)):
                 vector_str = "[" + ",".join(str(v) for v in vec) + "]"
+                start_s, end_s = cls._estimate_chunk_window(block_type, i, n, dur)
                 cursor.execute("""
-                    INSERT INTO video_vector_block (video_id, block_type, block_content, content_vector, block_weight)
-                    VALUES (%s, %s, %s, %s::vector, %s)
-                """, (video_id, f"{block_type}_{i}", chunk_text, vector_str, block_weight))
+                    INSERT INTO video_vector_block
+                        (video_id, block_type, block_content, content_vector, block_weight, start_s, end_s)
+                    VALUES (%s, %s, %s, %s::vector, %s, %s, %s)
+                """, (video_id, f"{block_type}_{i}", chunk_text, vector_str, block_weight, start_s, end_s))
             conn.commit()
             cursor.close()
             logger.info(f"已索引 {video_id} 的 {block_type} 块（{len(chunks)} 个 chunk）")
@@ -361,6 +475,23 @@ class RAGTools:
         finally:
             pool.putconn(conn)
 
+    @staticmethod
+    def _estimate_chunk_window(
+        block_type: str, index: int, total: int, duration_s: Optional[float],
+    ) -> tuple:
+        """无 ASR 时的时间窗估计：title/tags→0；introduction 按块序映射到片长。"""
+        if duration_s is None or duration_s <= 0 or total <= 0:
+            if block_type == "title":
+                return 0.0, None
+            return None, None
+        if block_type in ("title", "tags"):
+            return 0.0, min(30.0, duration_s)
+        # introduction：均匀铺开片长（预留末尾 5%），ASR 落地后可替换为真实时间戳
+        span = duration_s * 0.95
+        start = round((index / total) * span, 1)
+        end = round(((index + 1) / total) * span, 1)
+        return start, end
+
     @classmethod
     def index_video(cls, video_id: str) -> Dict[str, Any]:
         """
@@ -373,6 +504,16 @@ class RAGTools:
         video = VideoTools.get_video_info(video_id)
         if not video:
             return {"success": False, "video_id": video_id, "error": "视频不存在"}
+
+        # duration 可能是分钟（历史字段）或秒；>180 视为已是秒
+        raw_dur = getattr(video, "duration", None)
+        duration_s = None
+        try:
+            if raw_dur is not None and float(raw_dur) > 0:
+                d = float(raw_dur)
+                duration_s = d if d > 180 else d * 60.0
+        except (TypeError, ValueError):
+            duration_s = None
 
         parts = {
             "title": (video.videoName or "").strip(),
@@ -389,13 +530,14 @@ class RAGTools:
                     video_id, part_type, text,
                     # 与 vector_search 的加权语义一致：title 最重要，introduction 次要
                     block_weight=1.0 if part_type == "title" else (0.5 if part_type == "tags" else 0.3),
+                    duration_s=duration_s,
                 )
                 results[part_type] = {"indexed": ok}
             except Exception as e:
                 results[part_type] = {"indexed": False, "error": str(e)}
 
         success = any(r.get("indexed") for r in results.values())
-        return {"success": success, "video_id": video_id, "parts": results}
+        return {"success": success, "video_id": video_id, "parts": results, "duration_s": duration_s}
 PLATFORM_FAQ_FALLBACK = [
     {"title": "ViewHub 是什么", "content": "ViewHub 是一个视频分享平台，支持视频上传、播放、弹幕互动、评论交流等功能。你可以在这里找到各种有趣的视频内容。", "type": "faq"},
     {"title": "如何注册账号", "content": "点击登录弹窗的「注册」标签，填写邮箱、昵称、密码，通过邮箱验证码完成注册。注册成功后即可正常使用所有功能。", "type": "guide"},

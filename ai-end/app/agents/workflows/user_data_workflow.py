@@ -38,6 +38,8 @@ INTENT_MAP = {
     "history_list": {"data_type": "history", "time_range": "all", "aggregation": "list"},
     "like_top": {"data_type": "like", "time_range": "all", "aggregation": "top"},
     "week_like_count": {"data_type": "like", "time_range": "week", "aggregation": "count"},
+    "coin_count": {"data_type": "coin", "time_range": "all", "aggregation": "count"},
+    "following_list": {"data_type": "follow", "time_range": "all", "aggregation": "list"},
 }
 
 INTENT_KEYWORDS = [
@@ -68,6 +70,12 @@ INTENT_KEYWORDS = [
     (["点赞", "最多"], "like_top"),
     (["本周", "点赞"], "week_like_count"),
     (["这周", "点赞"], "week_like_count"),
+    (["硬币", "多少"], "coin_count"),
+    (["有多少", "硬币"], "coin_count"),
+    (["关注", "哪些"], "following_list"),
+    (["关注", "up主"], "following_list"),
+    (["关注的", "up"], "following_list"),
+    (["关注", "了", "谁"], "following_list"),
 ]
 
 
@@ -97,7 +105,9 @@ def intent_node(state: UserDataState) -> dict:
                  '- {"data_type": "favorite", "time_range": "all", "aggregation": "count"}\n'
                  '- {"data_type": "favorite", "time_range": "all", "aggregation": "list"}\n'
                  '- {"data_type": "history", "time_range": "all", "aggregation": "list"}\n'
-                 '- {"data_type": "like", "time_range": "week", "aggregation": "count"}'},
+                 '- {"data_type": "like", "time_range": "week", "aggregation": "count"}\n'
+                 '- {"data_type": "coin", "time_range": "all", "aggregation": "count"}\n'
+                 '- {"data_type": "follow", "time_range": "all", "aggregation": "list"}'},
                 {"role": "user", "content": question}
             ]
             return LLM_tools.chat_sync_json(messages, temperature=0, max_tokens=200)
@@ -193,6 +203,22 @@ def query_node(state: UserDataState) -> dict:
             else:
                 summary = "还没有点赞过视频"
             return {"videos": top_videos, "summary_text": summary}
+
+        elif data_type == "coin" and aggregation == "count":
+            count = UserTools.get_coin_count(user_id)
+            return {"count": count, "summary_text": f"你当前共有 {count} 枚硬币"}
+
+        elif data_type == "follow" and aggregation == "list":
+            result_data = UserTools.get_followings(user_id)
+            users = result_data.get("users", [])
+            total = result_data.get("total", 0)
+            names = [u.get("nick_name", "未知用户") for u in users[:10]]
+            summary = f"你共关注了 {total} 位 up 主"
+            if names:
+                summary += "，最近关注：\n" + "\n".join(f"- {name}" for name in names)
+            else:
+                summary += "，还没有关注任何人"
+            return {"users": users, "total": total, "summary_text": summary}
 
         return {"error": "无法识别查询意图", "summary_text": FALLBACK_RESPONSE}
 

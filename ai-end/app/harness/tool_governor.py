@@ -27,7 +27,7 @@ from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, Optional
 
 from app.config import settings
-from app.exceptions import ToolAccessDenied, ToolCallLimitExceeded, ToolCallTimeout
+from app.exceptions import ToolAccessDenied, ToolApprovalRequired, ToolCallLimitExceeded, ToolCallTimeout
 from app.tools.db import get_global_pool
 
 logger = logging.getLogger(__name__)
@@ -69,6 +69,7 @@ _DEFAULT_LIMITS: Dict[str, int] = {
     "default": 10,
     "vector_search": 5,
     "retrieve_knowledge": 5,
+    "search_video_chunks": 5,
     "get_video_info": 8,
     "query_user_data": 5,
     "recommend_videos": 3,
@@ -79,10 +80,28 @@ _DEFAULT_TIMEOUT_SECONDS: Dict[str, float] = {
     "default": 30.0,
     "vector_search": 10.0,
     "retrieve_knowledge": 10.0,
+    "search_video_chunks": 15.0,
     "get_video_info": 5.0,
     "query_user_data": 10.0,
     "recommend_videos": 15.0,
 }
+
+
+def _policy_limits(agent: str, tool_name: str, arguments: Dict[str, Any] = None):
+    """声明式 policy 优先，回退硬编码默认值。返回 (max_calls, timeout, decision, max_result_chars, inject_user_id)。"""
+    try:
+        from app.harness.tool_policy import effective_decision, resolve_rule
+        rule = resolve_rule(agent, tool_name)
+        decision = effective_decision(rule, arguments)
+        return rule.max_calls, rule.timeout_seconds, decision, rule.max_result_chars, rule.inject_user_id
+    except Exception:
+        return (
+            _DEFAULT_LIMITS.get(tool_name, _DEFAULT_LIMITS["default"]),
+            _DEFAULT_TIMEOUT_SECONDS.get(tool_name, _DEFAULT_TIMEOUT_SECONDS["default"]),
+            "allow",
+            4000,
+            False,
+        )
 
 
 class ToolGovernor:
@@ -149,11 +168,15 @@ class ToolGovernor:
             self._count_timestamps.pop(k, None)
 
     @staticmethod
-    def _limit_for(tool_name: str) -> int:
+    def _limit_for(tool_name: str, agent: str = "") -> int:
+        if agent:
+            return _policy_limits(agent, tool_name)[0]
         return _DEFAULT_LIMITS.get(tool_name, _DEFAULT_LIMITS["default"])
 
     @staticmethod
-    def _timeout_for(tool_name: str) -> float:
+    def _timeout_for(tool_name: str, agent: str = "") -> float:
+        if agent:
+            return _policy_limits(agent, tool_name)[1]
         return _DEFAULT_TIMEOUT_SECONDS.get(tool_name, _DEFAULT_TIMEOUT_SECONDS["default"])
 
     def _session_key(self, session_id: str, tool_name: str) -> str:
@@ -201,6 +224,24 @@ class ToolGovernor:
                 if k.startswith(prefix):
                     self._call_counts.pop(k, None)
                     self._count_timestamps.pop(k, None)
+
+    def reset_all(self):
+        """重置所有 session 的工具调用计数（Redis + 内存）。测试隔离用。"""
+        r = self._redis()
+        if r is not None:
+            try:
+                cursor = 0
+                while True:
+                    cursor, keys = r.scan(cursor=cursor, match=f"{_RATE_LIMIT_PREFIX}*", count=200)
+                    if keys:
+                        r.delete(*keys)
+                    if cursor == 0:
+                        break
+            except Exception as e:
+                logger.debug(f"Redis reset_all 失败: {e}")
+        with self._lock:
+            self._call_counts.clear()
+            self._count_timestamps.clear()
 
     def _incr_count(self, session_id: str, tool_name: str) -> int:
         """
@@ -262,23 +303,138 @@ class ToolGovernor:
         arguments: Dict[str, Any],
         execute_fn: Callable[[], Any],
         record_artifact: bool = True,
+        user_id: str = "",
     ) -> Any:
         """
         治理工具调用：
-        0. 沙箱校验（deny by default）—— Agent 无权调用此工具则直接拒绝
-        1. 检查调用次数上限
+        0. 策略 + 沙箱（deny by default）
+        0.5 ask → 无 HITL 时 fail-closed（ToolApprovalRequired）
+        0.6 强制注入 user_id（policy.inject_user_id）
+        1. 限流
         2. 执行（带超时）
-        3. 写入 run_artifacts trace
-
-        沙箱拒绝不会消耗 rate limit 配额（权限问题是分类问题，不是资源问题）。
-
-        HARNESS 关闭时（HARNESS_ENABLED=0）：
-        整个 gate 短路为直接调用 execute_fn()——跳过沙箱、限流、超时、trace。
-        与 invoke_with_governor 行为一致（应急开关）。
+        3. 结果投影（max_result_chars）+ trace
         """
         # HARNESS 关闭：完全短路，不走任何治理
         if not settings.harness_enabled:
             return execute_fn()
+
+        limit, timeout, decision, max_result_chars, inject_uid = _policy_limits(agent, tool_name, arguments)
+        if decision == "forbidden":
+            msg = f"策略拒绝: agent '{agent}' 禁止调用工具 '{tool_name}'"
+            logger.warning(msg)
+            try:
+                from app.harness.run_trace import trace_event
+                trace_event("tool_rejected", tool=tool_name, agent=agent, reason="policy_forbidden")
+            except Exception:
+                pass
+            if record_artifact:
+                self._write_artifact(ToolCallRecord(
+                    session_id=session_id, agent=agent, tool_name=tool_name,
+                    arguments=arguments, status="rejected_policy", error=msg,
+                ))
+            raise ToolAccessDenied(tool_name, agent)
+
+        if decision == "ask":
+            from app.config import settings as _cfg
+            if getattr(_cfg, "hitl_enabled", True):
+                from app.harness.hitl_approval import (
+                    create_approval,
+                    is_approved,
+                    record_approval,
+                    wait_for_decision,
+                )
+
+                if is_approved(session_id, agent, tool_name):
+                    # 同会话已批准过 → 免重复审批（借鉴 Codex with_cached_approval）
+                    try:
+                        from app.harness.run_trace import trace_event
+                        trace_event("tool_approval_cached", tool=tool_name, agent=agent)
+                    except Exception:
+                        pass
+                    req = None
+                    verdict = "approve"
+                else:
+                    req = create_approval(
+                        session_id=session_id,
+                        agent=agent,
+                        tool_name=tool_name,
+                        arguments=arguments,
+                    )
+                    if record_artifact:
+                        self._write_artifact(ToolCallRecord(
+                            session_id=session_id, agent=agent, tool_name=tool_name,
+                            arguments=arguments, status="needs_approval",
+                            error=f"awaiting HITL {req.approval_id}",
+                        ))
+                    verdict = wait_for_decision(req)
+                if verdict == "approve":
+                    if req is not None:
+                        record_approval(session_id, agent, tool_name)
+                    approval_ref = req.approval_id if req else "cached"
+                    logger.info(
+                        "HITL approved tool=%s agent=%s approval_id=%s",
+                        tool_name, agent, approval_ref,
+                    )
+                    try:
+                        from app.harness.run_trace import trace_event
+                        trace_event(
+                            "tool_approved",
+                            tool=tool_name, agent=agent, approval_id=approval_ref,
+                        )
+                    except Exception:
+                        pass
+                    # fall through to sandbox / execute
+                else:
+                    msg = (
+                        f"策略要求审批: agent '{agent}' 调用 '{tool_name}' "
+                        f"未通过（{verdict}）"
+                    )
+                    logger.warning(msg)
+                    try:
+                        from app.harness.run_trace import trace_event
+                        trace_event(
+                            "tool_rejected",
+                            tool=tool_name, agent=agent,
+                            reason=f"hitl_{verdict}", approval_id=req.approval_id,
+                        )
+                    except Exception:
+                        pass
+                    if record_artifact:
+                        self._write_artifact(ToolCallRecord(
+                            session_id=session_id, agent=agent, tool_name=tool_name,
+                            arguments=arguments, status=f"rejected_hitl_{verdict}", error=msg,
+                        ))
+                    raise ToolApprovalRequired(tool_name, agent)
+            else:
+                # 无 HITL：fail-closed
+                msg = f"策略要求审批: agent '{agent}' 调用 '{tool_name}' 需人工确认"
+                logger.warning(msg)
+                try:
+                    from app.harness.run_trace import trace_event
+                    trace_event("tool_needs_approval", tool=tool_name, agent=agent, reason="policy_ask")
+                except Exception:
+                    pass
+                if record_artifact:
+                    self._write_artifact(ToolCallRecord(
+                        session_id=session_id, agent=agent, tool_name=tool_name,
+                        arguments=arguments, status="needs_approval", error=msg,
+                    ))
+                raise ToolApprovalRequired(tool_name, agent)
+
+        if inject_uid and user_id:
+            from app.harness.tool_projection import inject_tenant_args
+            arguments = inject_tenant_args(arguments, user_id=user_id, force_user_id=True)
+
+        try:
+            from app.harness.run_trace import trace_event
+            trace_event("tool_start", tool=tool_name, agent=agent, arguments=arguments)
+        except Exception:
+            pass
+        try:
+            from app.harness.tool_progress import emit_tool_progress
+            emit_tool_progress(tool_name, "start")
+        except Exception:
+            pass
 
         # 0. 沙箱校验（在 rate limit 之前；权限问题独立于配额）
         try:
@@ -302,7 +458,6 @@ class ToolGovernor:
             # tool_registry 不可用时跳过沙箱（兼容旧调用）
             logger.debug("ToolSandbox 不可用，跳过沙箱校验")
 
-        limit = self._limit_for(tool_name)
         # 原子自增（Redis INCR 或内存 +1），超限则回滚
         current = self._incr_count(session_id, tool_name)
         if current > limit:
@@ -347,38 +502,80 @@ class ToolGovernor:
 
         timeout = self._timeout_for(tool_name)
         start = time.time()
+        ctx = {"session_id": session_id, "agent": agent, "tool": tool_name, "arguments": arguments}
         try:
-            future = self._executor.submit(execute_fn)
-            try:
-                result = future.result(timeout=timeout)
-            except concurrent.futures.TimeoutError:
-                future.cancel()
-                record.status = "timeout"
-                record.error = f"timeout after {timeout}s"
-                record.latency_ms = (time.time() - start) * 1000
-                if record_artifact:
-                    self._write_artifact(record)
-                raise ToolCallTimeout(tool_name, timeout) from None
+            def _execute() -> Any:
+                future = self._executor.submit(execute_fn)
+                try:
+                    return future.result(timeout=timeout)
+                except concurrent.futures.TimeoutError:
+                    future.cancel()
+                    record.status = "timeout"
+                    record.error = f"timeout after {timeout}s"
+                    record.latency_ms = (time.time() - start) * 1000
+                    if record_artifact:
+                        self._write_artifact(record)
+                    try:
+                        from app.harness.tool_progress import emit_tool_progress
+                        emit_tool_progress(tool_name, "end", ok=False, duration_ms=record.latency_ms)
+                    except Exception:
+                        pass
+                    raise ToolCallTimeout(tool_name, timeout) from None
 
-            record.result = result
+            from app.harness.middleware import tool_after, tool_before
+            result = tool_before.run(ctx, _execute)
+
+            from app.harness.tool_projection import attach_spill_notice, project_tool_result
+            projected = project_tool_result(
+                result, max_result_chars, keep=getattr(settings, "tool_result_truncate_keep", "head"),
+            )
+            # 被截断 → 完整输出落盘 + 追加"完整在哪"提示（字符串/列表/字典通用）
+            if projected is not result and getattr(settings, "tool_result_spill_enabled", True):
+                try:
+                    spill_path = self._spill_full_result(session_id, tool_name, result)
+                    projected = attach_spill_notice(projected, spill_path)
+                except Exception as e:  # noqa: BLE001
+                    logger.debug(f"结果落盘失败（不影响返回）: {e}")
+            # tool/after 扩展点：可脱敏/改写返回（默认空链 → 原样）
+            projected = tool_after.run({**ctx, "result": projected}, lambda: projected)
+            record.result = projected
             record.status = "success"
             record.latency_ms = (time.time() - start) * 1000
             if record_artifact:
                 self._write_artifact(record)
+            try:
+                from app.harness.run_trace import trace_event
+                trace_event(
+                    "tool_end",
+                    tool=tool_name,
+                    agent=agent,
+                    status="success",
+                    latency_ms=record.latency_ms,
+                    projected=projected is not result,
+                )
+            except Exception:
+                pass
+            try:
+                from app.harness.tool_progress import emit_tool_progress
+                emit_tool_progress(tool_name, "end", ok=True, duration_ms=record.latency_ms)
+            except Exception:
+                pass
             # Hook：after_tool_call（观察型）
             try:
                 hooks_manager.trigger(
                     HookEvent.AFTER_TOOL_CALL,
                     session_id=session_id, agent=agent, tool_name=tool_name,
-                    arguments=arguments, result=result,
+                    arguments=arguments, result=projected,
                 )
             except Exception:
                 pass
-            return result
+            return projected
 
         except ToolCallLimitExceeded:
             raise
         except ToolAccessDenied:
+            raise
+        except ToolApprovalRequired:
             raise
         except Exception as e:
             record.status = "error"
@@ -386,7 +583,24 @@ class ToolGovernor:
             record.latency_ms = (time.time() - start) * 1000
             if record_artifact:
                 self._write_artifact(record)
+            try:
+                from app.harness.tool_progress import emit_tool_progress
+                emit_tool_progress(tool_name, "end", ok=False, duration_ms=record.latency_ms)
+            except Exception:
+                pass
             raise
+
+    def _spill_full_result(self, session_id: str, tool_name: str, result: Any) -> str:
+        """结果被截断时，把**完整输出**落盘，供后续按需读取（借鉴 pi 的 overflow 落盘）。"""
+        from app.harness.run_trace import _trace_root
+
+        root = _trace_root() / "tool_outputs"
+        root.mkdir(parents=True, exist_ok=True)
+        name = f"{(session_id or 'anon')[:16]}_{tool_name}_{int(time.time() * 1000)}.txt"
+        path = root / name
+        text = result if isinstance(result, str) else json.dumps(result, ensure_ascii=False, default=str)
+        path.write_text(text, encoding="utf-8")
+        return str(path)
 
     def _write_artifact(self, record: ToolCallRecord):
         try:

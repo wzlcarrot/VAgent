@@ -224,6 +224,25 @@ _SPECS = [
         "allowed_agents": [WorkflowType.VIDEO_QA, WorkflowType.CHAT],
     },
     {
+        "name": "search_video_chunks",
+        "description": (
+            "片内视频知识检索工具（Agentic RAG）：对指定 video_id 做口语 query 改写、"
+            "混合召回与最多两轮补搜，返回带分值的证据片段；证据不足时由调用方拒答。"
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "video_id": {"type": "string", "description": "当前视频 ID"},
+                "question": {"type": "string", "description": "用户原问题"},
+                "title": {"type": "string", "description": "视频标题，可选"},
+                "tags": {"type": "string", "description": "视频标签，可选"},
+                "top_k": {"type": "integer", "description": "返回片段数", "default": 5},
+            },
+            "required": ["video_id", "question"],
+        },
+        "allowed_agents": [WorkflowType.VIDEO_QA],
+    },
+    {
         "name": "recommend_videos",
         "description": "基于用户偏好获取个性化视频推荐",
         "parameters": {

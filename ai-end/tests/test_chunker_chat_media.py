@@ -214,7 +214,8 @@ def test_dual_recall_merges():
     with patch("app.tools.rag_tools.RAGTools.retrieve_knowledge", return_value=[{"content": "kw", "video_id": "1"}]), \
          patch("app.tools.rag_tools.RAGTools.vector_search", return_value=[{"content": "vec", "video_id": "2"}]), \
          patch("app.tools.llm_tools.LLM_tools.embed", return_value=[[0.1]]), \
-         patch.object(ranker_mod, "rerank", return_value=[{"content": "kw"}]):
+         patch.object(ranker_mod, "rerank", return_value=[{"content": "kw"}]), \
+         patch("app.config.settings.rag_evidence_gate_fail_closed_missing_score", False):
         out = ranker_mod.dual_recall_and_rerank("q", top_k=2)
     assert out == [{"content": "kw"}]
 

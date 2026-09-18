@@ -1,0 +1,9 @@
+# MODE offline
+# video_qa：有 video_id 时应出现 citations 或至少完成文本（离线夹具含 citations）
+QUESTION "这个视频讲了什么"
+VIDEO_ID video_demo_001
+EXPECT stage=routing
+EXPECT stage=parallel
+EXPECT type=citations
+EXPECT type=text
+EXPECT stage=done

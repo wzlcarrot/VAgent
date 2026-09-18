@@ -1,0 +1,10 @@
+[
+  {"type": "status", "stage": "routing", "label": "分析意图"},
+  {"type": "meta", "meta": {"winner_type": "video_qa_workflow", "confidence": 0.95, "method": "keyword"}},
+  {"type": "status", "stage": "parallel", "label": "并行"},
+  {"type": "tool", "name": "search_video_chunks", "status": "start", "label": "检索视频片段"},
+  {"type": "tool", "name": "search_video_chunks", "status": "end", "ok": true, "duration_ms": 20.0, "label": "检索视频片段"},
+  {"type": "citations", "citations": [{"id": 1, "snippet": "本视频介绍 Python 基础"}]},
+  {"type": "text", "content": "本视频主要讲 Python 入门[1]。"},
+  {"type": "status", "stage": "done", "label": "完成"}
+]

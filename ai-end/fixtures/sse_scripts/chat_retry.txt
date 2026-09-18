@@ -1,0 +1,7 @@
+# MODE offline
+# LLM 重试可见性（离线夹具；live 仅在上游 429 时出现）
+QUESTION "平台有什么功能"
+EXPECT stage=routing
+EXPECT retry_op=LLM
+EXPECT type=text
+EXPECT stage=done

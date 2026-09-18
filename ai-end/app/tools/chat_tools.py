@@ -16,17 +16,19 @@ class ChatTools:
     def save_chat_history(user_id: str, question: str, answer: str,
                           session_id: str = None, image_urls: List[str] = None,
                           videos: List[Dict[str, Any]] = None,
-                          reasons: List[str] = None) -> bool:
+                          reasons: List[str] = None,
+                          citations: List[Dict[str, Any]] = None) -> bool:
         try:
             with get_cursor(commit=True) as cursor:
                 if cursor is None:
                     return False
                 cursor.execute("""
-                    INSERT INTO chat_history (user_id, question, answer, session_id, image_urls, videos, reasons)
-                    VALUES (%s, %s, %s, %s, %s, %s::jsonb, %s::jsonb)
+                    INSERT INTO chat_history (user_id, question, answer, session_id, image_urls, videos, reasons, citations)
+                    VALUES (%s, %s, %s, %s, %s, %s::jsonb, %s::jsonb, %s::jsonb)
                 """, (user_id, question, answer, session_id, image_urls or [],
                       json.dumps(videos or [], ensure_ascii=False),
-                      json.dumps(reasons or [], ensure_ascii=False)))
+                      json.dumps(reasons or [], ensure_ascii=False),
+                      json.dumps(citations or [], ensure_ascii=False)))
             return True
         except Exception as e:
             logger.error(f"保存聊天记录失败: {e}")

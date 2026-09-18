@@ -52,6 +52,8 @@ def init_agent_tables():
                 block_content TEXT NOT NULL,
                 content_vector vector(384),
                 block_weight INTEGER DEFAULT 1,
+                start_s REAL,
+                end_s REAL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE (video_id, block_type)
             )
@@ -80,6 +82,13 @@ def init_agent_tables():
             ALTER TABLE video_vector_block
                 ALTER COLUMN video_id TYPE VARCHAR(64),
                 ALTER COLUMN block_type TYPE VARCHAR(32)
+        """)
+
+        # citations 跳转：可选时间轴（ASR 真实时间或 introduction 比例估计）
+        cursor.execute("""
+            ALTER TABLE video_vector_block
+                ADD COLUMN IF NOT EXISTS start_s REAL,
+                ADD COLUMN IF NOT EXISTS end_s REAL
         """)
 
         cursor.execute("SELECT COUNT(*) FROM platform_docs")
@@ -117,6 +126,36 @@ def init_agent_tables():
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_memory_user_id ON user_memory(user_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_memory_type ON user_memory(type)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_memory_score ON user_memory(score DESC)")
+        # 记忆生命周期（借鉴 ragent）：无效记忆不删，只打 invalid_at / superseded_by。
+        # 幂等 ALTER，兼容已存在的旧表。
+        cursor.execute("ALTER TABLE user_memory ADD COLUMN IF NOT EXISTS invalid_at TIMESTAMP")
+        cursor.execute("ALTER TABLE user_memory ADD COLUMN IF NOT EXISTS superseded_by INTEGER")
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_memory_active "
+            "ON user_memory (user_id) WHERE invalid_at IS NULL"
+        )
+        # 归档表：软失效超过保留期的记忆搬到这里，主表保持精简（借鉴 ragent 软失效的收尾）
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS user_memory_archive (
+                archive_id SERIAL PRIMARY KEY,
+                id INTEGER,
+                user_id VARCHAR(64) NOT NULL,
+                type VARCHAR(32) NOT NULL DEFAULT 'preference',
+                content TEXT NOT NULL,
+                source VARCHAR(32) DEFAULT 'inferred',
+                score REAL DEFAULT 1.0,
+                tags TEXT[] DEFAULT '{}',
+                created_at TIMESTAMP,
+                last_accessed_at TIMESTAMP,
+                access_count INTEGER DEFAULT 0,
+                invalid_at TIMESTAMP,
+                superseded_by INTEGER,
+                archived_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_memory_archive_user ON user_memory_archive(user_id)"
+        )
         # pg_trgm GIN 索引：让 memory 的 ILIKE 关键词查询走索引，避免全表扫描
         try:
             cursor.execute("CREATE EXTENSION IF NOT EXISTS pg_trgm")
@@ -144,6 +183,7 @@ def init_agent_tables():
         # 兼容已存在但缺列的旧表（幂等）
         cursor.execute("ALTER TABLE chat_history ADD COLUMN IF NOT EXISTS videos JSONB DEFAULT '[]'")
         cursor.execute("ALTER TABLE chat_history ADD COLUMN IF NOT EXISTS reasons JSONB DEFAULT '[]'")
+        cursor.execute("ALTER TABLE chat_history ADD COLUMN IF NOT EXISTS citations JSONB DEFAULT '[]'")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_chat_user_id ON chat_history(user_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_chat_session_id ON chat_history(session_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_chat_created_at ON chat_history(created_at DESC)")

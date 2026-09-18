@@ -225,9 +225,9 @@ def test_chat_sync_json_returns_none_on_empty():
         assert LLM_tools.chat_sync_json([{"role": "user", "content": "q"}]) is None
 
 
-def test_chat_sync_json_minimax_prompt_prefix():
-    """MiniMax 不支持 json_mode → prompt 前缀追加"""
-    class FakeMiniMax:
+def test_chat_sync_json_prompt_prefix_fallback():
+    """provider 不支持 json_mode → prompt 前缀追加（保留机制，供未来非 OpenAI 兼容 provider）"""
+    class FakeNoJsonMode:
         def supports_json_mode(self):
             return False
         def json_mode_prompt_prefix(self):
@@ -237,7 +237,7 @@ def test_chat_sync_json_minimax_prompt_prefix():
     client = MagicMock()
     client.post.return_value = _ok_response('{"b": 2}')
     with patch("app.tools.llm_tools._get_sync_client", return_value=client), \
-         patch("app.tools.providers.provider_factory", return_value=FakeMiniMax()), \
+         patch("app.tools.providers.provider_factory", return_value=FakeNoJsonMode()), \
          patch("app.tools.llm_tools._resolve_provider", return_value=("https://x", "m", "k")):
         assert LLM_tools.chat_sync_json([{"role": "user", "content": "q"}]) == {"b": 2}
 
@@ -278,9 +278,9 @@ def test_chat_with_tools_failure():
 
 def test_chat_with_tools_router_provider():
     with patch.object(LLM_tools, "chat_with_tools", return_value={"tool_call": False, "content": "x", "usage": {}}) as m, \
-         patch("app.config.settings.router_llm_provider", "minimax"):
+         patch("app.config.settings.router_llm_provider", "deepseek-vl"):
         LLM_tools.chat_with_tools_router([{"role": "user", "content": "q"}], [])
-    assert m.call_args.kwargs.get("provider") == "minimax"
+    assert m.call_args.kwargs.get("provider") == "deepseek-vl"
 
 
 # ─── chat_sync_typed ───

@@ -10,14 +10,22 @@ from app.tools.output_guard import FALLBACK_RESPONSE
 
 
 class TestVideoQAWorkflow:
+    @patch("app.services.video_indexing.is_video_indexed", return_value=True)
     @patch("app.agents.workflows.video_qa_workflow.VideoTools.get_video_info")
-    @patch("app.tools.ranker.dual_recall_and_rerank")
-    def test_video_info_node_with_video(self, mock_rag, mock_video):
+    @patch("app.agents.workflows.video_qa_workflow.run_video_qa_react_retrieval")
+    def test_video_info_node_with_video(self, mock_react, mock_video, _mock_idx):
         from app.agents.workflows.video_qa_workflow import VideoQAState, knowledge_node, video_info_node
 
         mock_video.return_value = VideoInfo(
             videoId="123", videoName="Python教程",
             nickName="张三", duration=30, tags="python,编程"
+        )
+        mock_react.return_value = (
+            [{"content": "Python入门知识", "video_id": "123", "score": 0.9}],
+            True,
+            1,
+            "",
+            "answered",
         )
 
         state: VideoQAState = {
@@ -26,8 +34,13 @@ class TestVideoQAWorkflow:
             "user_id": "",
             "session_id": "",
             "video_info": {},
+            "video_error": "",
             "knowledge": [],
+            "knowledge_sufficient": False,
+            "citations": [],
+            "corrective_applied": False,
             "summary": "",
+            "llm_response": "",
             "answer": "",
             "workflow_type": "video_qa_workflow"
         }
@@ -36,10 +49,17 @@ class TestVideoQAWorkflow:
         assert result["video_info"]["title"] == "Python教程"
         assert result["video_info"]["author"] == "张三"
 
-        mock_rag.return_value = [{"content": "Python入门知识", "video_id": "123"}]
         state.update(result)
         result2 = knowledge_node(state)
         assert len(result2["knowledge"]) == 1
+        assert result2["knowledge_sufficient"] is True
+        assert result2["citations"]
+        assert result2["react_steps"] == 1
+        mock_react.assert_called_once()
+        call_kw = mock_react.call_args.kwargs
+        assert call_kw["video_id"] == "123"
+        assert call_kw["question"] == "这个视频讲了什么"
+        assert call_kw.get("title") == "Python教程"
 
     @patch("app.agents.workflows.video_qa_workflow.VideoTools.get_video_info")
     def test_video_info_node_without_video(self, mock_video):
@@ -99,15 +119,16 @@ class TestVideoQAWorkflow:
         assert router_need_knowledge(state_without) == "summary_node"
 
     @patch("app.agents.workflows.video_qa_workflow.VideoTools.get_video_info")
-    @patch("app.tools.ranker.dual_recall_and_rerank")
-    def test_video_qa_graph_invoke(self, mock_rag, mock_video):
+    @patch("app.agents.workflows.video_qa_workflow.run_video_qa_react_retrieval")
+    @patch("app.agents.workflows.video_qa_workflow.LLM_tools.chat_sync", return_value="这是一门 Python 入门课[1]。")
+    def test_video_qa_graph_invoke(self, mock_llm, mock_react, mock_video):
         from app.agents.workflows.video_qa_workflow import VideoQAState, video_qa_graph
 
         mock_video.return_value = VideoInfo(
             videoId="123", videoName="Python教程",
             nickName="张三", duration=30, tags="python,编程"
         )
-        mock_rag.return_value = [{"content": "Python入门知识", "video_id": "123"}]
+        mock_react.return_value = ([{"content": "Python入门知识", "video_id": "123", "score": 0.9}], True, 1, "", "answered")
 
         state: VideoQAState = {
             "question": "这个视频讲了什么",
@@ -115,14 +136,21 @@ class TestVideoQAWorkflow:
             "user_id": "",
             "session_id": "",
             "video_info": {},
+            "video_error": "",
             "knowledge": [],
+            "knowledge_sufficient": False,
+            "citations": [],
+            "corrective_applied": False,
             "summary": "",
+            "llm_response": "",
             "answer": "",
             "workflow_type": "video_qa_workflow"
         }
 
         result = video_qa_graph.invoke(state)
         assert len(result.get("answer", "")) > 0
+        assert "citations" in result
+        assert mock_llm.called
 
 
 class TestRecommendWorkflow:
@@ -245,81 +273,65 @@ class TestRecommendWorkflow:
 
 
 class TestChatGraph:
-    @patch("app.agents.workflows.chat_graph.RAGTools.retrieve_knowledge")
-    def test_faq_node(self, mock_rag):
-        from app.agents.workflows.chat_graph import ChatState, _faq_node
+    @patch("app.tools.ranker.dual_recall_and_rerank")
+    def test_parallel_recall_node(self, mock_recall):
+        from app.agents.workflows.chat_graph import ChatState, _parallel_recall_node
+        from app.harness.tool_governor import ToolGovernor
 
-        mock_rag.return_value = [{"content": "如何注册账号？"}]
+        ToolGovernor().reset_session("s1")
+
+        mock_recall.side_effect = [
+            [{"content": "如何注册账号？"}],
+            [{"content": "点击上传按钮"}],
+        ]
 
         state: ChatState = {
             "question": "怎么注册",
+            "session_id": "s1",
             "conversation_history": [],
-            "faq_results": [], "guide_results": [],
+            "faq_results": [], "guide_results": [], "platform_docs": [],
             "response": "", "answer": "",
-            "full_response": "", "workflow_type": "chat_workflow"
+            "full_response": "", "workflow_type": "chat_workflow",
         }
 
-        result = _faq_node(state)
+        result = _parallel_recall_node(state)
         assert len(result["faq_results"]) == 1
-
-    @patch("app.agents.workflows.chat_graph.RAGTools.retrieve_knowledge")
-    def test_guide_node(self, mock_rag):
-        from app.agents.workflows.chat_graph import ChatState, _guide_node
-
-        mock_rag.return_value = [{"content": "点击上传按钮"}]
-
-        state: ChatState = {
-            "question": "怎么上传",
-            "conversation_history": [],
-            "faq_results": [], "guide_results": [],
-            "response": "", "answer": "",
-            "full_response": "", "workflow_type": "chat_workflow"
-        }
-
-        result = _guide_node(state)
         assert len(result["guide_results"]) == 1
 
-    def test_has_knowledge_router(self):
-        from app.agents.workflows.chat_graph import ChatState, _has_knowledge_router
+    def test_route_after_recall(self):
+        from app.agents.workflows.chat_graph import ChatState, _route_after_recall
 
         state_with_faq: ChatState = {
             "question": "", "conversation_history": [],
             "faq_results": [{"content": "FAQ"}], "guide_results": [],
-            "response": "", "answer": "",
-            "full_response": "", "workflow_type": "chat_workflow"
+            "skip_llm": False,
         }
-        assert _has_knowledge_router(state_with_faq) == "llm_node"
+        assert _route_after_recall(state_with_faq) == "llm_node"
 
-        state_with_guide: ChatState = {
+        state_skip: ChatState = {
             "question": "", "conversation_history": [],
-            "faq_results": [], "guide_results": [{"content": "Guide"}],
-            "response": "", "answer": "",
-            "full_response": "", "workflow_type": "chat_workflow"
+            "faq_results": [{"content": "FAQ"}], "guide_results": [],
+            "skip_llm": True,
         }
-        assert _has_knowledge_router(state_with_guide) == "llm_node"
+        assert _route_after_recall(state_skip) == "prepare_stream_node"
 
         state_empty: ChatState = {
             "question": "", "conversation_history": [],
             "faq_results": [], "guide_results": [],
-            "response": "", "answer": "",
-            "full_response": "", "workflow_type": "chat_workflow"
+            "skip_llm": False,
         }
-        assert _has_knowledge_router(state_empty) == "supervisor_node"
+        assert _route_after_recall(state_empty) == "supervisor_node"
 
-    @patch("app.agents.workflows.chat_graph.RAGTools.retrieve_knowledge")
-    @patch("app.agents.workflows.chat_graph.LLM_tools.stream_chat")
-    def test_chat_graph_invoke(self, mock_llm, mock_rag):
+    @patch("app.tools.ranker.dual_recall_and_rerank")
+    @patch("app.agents.workflows.chat_graph.LLM_tools.chat_sync")
+    def test_chat_graph_invoke(self, mock_llm, mock_recall):
         from app.agents.workflows.chat_graph import run_chat_workflow
 
-        mock_rag.return_value = [{"content": "如何注册账号？"}]
+        mock_recall.return_value = [{"content": "如何注册账号？"}]
+        mock_llm.return_value = "这是注册流程"
 
-        async def _mock_stream(*args, **kwargs):
-            for token in ["这是", "注册", "流程"]:
-                yield token
-        mock_llm.return_value = _mock_stream()
-
-        result = run_chat_workflow("怎么注册", [])
-        assert len(result.get("answer", "")) > 0
+        result = run_chat_workflow("怎么注册", [], skip_llm=False)
+        assert "注册" in result.get("answer", "")
 
 
 class TestUserDataWorkflow:
@@ -398,6 +410,67 @@ class TestUserDataWorkflow:
         intent = result["intent"]
         assert intent["data_type"] == "like"
         assert intent["aggregation"] == "top"
+
+    def test_intent_node_keyword_coin(self):
+        from app.agents.workflows.user_data_workflow import UserDataState, intent_node
+
+        state: UserDataState = {
+            "question": "我的硬币有多少",
+            "user_id": "u1", "session_id": "",
+            "intent": {}, "query_result": {},
+            "response": "", "answer": "", "workflow_type": "user_data_workflow"
+        }
+        result = intent_node(state)
+        assert result["intent"]["data_type"] == "coin"
+        assert result["intent"]["aggregation"] == "count"
+
+    def test_intent_node_keyword_following(self):
+        from app.agents.workflows.user_data_workflow import UserDataState, intent_node
+
+        state: UserDataState = {
+            "question": "我关注的up主有哪些",
+            "user_id": "u1", "session_id": "",
+            "intent": {}, "query_result": {},
+            "response": "", "answer": "", "workflow_type": "user_data_workflow"
+        }
+        result = intent_node(state)
+        assert result["intent"]["data_type"] == "follow"
+        assert result["intent"]["aggregation"] == "list"
+
+    @patch("app.agents.workflows.user_data_workflow.UserTools.get_coin_count")
+    def test_query_node_coin(self, mock_coin):
+        from app.agents.workflows.user_data_workflow import UserDataState, query_node
+
+        mock_coin.return_value = 88
+        state: UserDataState = {
+            "question": "我的硬币有多少",
+            "user_id": "u1", "session_id": "",
+            "intent": {"data_type": "coin", "time_range": "all", "aggregation": "count"},
+            "query_result": {},
+            "response": "", "answer": "", "workflow_type": "user_data_workflow"
+        }
+        result = query_node(state)
+        assert result["query_result"]["count"] == 88
+        assert "88" in result["query_result"]["summary_text"]
+
+    @patch("app.agents.workflows.user_data_workflow.UserTools.get_followings")
+    def test_query_node_following(self, mock_follow):
+        from app.agents.workflows.user_data_workflow import UserDataState, query_node
+
+        mock_follow.return_value = {
+            "users": [{"user_id": "u2", "nick_name": "科技小王"}],
+            "total": 1,
+        }
+        state: UserDataState = {
+            "question": "我关注的up主有哪些",
+            "user_id": "u1", "session_id": "",
+            "intent": {"data_type": "follow", "time_range": "all", "aggregation": "list"},
+            "query_result": {},
+            "response": "", "answer": "", "workflow_type": "user_data_workflow"
+        }
+        result = query_node(state)
+        assert result["query_result"]["total"] == 1
+        assert "科技小王" in result["query_result"]["summary_text"]
 
     @patch("app.agents.workflows.user_data_workflow.UserTools.get_today_like_count")
     def test_query_node_today_like(self, mock_count):

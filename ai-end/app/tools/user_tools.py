@@ -259,6 +259,57 @@ class UserTools:
             return {"videos": [], "total": 0}
 
     @staticmethod
+    def get_coin_count(user_id: str) -> int:
+        """当前硬币余额（user_info.current_coin_count）。"""
+        try:
+            with get_cursor(cursor_factory=None) as cursor:
+                if cursor is None:
+                    return 0
+                cursor.execute(
+                    "SELECT current_coin_count FROM user_info WHERE user_id = %s",
+                    (user_id,),
+                )
+                row = cursor.fetchone()
+            return int(row[0]) if row and row[0] is not None else 0
+        except Exception as e:
+            logger.error(f"获取硬币余额失败: {e}")
+            return 0
+
+    @staticmethod
+    def get_followings(user_id: str, limit: int = 10) -> Dict[str, Any]:
+        """我关注的 up 主列表（user_focus + user_info）。"""
+        try:
+            with get_cursor() as cursor:
+                if cursor is None:
+                    return {"users": [], "total": 0}
+                cursor.execute(
+                    "SELECT uf.focus_user_id, ui.nick_name FROM user_focus uf "
+                    "LEFT JOIN user_info ui ON uf.focus_user_id = ui.user_id "
+                    "WHERE uf.user_id = %s ORDER BY uf.focus_time DESC LIMIT %s",
+                    (user_id, limit),
+                )
+                rows = cursor.fetchall()
+                cursor.execute(
+                    "SELECT COUNT(*) FROM user_focus WHERE user_id = %s",
+                    (user_id,),
+                )
+                total = cursor.fetchone()
+            users = [
+                {
+                    "user_id": r["focus_user_id"],
+                    "nick_name": r["nick_name"] or "未知用户",
+                }
+                for r in rows
+            ]
+            return {
+                "users": users,
+                "total": total["count"] if total else 0,
+            }
+        except Exception as e:
+            logger.error(f"获取关注列表失败: {e}")
+            return {"users": [], "total": 0}
+
+    @staticmethod
     def get_top_liked_videos(user_id: str, limit: int = 3) -> List[Dict[str, Any]]:
         try:
             with get_cursor() as cursor:

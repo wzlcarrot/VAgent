@@ -1,0 +1,41 @@
+{
+  "scenario": "default",
+  "default_response": "这是演示模式的默认回复，基于 ViewHub 平台资料生成。",
+  "router_rules": [
+    {"match_keywords": ["讲了什么", "视频"], "intent_type": "video_qa_workflow"},
+    {"match_keywords": ["推荐", "科技"], "intent_type": "recommend_workflow"},
+    {"match_keywords": ["硬币"], "intent_type": "user_data_workflow"},
+    {"match_keywords": ["关注", "up"], "intent_type": "user_data_workflow"},
+    {"match_keywords": ["平台", "功能"], "intent_type": "chat_workflow"}
+  ],
+  "responses": [
+    {
+      "match_keywords": ["注册", "账号"],
+      "content": "您可以在 ViewHub 首页点击注册按钮创建账号。"
+    },
+    {
+      "match_keywords": ["点赞", "多少"],
+      "content": "根据查询结果，您今天共点赞了 3 个视频。"
+    },
+    {
+      "match_keywords": ["硬币"],
+      "content": "根据查询结果，您当前共有 128 枚硬币。"
+    },
+    {
+      "match_keywords": ["关注", "up"],
+      "content": "根据查询结果，您最近关注了：科技小王、美食达人、编程讲师。"
+    },
+    {
+      "match_keywords": ["讲了什么", "视频"],
+      "content": "这是一门 Python 零基础入门课，主要讲解变量、循环与函数[1]。"
+    },
+    {
+      "match_keywords": ["推荐"],
+      "content": "根据你的兴趣标签，为你推荐以下科技类视频。"
+    },
+    {
+      "match_keywords": ["平台", "功能"],
+      "content": "ViewHub 支持视频投稿、弹幕互动、点赞收藏与 AI 智能助手。"
+    }
+  ]
+}

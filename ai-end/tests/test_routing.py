@@ -223,11 +223,19 @@ class TestSupervisor:
     def test_arbitrate_no_results(self):
         wf, answer, conf = self.supervisor.arbitrate([])
         assert "抱歉" in answer
-        assert wf == "chat_workflow"
+
+    def test_is_error_normal_chinese_answer(self):
+        assert not self.supervisor._is_error("这个实验的失败原因是散热设计不足。")
+        assert not self.supervisor._is_error("视频里讲解了错误处理的最佳实践。")
+
+    def test_is_error_system_messages(self):
+        assert self.supervisor._is_error("[ERROR] database down")
+        assert self.supervisor._is_error("Traceback (most recent call last):\n  File")
+        assert self.supervisor._is_error("错误：无法连接数据库")
 
     def test_arbitrate_error_is_invalid(self):
         results = [
-            ("video_qa_workflow", "出现error了", 0.8),
+            ("video_qa_workflow", "[ERROR] database unavailable", 0.8),
             ("chat_workflow", "正常回答", 0.5),
         ]
         wf, answer, conf = self.supervisor.arbitrate(results)

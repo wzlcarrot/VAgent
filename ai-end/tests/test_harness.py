@@ -143,7 +143,7 @@ class TestLLMRaceConditionFix:
         original_provider = settings.llm_provider
         original_router_provider = settings.router_llm_provider
         try:
-            settings.router_llm_provider = "minimax"
+            settings.router_llm_provider = "deepseek-vl"
             settings.llm_provider = "deepseek"
 
             with patch.object(LLM_tools, "chat_with_tools", return_value={"content": "ok"}) as mock:
@@ -152,11 +152,11 @@ class TestLLMRaceConditionFix:
                 # 关键断言：全局 settings.llm_provider 没有被改
                 assert settings.llm_provider == "deepseek", (
                     f"全局 settings.llm_provider 被改成了 {settings.llm_provider}，"
-                    f"这会导致多线程下 router 用 minimax 模型，普通用 deepseek 模型的串台"
+                    f"这会导致多线程下 router 用 deepseek-vl 模型，普通用 deepseek 模型的串台"
                 )
                 # 验证 chat_with_tools 收到的是 provider 参数
                 call_kwargs = mock.call_args.kwargs
-                assert call_kwargs.get("provider") == "minimax"
+                assert call_kwargs.get("provider") == "deepseek-vl"
         finally:
             settings.llm_provider = original_provider
             settings.router_llm_provider = original_router_provider
@@ -172,8 +172,8 @@ class TestLLMRaceConditionFix:
             assert "deepseek" in base_url.lower() or "deepseek" in model.lower()
             assert settings.llm_provider == "deepseek"
 
-            base_url2, model2, api_key2 = _resolve_provider("minimax")
-            assert "minimax" in model2.lower() or "minimax" in base_url2.lower()
+            base_url2, model2, api_key2 = _resolve_provider("deepseek-vl")
+            assert base_url2 and model2
             # 关键：调用 _resolve_provider 不会修改 settings
             assert settings.llm_provider == "deepseek"
         finally:

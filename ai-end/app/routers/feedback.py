@@ -35,16 +35,61 @@ async def submit_feedback(request: Request, authed_user_id: str = Depends(requir
         if not isinstance(video_ids, list):
             raise HTTPException(status_code=400, detail="video_ids 必须是数组")
         video_ids = [str(v) for v in video_ids[:20]]
+        # 负反馈原因：off_topic | bad_recommend | outdated | other
+        reason = str(body.get("reason") or "").strip().lower()[:64]
+        allowed_reasons = {"", "off_topic", "bad_recommend", "outdated", "other"}
+        if reason not in allowed_reasons:
+            raise HTTPException(status_code=400, detail="reason 非法")
         content = f"用户认为第{message_index + 1}轮回复{'有用' if feedback == 'helpful' else '没用'}"
+        if reason:
+            content += f"（原因:{reason}）"
         tags = [feedback, session_id] + [f"video:{v}" for v in video_ids]
+        if reason:
+            tags.append(f"reason:{reason}")
+        question = str(body.get("question") or "")[:500]
+        answer = str(body.get("answer") or "")[:800]
+        workflow_type = str(body.get("workflow_type") or "")[:64]
         from app.agents.workflows import run_sync_in_executor
         await run_sync_in_executor(
             MemoryTools.save_memory,
             user_id=user_id, type="feedback", content=content, source="feedback",
             score=1.0 if feedback == "helpful" else 0.3, tags=tags,
         )
-        logger.info(f"反馈已记录 user={user_id} session={session_id} feedback={feedback} videos={len(video_ids)}")
-        return {"success": True}
+        if feedback == "not_helpful" and video_ids:
+            try:
+                await run_sync_in_executor(
+                    MemoryTools.record_negative_feedback_videos, user_id, video_ids,
+                )
+            except Exception as re:
+                logger.warning(f"负反馈视频缓存失败(不影响反馈): {re}")
+        golden_meta = {}
+        try:
+            from app.harness.weekly_golden import append_feedback_case
+            golden_meta = await run_sync_in_executor(
+                append_feedback_case,
+                session_id=session_id,
+                user_id=user_id,
+                feedback=feedback,
+                message_index=message_index,
+                question=question,
+                answer=answer,
+                workflow_type=workflow_type,
+                video_ids=video_ids,
+                reason=reason,
+            )
+        except Exception as ge:
+            logger.warning(f"weekly golden 写入失败(不影响反馈): {ge}")
+        logger.info(
+            f"反馈已记录 user={user_id} session={session_id} feedback={feedback} "
+            f"reason={reason or '-'} videos={len(video_ids)}"
+        )
+        return {
+            "success": True,
+            "weekly_golden": golden_meta,
+            "suggest_rebatch": feedback == "not_helpful" and (
+                reason in ("bad_recommend", "other", "") or bool(video_ids)
+            ),
+        }
     except HTTPException:
         raise
     except Exception as e:

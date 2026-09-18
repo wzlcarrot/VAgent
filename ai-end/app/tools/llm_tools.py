@@ -175,7 +175,7 @@ def _is_retryable_http_status(status_code: int) -> bool:
 
 def _strip_think_blocks(chunk: str, state: Dict[str, Any]) -> str:
     """
-    流式过滤 MiniMax-M3 等推理模型的 <think>...</think> 块。
+    流式过滤推理模型（DeepSeek 思考模式等）的 <think>...</think> 块。
     跨 chunk 时用 state["buffer"] 暂存未决的部分，保证边界正确。
     state: {"in_think": bool, "buffer": str}
     返回过滤后的可输出片段（可能为空）。
@@ -305,57 +305,171 @@ def _build_payload(messages: List[Dict[str, str]], model: str, temperature: floa
         payload["tools"] = tools
     if json_mode:
         # 是否支持 OpenAI response_format=json_object 由 provider 决定
-        # （minimax 不支持，改用 prompt 指令约束，见 chat_sync_json）
+        # （provider 不支持 response_format 时改用 prompt 指令约束，见 chat_sync_json）
         from app.tools.providers import provider_factory
         prov_obj = provider_factory(provider or settings.llm_provider)
         payload = prov_obj.build_payload_extra(payload, json_mode=True)
     return payload
 
 
+class LLMCircuitOpen(RuntimeError):
+    """LLM 熔断打开，应走降级路径。"""
+
+
+def _emit_llm_retry_sse(
+    op_name: str,
+    *,
+    next_attempt: int,
+    wait_s: float,
+    status_code: Optional[int] = None,
+    error_type: str = "",
+) -> None:
+    try:
+        from app.harness.llm_progress import emit_llm_retry
+        emit_llm_retry(
+            op_name,
+            next_attempt=next_attempt,
+            max_attempts=_RETRY_MAX_ATTEMPTS,
+            wait_s=wait_s,
+            status_code=status_code,
+            error_type=error_type,
+        )
+    except Exception:
+        pass
+
+
 def _call_with_retry_sync(call_fn, op_name: str):
     """
     同步 LLM 调用的指数退避包装。
+    - 熔断打开时直接抛 LLMCircuitOpen（由上层降级）
     - 仅对 429/5xx/timeout 重试
     - 4xx（除 429）不重试
     - 最多 _RETRY_MAX_ATTEMPTS 次
     """
+    from app.config import settings as _settings
+    from app.tools.llm_circuit import allow_request, record_failure, record_success
+
+    if _settings.llm_circuit_enabled and not allow_request():
+        raise LLMCircuitOpen("llm circuit open")
+
     last_exc = None
     from app.utils.task_cancel import WorkflowCancelled, check_cancelled, interruptible_sleep
     for attempt in range(1, _RETRY_MAX_ATTEMPTS + 1):
         check_cancelled()
         try:
-            return call_fn(attempt)
+            result = call_fn(attempt)
+            if _settings.llm_circuit_enabled:
+                record_success()
+            try:
+                from app.harness.run_trace import trace_event
+                if attempt > 1:
+                    trace_event(
+                        "llm_retry",
+                        op=op_name,
+                        status="success",
+                        attempt=attempt,
+                        max_attempts=_RETRY_MAX_ATTEMPTS,
+                    )
+            except Exception:
+                pass
+            return result
         except WorkflowCancelled:
+            raise
+        except LLMCircuitOpen:
             raise
         except httpx.HTTPStatusError as e:
             last_exc = e
             status = e.response.status_code
             if not _is_retryable_http_status(status):
                 logger.error(f"{op_name} 失败 (status={status})，非可重试错误，直接返回")
+                if _settings.llm_circuit_enabled:
+                    record_failure(f"http_{status}")
                 raise
             if attempt >= _RETRY_MAX_ATTEMPTS:
                 logger.error(f"{op_name} 失败 (status={status})，已达最大重试次数 {attempt}/{_RETRY_MAX_ATTEMPTS}")
+                if _settings.llm_circuit_enabled:
+                    record_failure(f"http_{status}")
                 raise
             delay = min(_RETRY_BASE_DELAY * (2 ** (attempt - 1)), _RETRY_MAX_DELAY)
             logger.warning(f"{op_name} 失败 (status={status})，{delay:.1f}s 后第 {attempt+1} 次重试")
+            try:
+                from app.harness.run_trace import trace_event
+                trace_event(
+                    "llm_retry",
+                    op=op_name,
+                    status_code=status,
+                    wait_s=delay,
+                    next_attempt=attempt + 1,
+                    max_attempts=_RETRY_MAX_ATTEMPTS,
+                )
+            except Exception:
+                pass
+            _emit_llm_retry_sse(
+                op_name,
+                next_attempt=attempt + 1,
+                wait_s=delay,
+                status_code=status,
+            )
             interruptible_sleep(delay)
         except httpx.TimeoutException as e:
             last_exc = e
             if attempt >= _RETRY_MAX_ATTEMPTS:
                 logger.error(f"{op_name} 超时，已达最大重试次数 {attempt}/{_RETRY_MAX_ATTEMPTS}")
+                if _settings.llm_circuit_enabled:
+                    record_failure("timeout")
                 raise
             delay = min(_RETRY_BASE_DELAY * (2 ** (attempt - 1)), _RETRY_MAX_DELAY)
             logger.warning(f"{op_name} 超时，{delay:.1f}s 后第 {attempt+1} 次重试")
+            try:
+                from app.harness.run_trace import trace_event
+                trace_event(
+                    "llm_retry",
+                    op=op_name,
+                    error_type="timeout",
+                    wait_s=delay,
+                    next_attempt=attempt + 1,
+                    max_attempts=_RETRY_MAX_ATTEMPTS,
+                )
+            except Exception:
+                pass
+            _emit_llm_retry_sse(
+                op_name,
+                next_attempt=attempt + 1,
+                wait_s=delay,
+                error_type="timeout",
+            )
             interruptible_sleep(delay)
         except (httpx.ConnectError, httpx.RemoteProtocolError) as e:
             last_exc = e
             if attempt >= _RETRY_MAX_ATTEMPTS:
                 logger.error(f"{op_name} 连接错误，已达最大重试次数 {attempt}/{_RETRY_MAX_ATTEMPTS}")
+                if _settings.llm_circuit_enabled:
+                    record_failure("connection")
                 raise
             delay = min(_RETRY_BASE_DELAY * (2 ** (attempt - 1)), _RETRY_MAX_DELAY)
             logger.warning(f"{op_name} 连接错误，{delay:.1f}s 后第 {attempt+1} 次重试")
+            try:
+                from app.harness.run_trace import trace_event
+                trace_event(
+                    "llm_retry",
+                    op=op_name,
+                    error_type="connection",
+                    wait_s=delay,
+                    next_attempt=attempt + 1,
+                    max_attempts=_RETRY_MAX_ATTEMPTS,
+                )
+            except Exception:
+                pass
+            _emit_llm_retry_sse(
+                op_name,
+                next_attempt=attempt + 1,
+                wait_s=delay,
+                error_type="connection",
+            )
             interruptible_sleep(delay)
     if last_exc:
+        if _settings.llm_circuit_enabled:
+            record_failure(str(last_exc))
         raise last_exc
     return None
 
@@ -400,6 +514,14 @@ class LLM_tools:
     @staticmethod
     def chat_sync(messages: List[Dict[str, str]], temperature: float = 0.7,
                   max_tokens: int = 2000, provider: Optional[str] = None) -> Optional[str]:
+        try:
+            from app.harness.llm_replay import replay_chat, replay_enabled
+            if replay_enabled():
+                replayed = replay_chat(messages)
+                if replayed is not None:
+                    return replayed
+        except Exception:
+            pass
         base_url, model, api_key = _resolve_provider(provider)
         prov = provider or settings.llm_provider
 
@@ -418,6 +540,11 @@ class LLM_tools:
 
         try:
             return _call_with_retry_sync(_do, "LLM.chat_sync")
+        except LLMCircuitOpen:
+            _record_llm_metrics("chat_sync", prov, "circuit_open")
+            logger.warning("LLM.chat_sync skipped: circuit open")
+            from app.tools.llm_circuit import degraded_answer
+            return degraded_answer()
         except httpx.HTTPStatusError as e:
             _record_llm_metrics("chat_sync", prov, "error")
             logger.error(f"LLM同步调用失败 {e.response.status_code}: {e.response.text[:200]}")
@@ -490,6 +617,15 @@ class LLM_tools:
         - 已经拿到流的部分（HTTP 200 + 数据到达）不重试，避免重复内容
         - 最多 _RETRY_MAX_ATTEMPTS 次
         """
+        try:
+            from app.harness.llm_replay import replay_enabled, replay_stream_chat
+            if replay_enabled():
+                async for chunk in replay_stream_chat(messages):
+                    yield chunk
+                return
+        except Exception:
+            pass
+
         base_url, model, api_key = _resolve_provider(provider)
         msgs = LLM_tools._build_vision_messages(messages, image_urls or [])
         payload = _build_payload(msgs, model, temperature, max_tokens, stream=True)
@@ -532,7 +668,7 @@ class LLM_tools:
                                     delta = choices[0].get("delta", {})
                                     content = delta.get("content", "")
                                     if content:
-                                        # 过滤 MiniMax-M3 等推理模型的 <think>...</think> 块
+                                        # 过滤推理模型（DeepSeek 思考模式等）的 <think>...</think> 块
                                         content = _strip_think_blocks(content, think_state)
                                         if content:
                                             yield content
@@ -567,6 +703,15 @@ class LLM_tools:
         - 调用方显式指定要走哪个 provider
         - 多线程并发时不会互相覆盖
         """
+        try:
+            from app.harness.llm_replay import replay_chat_with_tools, replay_enabled
+            if replay_enabled():
+                replayed = replay_chat_with_tools(messages, tools)
+                if replayed is not None:
+                    return replayed
+        except Exception:
+            pass
+
         base_url, model, api_key = _resolve_provider(provider)
         prov = provider or settings.llm_provider
 
@@ -639,7 +784,7 @@ class LLM_tools:
         base_url, model, api_key = _resolve_provider(provider)
         prov = provider or settings.llm_provider
 
-        # 不支持 response_format 的 provider（如 minimax）在 prompt 里追加 JSON 指令
+        # 不支持 response_format 的 provider 在 prompt 里追加 JSON 指令
         msgs = list(messages)
         from app.tools.providers import provider_factory
         prov_obj = provider_factory(prov)
@@ -664,7 +809,7 @@ class LLM_tools:
                 if content.startswith("```"):
                     lines = content.split("\n")
                     content = "\n".join(lines[1:-1] if lines[-1].strip() == "```" else lines[1:])
-                # 去掉 MiniMax-M3 等推理模型的 <think>...</think> 痕迹
+                # 去掉推理模型（DeepSeek 思考模式等）的 <think>...</think> 痕迹
                 import re as _re
                 content = _re.sub(r"<think>.*?</think>\s*", "", content, flags=_re.DOTALL).strip()
                 return json.loads(content)

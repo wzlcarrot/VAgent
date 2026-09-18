@@ -27,6 +27,9 @@ class HookEvent:
     AFTER_TOOL_CALL = "after_tool_call"
     BEFORE_MESSAGE = "before_message"
     AFTER_MESSAGE = "after_message"
+    # Claude Code 对齐：答完前 / 压缩前
+    STOP = "stop"
+    PRE_COMPACT = "pre_compact"
 
     @classmethod
     def all(cls) -> List[str]:
@@ -35,6 +38,8 @@ class HookEvent:
             cls.AFTER_TOOL_CALL,
             cls.BEFORE_MESSAGE,
             cls.AFTER_MESSAGE,
+            cls.STOP,
+            cls.PRE_COMPACT,
         ]
 
 

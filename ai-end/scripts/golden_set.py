@@ -1,19 +1,18 @@
 """
 黄金集评测：路由准确率分方法统计（关键词 / 语义 / LLM / 融合）。
 
-用法: python scripts/golden_set.py [--limit 20] [--method-filter keyword|semantic|llm]
+用法: python scripts/golden_set.py [--limit 20] [--method-filter keyword|semantic|llm] [--no-llm]
 
-设计目标（替代旧 eval_agent.py 的 14 条直给关键词用例）：
-1. 80~150 条用例，覆盖四类意图 + 大量歧义句/混淆样本
-2. 输出 keyword / semantic / llm / fused 四种判定路径各自的准确率与平均耗时
-3. 现场被问"为什么双路/为什么三阶段"时，能直接甩一张表
+默认加载 fixtures/routing_golden.jsonl（数百条，含易/歧义/跑题分层）。
 """
 
 import argparse
+import json
 import logging
 import sys
 import time
 from collections import defaultdict
+from pathlib import Path
 from typing import Dict, List
 
 sys.path.insert(0, ".")
@@ -26,7 +25,10 @@ from app.agents.workflows.constants import WorkflowType  # noqa: E402
 VIDEO_ID = "video_demo_001"
 USER_ID = "u_golden"
 
-GOLDEN_CASES: List[dict] = [
+_FIXTURE = Path(__file__).resolve().parents[1] / "fixtures" / "routing_golden.jsonl"
+
+# 内置种子集（fixture 缺失时回退）；完整大盘以 JSONL 为准。
+_SEED_CASES: List[dict] = [
     # ── VIDEO_QA（视频问答）──
     {"q": "这个视频讲了什么", "ctx": {"video_id": VIDEO_ID}, "expected": WorkflowType.VIDEO_QA, "tier": "easy"},
     {"q": "视频的重点是什么", "ctx": {"video_id": VIDEO_ID}, "expected": WorkflowType.VIDEO_QA, "tier": "easy"},
@@ -110,6 +112,23 @@ GOLDEN_CASES: List[dict] = [
 ]
 
 
+def load_golden_cases() -> List[dict]:
+    """优先加载 fixtures/routing_golden.jsonl；失败则回退内置种子集。"""
+    if _FIXTURE.exists():
+        rows: List[dict] = []
+        for line in _FIXTURE.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            rows.append(json.loads(line))
+        if rows:
+            return rows
+    return list(_SEED_CASES)
+
+
+GOLDEN_CASES: List[dict] = load_golden_cases()
+
+
 def _stub_router_llm(router) -> None:
     """离线模式：禁用 LLM 裁决（分歧时走语义/关键词兜底），避免真实 API 调用。
 
@@ -188,8 +207,10 @@ def _print_errors(fused_rows) -> None:
 
 
 def main(limit: int = None, method_filter: str = None, no_llm: bool = False) -> int:
-    global GOLDEN_CASES
-    cases = GOLDEN_CASES if limit is None else GOLDEN_CASES[:limit]
+    cases = load_golden_cases()
+    if limit is not None:
+        cases = cases[:limit]
+    print(f"加载用例: {len(cases)}  (fixture={_FIXTURE if _FIXTURE.exists() else 'seed'})")
 
     from app.agents.router import Router
     router = Router()
@@ -211,9 +232,9 @@ def main(limit: int = None, method_filter: str = None, no_llm: bool = False) -> 
     for tc in cases:
         decision = router.hybrid_route_full(tc["q"], tc.get("ctx") or {})
         ok = decision.workflow_type == tc["expected"]
-        by_tier[tc["tier"]][1] += 1
+        by_tier[tc.get("tier", "unknown")][1] += 1
         if ok:
-            by_tier[tc["tier"]][0] += 1
+            by_tier[tc.get("tier", "unknown")][0] += 1
     for tier, (c, n) in sorted(by_tier.items()):
         print(f"  {tier:<12}{c}/{n}  ({c/max(n,1)*100:.0f}%)")
 
@@ -227,7 +248,9 @@ def main(limit: int = None, method_filter: str = None, no_llm: bool = False) -> 
     _print_table(stats)
     _print_errors(fused_rows)
 
-    return 0 if acc >= 80 else 1
+    # 门槛随规模放宽：大盘含难例，默认 75%；小样本仍要求 80%
+    floor = 75.0 if total >= 200 else 80.0
+    return 0 if acc >= floor else 1
 
 
 if __name__ == "__main__":

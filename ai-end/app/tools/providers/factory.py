@@ -9,11 +9,11 @@ from typing import Dict, Type
 
 from app.tools.providers.base import BaseProvider
 from app.tools.providers.deepseek import DeepSeekProvider
-from app.tools.providers.minimax import MiniMaxProvider
+from app.tools.providers.deepseek_vl import DeepSeekVLProvider
 
 _REGISTRY: Dict[str, Type[BaseProvider]] = {
     DeepSeekProvider.name: DeepSeekProvider,
-    MiniMaxProvider.name: MiniMaxProvider,
+    DeepSeekVLProvider.name: DeepSeekVLProvider,
 }
 
 _INSTANCES: Dict[str, BaseProvider] = {}

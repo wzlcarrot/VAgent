@@ -59,4 +59,5 @@ class TestHooksManager:
     def test_event_all_contains_all(self):
         assert set(HookEvent.all()) == {
             "before_tool_call", "after_tool_call", "before_message", "after_message",
+            "stop", "pre_compact",
         }

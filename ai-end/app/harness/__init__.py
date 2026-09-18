@@ -15,7 +15,9 @@ Agent Harness —— 把"可靠性"做成基础设施
 
 from app.exceptions import ToolAccessDenied, ToolCallLimitExceeded, ToolCallTimeout
 from app.harness.checkpoint import Checkpoint, CheckpointManager
+from app.harness.run_trace import begin_run, finish_run, list_runs, read_trace, trace_event
 from app.harness.tool_governor import ToolGovernor
+from app.harness.tool_policy import load_policy, resolve_rule
 
 __all__ = [
     "Checkpoint",
@@ -24,4 +26,11 @@ __all__ = [
     "ToolCallLimitExceeded",
     "ToolCallTimeout",
     "ToolAccessDenied",
+    "begin_run",
+    "finish_run",
+    "trace_event",
+    "read_trace",
+    "list_runs",
+    "load_policy",
+    "resolve_rule",
 ]

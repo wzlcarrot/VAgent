@@ -9,6 +9,8 @@ CREATE TABLE IF NOT EXISTS video_vector_block (
     block_content TEXT NOT NULL,
     content_vector vector(384),
     block_weight INTEGER DEFAULT 1,
+    start_s REAL,
+    end_s REAL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE (video_id, block_type)
 );
@@ -64,7 +66,8 @@ CREATE TABLE IF NOT EXISTS chat_history (
     workflow_type VARCHAR(32),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     videos JSONB DEFAULT '[]',
-    reasons JSONB DEFAULT '[]'
+    reasons JSONB DEFAULT '[]',
+    citations JSONB DEFAULT '[]'
 );
 
 CREATE INDEX IF NOT EXISTS idx_chat_history_session

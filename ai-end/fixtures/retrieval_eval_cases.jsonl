@@ -1,0 +1,46 @@
+{"_corpus": [{"key": "intro_1", "video_id": "video_demo_001", "content": "本视频介绍 Python 的基础语法与编程思想，适合零基础入门。"}, {"key": "intro_2", "video_id": "video_demo_001", "content": "作者讲解了变量的定义与赋值方式。"}, {"key": "intro_3", "video_id": "video_demo_001", "content": "视频演示了 for 循环和 while 循环的用法。"}, {"key": "intro_4", "video_id": "video_demo_001", "content": "介绍了函数的定义、参数与返回值。"}, {"key": "intro_5", "video_id": "video_demo_001", "content": "讲解了列表和字典两种常用数据结构。"}, {"key": "intro_6", "video_id": "video_demo_001", "content": "演示了如何用 try except 处理异常。"}, {"key": "intro_7", "video_id": "video_demo_001", "content": "介绍了模块导入与第三方库安装。"}, {"key": "intro_8", "video_id": "video_demo_001", "content": "最后总结了学习路线与练习建议。"}, {"key": "intro_1", "video_id": "video_demo_002", "content": "本视频教大家做家常番茄炒蛋。"}, {"key": "intro_2", "video_id": "video_demo_002", "content": "第一步是把鸡蛋打散并加少许盐。"}, {"key": "intro_3", "video_id": "video_demo_002", "content": "番茄要先去皮再切块。"}, {"key": "intro_4", "video_id": "video_demo_002", "content": "火候控制是关键，油温六成热下蛋。"}, {"key": "intro_5", "video_id": "video_demo_002", "content": "翻炒时动作要快要均匀。"}, {"key": "intro_6", "video_id": "video_demo_002", "content": "最后加糖和盐调味出锅。"}, {"key": "intro_7", "video_id": "video_demo_002", "content": "常见失败原因是番茄出水太多。"}, {"key": "intro_8", "video_id": "video_demo_002", "content": "视频结尾给了搭配主食的建议。"}, {"key": "intro_1", "video_id": "video_demo_003", "content": "本视频讲解手机摄影的入门技巧。"}, {"key": "intro_2", "video_id": "video_demo_003", "content": "构图是照片好看的第一要素。"}, {"key": "intro_3", "video_id": "video_demo_003", "content": "曝光可以通过手动调节亮度来控制。"}, {"key": "intro_4", "video_id": "video_demo_003", "content": "对焦要点击屏幕主体位置。"}, {"key": "intro_5", "video_id": "video_demo_003", "content": "光线方向影响照片质感。"}, {"key": "intro_6", "video_id": "video_demo_003", "content": "介绍了几种常用的后期调色思路。"}, {"key": "intro_7", "video_id": "video_demo_003", "content": "夜景拍摄要注意防抖。"}, {"key": "intro_8", "video_id": "video_demo_003", "content": "最后推荐了练习拍摄的题材。"}]}
+{"query": "这个视频讲了什么", "video_id": "video_demo_001", "relevant": ["intro_1"]}
+{"query": "适合零基础吗", "video_id": "video_demo_001", "relevant": ["intro_1"]}
+{"query": "编程思想是什么", "video_id": "video_demo_001", "relevant": ["intro_1"]}
+{"query": "变量是什么", "video_id": "video_demo_001", "relevant": ["intro_2"]}
+{"query": "变量怎么赋值", "video_id": "video_demo_001", "relevant": ["intro_2"]}
+{"query": "循环怎么用", "video_id": "video_demo_001", "relevant": ["intro_3"]}
+{"query": "for 语句怎么写的", "video_id": "video_demo_001", "relevant": ["intro_3"]}
+{"query": "函数怎么定义", "video_id": "video_demo_001", "relevant": ["intro_4"]}
+{"query": "参数怎么传", "video_id": "video_demo_001", "relevant": ["intro_4"]}
+{"query": "返回值是什么", "video_id": "video_demo_001", "relevant": ["intro_4"]}
+{"query": "数据结构有哪些", "video_id": "video_demo_001", "relevant": ["intro_5"]}
+{"query": "列表和字典怎么用", "video_id": "video_demo_001", "relevant": ["intro_5"]}
+{"query": "异常怎么处理", "video_id": "video_demo_001", "relevant": ["intro_6"]}
+{"query": "try except 是什么", "video_id": "video_demo_001", "relevant": ["intro_6"]}
+{"query": "怎么装第三方库", "video_id": "video_demo_001", "relevant": ["intro_7"]}
+{"query": "import 模块怎么导入", "video_id": "video_demo_001", "relevant": ["intro_7"]}
+{"query": "学习路线怎么规划", "video_id": "video_demo_001", "relevant": ["intro_8"]}
+{"query": "有什么练习建议", "video_id": "video_demo_001", "relevant": ["intro_8"]}
+{"query": "这个视频教什么菜", "video_id": "video_demo_002", "relevant": ["intro_1"]}
+{"query": "鸡蛋怎么处理", "video_id": "video_demo_002", "relevant": ["intro_2"]}
+{"query": "打蛋要加盐吗", "video_id": "video_demo_002", "relevant": ["intro_2"]}
+{"query": "番茄要去皮吗", "video_id": "video_demo_002", "relevant": ["intro_3"]}
+{"query": "番茄切块还是切片", "video_id": "video_demo_002", "relevant": ["intro_3"]}
+{"query": "火候怎么掌握", "video_id": "video_demo_002", "relevant": ["intro_4"]}
+{"query": "油温多少合适", "video_id": "video_demo_002", "relevant": ["intro_4"]}
+{"query": "怎么翻炒才对", "video_id": "video_demo_002", "relevant": ["intro_5"]}
+{"query": "放什么调料", "video_id": "video_demo_002", "relevant": ["intro_6"]}
+{"query": "要不要加糖", "video_id": "video_demo_002", "relevant": ["intro_6"]}
+{"query": "为什么出水多", "video_id": "video_demo_002", "relevant": ["intro_7"]}
+{"query": "常见失败原因", "video_id": "video_demo_002", "relevant": ["intro_7"]}
+{"query": "配什么主食", "video_id": "video_demo_002", "relevant": ["intro_8"]}
+{"query": "视频结尾说了什么", "video_id": "video_demo_002", "relevant": ["intro_8"]}
+{"query": "视频讲了什么", "video_id": "video_demo_003", "relevant": ["intro_1"]}
+{"query": "怎么构图", "video_id": "video_demo_003", "relevant": ["intro_2"]}
+{"query": "照片不好看怎么办", "video_id": "video_demo_003", "relevant": ["intro_2"]}
+{"query": "怎么调曝光", "video_id": "video_demo_003", "relevant": ["intro_3"]}
+{"query": "亮度怎么调", "video_id": "video_demo_003", "relevant": ["intro_3"]}
+{"query": "对焦点选哪里", "video_id": "video_demo_003", "relevant": ["intro_4"]}
+{"query": "主体为什么不清晰", "video_id": "video_demo_003", "relevant": ["intro_4"]}
+{"query": "光线怎么用", "video_id": "video_demo_003", "relevant": ["intro_5"]}
+{"query": "怎么调色", "video_id": "video_demo_003", "relevant": ["intro_6"]}
+{"query": "后期怎么处理", "video_id": "video_demo_003", "relevant": ["intro_6"]}
+{"query": "夜景怎么拍", "video_id": "video_demo_003", "relevant": ["intro_7"]}
+{"query": "怎么防抖", "video_id": "video_demo_003", "relevant": ["intro_7"]}
+{"query": "推荐拍什么题材", "video_id": "video_demo_003", "relevant": ["intro_8"]}

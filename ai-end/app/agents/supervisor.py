@@ -78,10 +78,13 @@ class Supervisor:
         ]
         if any(sig in text for sig in error_signatures):
             return True
-        # 通用错误关键词（含中文错误标识）
         lowered = text.lower()
-        if any(kw in lowered for kw in ["error", "exception", "failed", "失败", "错误", "异常", "err:"]):
-            return True
+        # 短系统错误行（避免把「实验失败原因」等正常回答误判）
+        if len(stripped) < 160:
+            if lowered.startswith(("error:", "exception:", "failed:")):
+                return True
+            if stripped.startswith(("错误：", "错误:", "异常：", "异常:", "失败：", "失败:")):
+                return True
         if stripped.startswith("{") or stripped.startswith("["):
             try:
                 import json

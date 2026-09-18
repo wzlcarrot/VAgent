@@ -19,6 +19,8 @@
 - 多轮对话与跨会话记忆
 - 赞踩反馈影响下次推荐排序
 - 意图路由：关键词 + 语义 + LLM 三阶段，决策实时可见（SSE meta 事件）
+- 显式 CoT：路由分歧时先分步推理再裁决，推理过程写入 Run Trace
+- 多模态：DeepSeek `deepseek-flash` 支持图文混合输入（`deepseek-vl` provider）
 
 ## 快速开始
 

@@ -1,0 +1,7 @@
+# MODE offline
+# recommend：应出现 videos 事件（离线夹具）
+QUESTION "推荐一些科技视频"
+EXPECT stage=routing
+EXPECT stage=parallel
+EXPECT videos_min=1
+EXPECT stage=done

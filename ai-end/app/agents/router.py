@@ -8,6 +8,8 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from app.agents.intent_constants import DATA_KEYWORDS, USER_DATA_MARKERS
 from app.agents.workflows.constants import WorkflowType
+from app.config import settings
+from app.utils.text_norm import normalize_query, normalize_text
 
 logger = logging.getLogger(__name__)
 
@@ -165,21 +167,24 @@ class Router:
         results: List[Optional[List[float]]] = [None] * len(texts)
         miss_indices: List[int] = []
         miss_texts: List[str] = []
+        miss_keys: List[str] = []
 
         with self._embedding_cache_lock:
             for i, text in enumerate(texts):
-                cached = self._embedding_cache.get(text)
+                key = normalize_text(text)  # 归一化 key：去空白/标点/大小写
+                cached = self._embedding_cache.get(key)
                 if cached is not None:
                     vec, ts = cached
                     if now - ts < self._cache_ttl():
                         results[i] = vec
                         # LRU：命中后移到队尾
-                        self._embedding_cache.move_to_end(text)
+                        self._embedding_cache.move_to_end(key)
                         continue
                     # 过期：删掉，留给 miss 重新计算
-                    self._embedding_cache.pop(text, None)
+                    self._embedding_cache.pop(key, None)
                 miss_indices.append(i)
-                miss_texts.append(text)
+                miss_texts.append(text)  # 用原文算 embedding
+                miss_keys.append(key)
 
         if miss_texts:
             try:
@@ -194,8 +199,8 @@ class Router:
 
             with self._embedding_cache_lock:
                 max_size = self._cache_max()
-                for idx, text, vec in zip(miss_indices, miss_texts, new_vecs, strict=False):
-                    self._embedding_cache[text] = (vec, now)
+                for idx, key, vec in zip(miss_indices, miss_keys, new_vecs, strict=False):
+                    self._embedding_cache[key] = (vec, now)
                     results[idx] = vec
                     # 满了就 pop oldest（队首）
                     while len(self._embedding_cache) > max_size:
@@ -362,7 +367,8 @@ class Router:
         embedding/LLM 裁决（LLM 慢且烧配额）。
         """
         ctx = context or {}
-        cache_key = f"{question}::{(ctx.get('video_id') or '')}"
+        # 归一化 key：让"怎么上传视频"与"怎么上传视频？/如何上传视频"命中同一条缓存
+        cache_key = f"{normalize_query(question)}::{(ctx.get('video_id') or '')}"
 
         now = time.time()
         with self._route_cache_lock:
@@ -399,6 +405,23 @@ class Router:
         """
         ctx = context or {}
         start_time = time.time()
+
+        # ① 微调意图分类模型优先（LoRA Qwen3-0.6B）；不可用/失败 → 回退下方混合路由
+        if settings.finetune_intent_enabled:
+            try:
+                from app.tools.finetune_intent import classify as _ft_classify
+                from app.tools.finetune_intent import is_available as _ft_available
+
+                if _ft_available():
+                    ft = _ft_classify(question)
+                    if ft:
+                        logger.info("finetune_route: %s", ft)
+                        _record_router_decision(ft, "finetune")
+                        _record_router_latency("finetune", time.time() - start_time)
+                        return RouteDecision(ft, settings.finetune_intent_confidence, "finetune")
+            except Exception as e:  # noqa: BLE001
+                logger.debug(f"finetune 路由失败，回退混合路由: {e}")
+
         keyword_dict = dict(self.route_candidates(question, context))
         semantic_dict = self._semantic_scores(question)
 
@@ -451,13 +474,14 @@ class Router:
             _record_router_latency("consensus", time.time() - start_time)
             return RouteDecision(kw_top, best_signal, "consensus")
 
-        llm_result = self._route_with_llm(question, context)
-        if llm_result is not None:
+        llm_step = self._route_with_llm(question, context)
+        if llm_step is not None:
+            llm_result, llm_method = llm_step
             conf = min(max(max(sem_top_val_norm, kw_top_val_norm), 0.7), 1.0)
-            logger.info(f"llm_route: {llm_result} (kw={kw_top}, sem={sem_top}, conf={conf:.2f})")
-            _record_router_decision(llm_result, "llm")
-            _record_router_latency("llm", time.time() - start_time)
-            return RouteDecision(llm_result, conf, "llm")
+            logger.info(f"{llm_method}_route: {llm_result} (kw={kw_top}, sem={sem_top}, conf={conf:.2f})")
+            _record_router_decision(llm_result, llm_method)
+            _record_router_latency(llm_method, time.time() - start_time)
+            return RouteDecision(llm_result, conf, llm_method)
 
         final = kw_top if kw_top_val >= sem_top_val else sem_top
         best_signal = max(kw_top_val_norm, sem_top_val_norm)
@@ -471,13 +495,50 @@ class Router:
         _record_router_latency("fallback", time.time() - start_time)
         return RouteDecision(final, best_signal, "fallback")
 
-    def _route_with_llm(self, question: str, context: dict = None) -> Optional[str]:
-        """
-        LLM 裁决意图分类。返回意图名称或 None（不可用 / 出错）。
+    def _route_with_cot(self, question: str, context: dict = None) -> Optional[str]:
+        """显式 CoT 意图推理（先分步推理再裁决），决策可解释。
 
-        返回 None 而不是 "" —— 调用方用 is None 判断更明确，
-        避免空字符串 magic value 与合法分类混淆。
+        返回意图名称或 None（replay 未命中 / LLM 不可用 / 解析失败）。
         """
+        from app.agents.cot import run_intent_cot
+
+        ctx = context or {}
+        context_bits: List[str] = []
+        if ctx.get("video_id"):
+            context_bits.append("当前有正在观看的视频")
+        result = run_intent_cot(
+            question,
+            list(WorkflowType.all()),
+            context="；".join(context_bits),
+        )
+        if result is None:
+            return None
+        try:
+            from app.harness.run_trace import trace_event
+            trace_event("cot_intent", intent=result.intent, reasoning=result.reasoning)
+        except Exception:
+            pass
+        logger.info("cot_reasoning: %s", result.reasoning.replace("\n", " ")[:160])
+        return result.intent
+
+    def _route_with_llm(self, question: str, context: dict = None) -> Optional[Tuple[str, str]]:
+        """
+        LLM 裁决意图分类。返回 (意图, 判定方式) 或 None（不可用 / 出错）。
+
+        判定方式：cot（显式链式思考）| tool_call（结构化 Function Calling）。
+        返回 None 而不是 ("", ...) —— 调用方用 is None 判断更明确，
+        避免空字符串 magic value 与合法分类混淆。
+
+        注意：CoT 放在本方法内，是为了让离线脚本（golden_set.py）mock 本方法时
+        同时也关闭 CoT，保证 --no-llm 离线回归不触网。
+        """
+        from app.config import settings
+
+        if settings.router_cot_enabled:
+            cot_intent = self._route_with_cot(question, context)
+            if cot_intent is not None:
+                return cot_intent, "cot"
+
         try:
             from app.tools.llm_tools import LLM_tools
             from app.tools.tool_registry import get_router_tool_schemas
@@ -502,13 +563,13 @@ class Router:
             if result and result.get("tool_call"):
                 intent = result.get("arguments", {}).get("intent_type", "")
                 if intent in WorkflowType.all():
-                    return intent
+                    return intent, "tool_call"
 
             if result and result.get("content"):
                 resp = result["content"].strip().lower()
                 for t in WorkflowType.all():
                     if t in resp:
-                        return t
+                        return t, "tool_call"
         except Exception as e:
             logger.warning(f"LLM 路由失败: {e}")
         return None

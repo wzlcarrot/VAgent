@@ -1,0 +1,6 @@
+[
+  {"type": "status", "stage": "routing", "label": "分析意图"},
+  {"type": "retry", "op": "LLM.chat_sync", "next_attempt": 2, "max_attempts": 3, "wait_s": 1.0, "status_code": 429},
+  {"type": "text", "content": "平台支持视频问答与推荐。"},
+  {"type": "status", "stage": "done", "label": "完成"}
+]

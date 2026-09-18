@@ -1,0 +1,8 @@
+[
+  {"type": "status", "stage": "routing", "label": "分析意图"},
+  {"type": "status", "stage": "parallel", "label": "并行"},
+  {"type": "tool", "name": "retrieve_knowledge", "status": "start", "label": "检索知识库"},
+  {"type": "tool", "name": "retrieve_knowledge", "status": "end", "ok": true, "duration_ms": 8.5, "label": "检索知识库"},
+  {"type": "text", "content": "功能简介"},
+  {"type": "status", "stage": "done", "label": "完成"}
+]

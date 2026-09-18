@@ -1,0 +1,7 @@
+[
+  {"type": "status", "stage": "routing", "label": "分析意图"},
+  {"type": "status", "stage": "parallel", "label": "并行"},
+  {"type": "videos", "videos": [{"videoId": "v1", "title": "科技速递"}], "reasons": ["匹配科技兴趣"]},
+  {"type": "text", "content": "为你推荐以下内容"},
+  {"type": "status", "stage": "done", "label": "完成"}
+]

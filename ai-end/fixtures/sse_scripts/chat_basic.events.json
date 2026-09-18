@@ -1,0 +1,10 @@
+[
+  {"type": "meta", "meta": {"winner_type": "chat_workflow", "confidence": 0.9, "method": "keyword"}},
+  {"type": "status", "stage": "routing", "label": "分析意图"},
+  {"type": "status", "stage": "parallel", "label": "主流程与兜底并行执行"},
+  {"type": "tool", "name": "retrieve_knowledge", "status": "start", "label": "检索知识库"},
+  {"type": "tool", "name": "retrieve_knowledge", "status": "end", "label": "检索知识库", "ok": true, "duration_ms": 12.0},
+  {"type": "text", "content": "平台支持视频问答、推荐与个人数据查询。"},
+  {"type": "harness", "event": "run_end", "payload": {"run_id": "abc"}},
+  {"type": "status", "stage": "done", "label": "完成"}
+]

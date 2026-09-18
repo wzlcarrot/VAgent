@@ -136,6 +136,16 @@ async def compact_conversation(session_id: str) -> Dict:
     from app.tools.context_tools import _get_redis, _messages_key
     from app.tools.llm_tools import LLM_tools
 
+    try:
+        from app.harness.hooks import HookEvent, hooks_manager
+        hooks_manager.trigger(
+            HookEvent.PRE_COMPACT,
+            session_id=session_id,
+            trigger="auto",
+        )
+    except Exception:
+        pass
+
     loop = asyncio.get_running_loop()
 
     def _read_redis():

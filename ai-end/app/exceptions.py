@@ -75,3 +75,11 @@ class ToolAccessDenied(ToolCallException):
     def __init__(self, tool_name: str, agent: str, **kwargs):
         message = f"沙箱拒绝: agent '{agent}' 无权调用工具 '{tool_name}'"
         super().__init__(tool_name, message, agent=agent, **kwargs)
+
+
+class ToolApprovalRequired(ToolCallException):
+    """策略 decision=ask：需人工审批（无 HITL 时 fail-closed）"""
+
+    def __init__(self, tool_name: str, agent: str, **kwargs):
+        message = f"需审批: agent '{agent}' 调用工具 '{tool_name}'"
+        super().__init__(tool_name, message, agent=agent, **kwargs)

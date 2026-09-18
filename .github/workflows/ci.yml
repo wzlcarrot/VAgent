@@ -75,7 +75,15 @@ jobs:
 
       - name: Test
         # tests/test_golden_set.py：关键词路径黄金集下限（不调 LLM）
-        run: python -m pytest tests/ -q --cov=app --cov-fail-under=72
+        run: |
+          python -m pytest tests/ -q --cov=app --cov-fail-under=72
+          python scripts/workflow_golden_set.py
+          python scripts/behavior_golden_set.py
+          python scripts/intent_ternary_regression.py
+          python scripts/synonym_video_qa_eval.py
+          python scripts/memory_regression.py
+          python scripts/sse_regression.py --offline
+          python scripts/promote_weekly_golden.py --dry-run
 
   frontend:
     name: Frontend (vue-tsc + vitest)
@@ -100,3 +108,27 @@ jobs:
 
       - name: Test (vitest + coverage gate)
         run: npx vitest run --coverage
+
+  frontend-e2e:
+    name: Frontend E2E (Playwright citations smoke)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ai-frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: ai-frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright Chromium
+        run: npx playwright install chromium --with-deps
+
+      - name: Playwright smoke (mock SSE)
+        run: npm run test:e2e

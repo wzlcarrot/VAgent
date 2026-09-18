@@ -48,6 +48,12 @@ async def get_chat_history(session_id: str = None, limit: int = 50, authed_user_
                     reasons_val = _json.loads(reasons_val)
                 except Exception:
                     reasons_val = None
+            citations_val = getattr(r, "citations", None)
+            if isinstance(citations_val, str):
+                try:
+                    citations_val = _json.loads(citations_val)
+                except Exception:
+                    citations_val = None
             if r.question:
                 msg = {
                     "role": "user",
@@ -58,7 +64,7 @@ async def get_chat_history(session_id: str = None, limit: int = 50, authed_user_
                 if r.image_urls:
                     msg["image_urls"] = r.image_urls
                 messages.append(msg)
-            if r.answer or videos_val:
+            if r.answer or videos_val or citations_val:
                 msg = {
                     "role": "assistant",
                     "content": r.answer or "",
@@ -69,6 +75,8 @@ async def get_chat_history(session_id: str = None, limit: int = 50, authed_user_
                     msg["videos"] = videos_val
                 if reasons_val:
                     msg["reasons"] = reasons_val
+                if citations_val:
+                    msg["citations"] = citations_val
                 messages.append(msg)
         messages.sort(key=lambda m: m["timestamp"])
         return {"messages": messages}
@@ -188,3 +196,37 @@ async def get_checkpoints(session_id: str, authed_user_id: str = Depends(require
     except Exception as e:
         logger.error(f"获取 checkpoint 失败: {e}")
         raise HTTPException(status_code=500, detail="获取 checkpoint 失败") from e
+
+
+@router.get("/chat/traces")
+async def list_session_traces(session_id: str, authed_user_id: str = Depends(require_auth)):
+    try:
+        from app.agents.workflows import run_sync_in_executor
+        from app.harness.run_trace import list_runs
+        owner_check = await run_sync_in_executor(ChatTools.get_chat_history, authed_user_id, session_id, 1)
+        if not owner_check:
+            raise HTTPException(status_code=404, detail="会话不存在")
+        runs = await run_sync_in_executor(list_runs, session_id)
+        return {"session_id": session_id, "runs": runs}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取 trace 列表失败: {e}")
+        raise HTTPException(status_code=500, detail="获取 trace 列表失败") from e
+
+
+@router.get("/chat/traces/{run_id}")
+async def get_session_trace(session_id: str, run_id: str, authed_user_id: str = Depends(require_auth)):
+    try:
+        from app.agents.workflows import run_sync_in_executor
+        from app.harness.run_trace import read_trace
+        owner_check = await run_sync_in_executor(ChatTools.get_chat_history, authed_user_id, session_id, 1)
+        if not owner_check:
+            raise HTTPException(status_code=404, detail="会话不存在")
+        events = await run_sync_in_executor(read_trace, session_id, run_id)
+        return {"session_id": session_id, "run_id": run_id, "events": events}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取 trace 失败: {e}")
+        raise HTTPException(status_code=500, detail="获取 trace 失败") from e
