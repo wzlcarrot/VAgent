@@ -31,6 +31,8 @@ export default defineConfig({
         'src/App.vue',
         'src/config/**',
         'src/vite-env.d.ts',
+        // 开发调试面板（仅本地调试用，非产品功能）
+        'src/components/chat/HarnessDebugPanel.vue',
       ],
       thresholds: {
         lines: 75,

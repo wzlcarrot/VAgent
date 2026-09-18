@@ -17,4 +17,20 @@ describe('renderMarkdown 推荐封面', () => {
     expect(html).toContain('/ai/media/cover?sourceName=cover/a.jpg')
     expect(html).not.toContain('gateway')
   })
+
+  it('代码块按声明语言高亮', () => {
+    const html = renderMarkdown('```js\nconst a = 1\n```')
+    expect(html).toContain('hljs')
+    expect(html).toContain('const')
+  })
+
+  it('无语言代码块走转义兜底', () => {
+    const html = renderMarkdown('```\n<b>hi</b>\n```')
+    expect(html).toContain('hljs')
+  })
+
+  it('无 sourceName 的图片地址保持原样', () => {
+    const html = renderMarkdown('![x](https://cdn.example.com/a.png)')
+    expect(html).toContain('https://cdn.example.com/a.png')
+  })
 })
