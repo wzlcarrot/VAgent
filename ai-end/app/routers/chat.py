@@ -49,11 +49,20 @@ async def chat_stream(request: ChatRequest, http_request: Request, authed_user_i
     try:
         question = request.question
         video_id = request.videoId
+        if not video_id:
+            from app.utils.video_id import extract_video_id_from_text
+            video_id = extract_video_id_from_text(question)
         image_urls = request.imageUrls or []
         if request.sessionId and not validate_session_id(request.sessionId):
             session_id = str(uuid.uuid4())
         else:
             session_id = request.sessionId or str(uuid.uuid4())
+        # 每轮对话单独计工具次数：同一会话连问不应把检索额度用光
+        try:
+            from app.harness.tool_governor import ToolGovernor
+            ToolGovernor().reset_session(session_id)
+        except Exception:
+            pass
         user_id = authed_user_id
         if request.userId and request.userId != authed_user_id:
             logger.warning(f"user_id 不匹配: 请求={request.userId}, token={authed_user_id}，已用 token 覆盖")

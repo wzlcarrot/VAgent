@@ -5,6 +5,8 @@ CREATE EXTENSION IF NOT EXISTS pg_trgm;
 CREATE TABLE IF NOT EXISTS video_vector_block (
     id SERIAL PRIMARY KEY,
     video_id VARCHAR(64) NOT NULL,
+    file_id VARCHAR(64),
+    file_index INTEGER,
     block_type VARCHAR(32) NOT NULL,
     block_content TEXT NOT NULL,
     content_vector vector(384),
@@ -20,6 +22,31 @@ CREATE INDEX IF NOT EXISTS idx_video_vector_block_video_id
 
 CREATE INDEX IF NOT EXISTS idx_video_vector_block_type
     ON video_vector_block (block_type);
+
+CREATE TABLE IF NOT EXISTS video_subtitle_segment (
+    id SERIAL PRIMARY KEY,
+    video_id VARCHAR(64) NOT NULL,
+    file_id VARCHAR(64),
+    file_index INTEGER NOT NULL DEFAULT 1,
+    seq INTEGER NOT NULL,
+    start_s REAL NOT NULL,
+    end_s REAL,
+    text TEXT NOT NULL,
+    source VARCHAR(32) DEFAULT 'asr',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (video_id, file_index, seq)
+);
+
+CREATE INDEX IF NOT EXISTS idx_video_subtitle_segment_video_id
+    ON video_subtitle_segment (video_id);
+
+CREATE INDEX IF NOT EXISTS idx_video_subtitle_segment_video_file
+    ON video_subtitle_segment (video_id, file_id);
+
+-- 片内关键词召回：ParadeDB BM25（与 pgvector 组成双路召回），中文兼容分词
+CREATE INDEX IF NOT EXISTS idx_video_vector_block_bm25
+    ON video_vector_block USING bm25 (id, block_content)
+    WITH (key_field=id, text_fields='{"block_content": {"tokenizer": {"type": "chinese_compatible"}}}');
 
 CREATE TABLE IF NOT EXISTS platform_docs (
     id SERIAL PRIMARY KEY,

@@ -91,6 +91,64 @@ def init_agent_tables():
                 ADD COLUMN IF NOT EXISTS end_s REAL
         """)
 
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS video_subtitle_segment (
+                id SERIAL PRIMARY KEY,
+                video_id VARCHAR(64) NOT NULL,
+                file_id VARCHAR(64),
+                file_index INTEGER NOT NULL DEFAULT 1,
+                seq INTEGER NOT NULL,
+                start_s REAL NOT NULL,
+                end_s REAL,
+                text TEXT NOT NULL,
+                source VARCHAR(32) DEFAULT 'asr',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE (video_id, file_index, seq)
+            )
+        """)
+        # 迁移：多分片视频字幕按 file 存（旧表只有 video_id+seq）
+        cursor.execute("ALTER TABLE video_subtitle_segment ADD COLUMN IF NOT EXISTS file_id VARCHAR(64)")
+        cursor.execute("ALTER TABLE video_subtitle_segment ADD COLUMN IF NOT EXISTS file_index INTEGER NOT NULL DEFAULT 1")
+        cursor.execute("ALTER TABLE video_subtitle_segment DROP CONSTRAINT IF EXISTS video_subtitle_segment_video_id_seq_key")
+        cursor.execute("""
+            DO $$
+            BEGIN
+                IF NOT EXISTS (
+                    SELECT 1 FROM pg_constraint
+                    WHERE conrelid = 'video_subtitle_segment'::regclass
+                      AND conname = 'video_subtitle_segment_video_file_seq_key'
+                ) THEN
+                    ALTER TABLE video_subtitle_segment
+                        ADD CONSTRAINT video_subtitle_segment_video_file_seq_key
+                        UNIQUE (video_id, file_index, seq);
+                END IF;
+            END $$;
+        """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_video_subtitle_segment_video_id
+                ON video_subtitle_segment (video_id)
+        """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_video_subtitle_segment_video_file
+                ON video_subtitle_segment (video_id, file_id)
+        """)
+
+        # 多分片视频向量块也带 file 信息（字幕块 block_type=subtitle_{file_index}_{i}）
+        cursor.execute("ALTER TABLE video_vector_block ADD COLUMN IF NOT EXISTS file_id VARCHAR(64)")
+        cursor.execute("ALTER TABLE video_vector_block ADD COLUMN IF NOT EXISTS file_index INTEGER")
+
+        # 片内关键词召回走 ParadeDB BM25（与 pgvector 组成双路召回）。
+        # block_content 用中文兼容分词器；索引缺失时 rag_tools 会自动降级 pg_trgm/tsvector。
+        try:
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_video_vector_block_bm25 "
+                "ON video_vector_block USING bm25 (id, block_content) "
+                "WITH (key_field=id, "
+                "text_fields='{\"block_content\": {\"tokenizer\": {\"type\": \"chinese_compatible\"}}}')"
+            )
+        except Exception as e:
+            logger.warning(f"BM25 索引创建失败（片内关键词召回降级 pg_trgm/tsvector）: {e}")
+
         cursor.execute("SELECT COUNT(*) FROM platform_docs")
         count = cursor.fetchone()[0]
         if count == 0:

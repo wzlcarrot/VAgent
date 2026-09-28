@@ -22,7 +22,7 @@ import { computed } from 'vue'
 
 const props = withDefaults(defineProps<{
   visible?: boolean
-  /** 播放页 URL 带入的 video_id，有值时展示片内问答快捷入口 */
+  /** 播放页 URL 带入的 video_id，有值时展示当前视频问答快捷入口 */
   currentVideoId?: string
 }>(), {
   visible: true,
@@ -35,7 +35,7 @@ defineEmits<{
 
 const headerText = computed(() =>
   props.currentVideoId
-    ? '当前视频已带入上下文，试试片内问答 👇'
+    ? '当前视频已带入上下文，试试视频问答 👇'
     : '快捷操作 👇',
 )
 

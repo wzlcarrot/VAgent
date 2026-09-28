@@ -109,6 +109,16 @@ class TestRouter:
         assert candidates[0][0] == "video_qa_workflow"
         assert candidates[0][1] == 1.0
 
+    def test_route_id_plus_concrete_question(self):
+        """回归：id号是xxx的视频具体讲什么 必须走片内问答，不能落到 chat。"""
+        q = "id号是1dJZCYwEKg的视频具体讲什么"
+        result = self.router.route(q, {"video_id": "1dJZCYwEKg"})
+        assert result == "video_qa_workflow"
+
+    def test_route_video_id_colon_form(self):
+        result = self.router.route("这个视频讲了什么 video_id:1dJZCYwEKg", {"video_id": "1dJZCYwEKg"})
+        assert result == "video_qa_workflow"
+
     def test_route_candidates_user_data(self):
         candidates = self.router.route_candidates("我的收藏有哪些")
         types = [wf for wf, _ in candidates]

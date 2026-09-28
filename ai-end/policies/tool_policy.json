@@ -11,9 +11,9 @@
   "workflows": {
     "video_qa_workflow": {
       "vector_search": { "max_calls": 5, "timeout_seconds": 10.0, "decision": "allow", "max_result_chars": 3000 },
-      "retrieve_knowledge": { "max_calls": 5, "timeout_seconds": 10.0, "decision": "allow", "max_result_chars": 3000 },
-      "search_video_chunks": { "max_calls": 5, "timeout_seconds": 15.0, "decision": "allow", "max_result_chars": 3500, "rules": [{ "match": { "top_k": { "gte": 50 } }, "decision": "forbidden" }] },
-      "get_video_info": { "max_calls": 8, "timeout_seconds": 5.0, "decision": "allow", "max_result_chars": 2000 },
+      "retrieve_knowledge": { "max_calls": 20, "timeout_seconds": 10.0, "decision": "allow", "max_result_chars": 3000 },
+      "search_video_chunks": { "max_calls": 20, "timeout_seconds": 15.0, "decision": "allow", "max_result_chars": 3500, "rules": [{ "match": { "top_k": { "gte": 50 } }, "decision": "forbidden" }] },
+      "get_video_info": { "max_calls": 8, "timeout_seconds": 8.0, "decision": "allow", "max_result_chars": 2000 },
       "query_user_data": { "decision": "forbidden" },
       "recommend_videos": { "decision": "forbidden" }
     },
@@ -35,7 +35,7 @@
       "search_video_chunks": { "decision": "forbidden" }
     },
     "chat_workflow": {
-      "retrieve_knowledge": { "max_calls": 5, "timeout_seconds": 10.0, "decision": "allow", "max_result_chars": 3000 },
+      "retrieve_knowledge": { "max_calls": 20, "timeout_seconds": 10.0, "decision": "allow", "max_result_chars": 3000 },
       "vector_search": { "max_calls": 5, "timeout_seconds": 10.0, "decision": "allow", "max_result_chars": 3000 },
       "retrieve_platform_docs": { "max_calls": 5, "timeout_seconds": 8.0, "decision": "allow", "max_result_chars": 3000 },
       "search_video_chunks": { "decision": "forbidden" },

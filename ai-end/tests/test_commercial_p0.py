@@ -29,6 +29,11 @@ class TestGuardrails:
         d = check_output_video_qa("本视频讲 Python[1]", citations=[{"id": 1, "snippet": "x"}])
         assert d.ok
 
+    def test_output_keeps_not_found_message(self):
+        d = check_output_video_qa("未找到视频信息（ID: 1dJZCYwEKg），请检查视频 ID 是否正确。", citations=[])
+        assert d.ok
+        assert d.reason == "system_message"
+
 
 class TestProjection:
     def test_truncate_string(self):

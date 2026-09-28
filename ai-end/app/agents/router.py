@@ -144,19 +144,26 @@ class Router:
         return cls._instance
 
     def __init__(self) -> None:
-        if self._initialized:
-            return
-        self._initialized = True
-        self.video_keywords: List[str] = ["这个视频", "讲解", "重点", "讲了什么", "说了什么",
-                               "讲了啥", "说了啥", "讲的啥", "说了点啥",
-                               "作者是谁", "up主是谁", "up主", "主播是谁", "视频简介",
-                               "视频的简介", "时长"]
-        self.video_exclude: List[str] = ["功能", "怎么用", "怎么使用", "如何使用", "是什么", "有什么用",
-                              "怎么上传", "怎么下载", "怎么删除", "设置", "帮助", "介绍平台"]
+        # 关键词每次刷新：单例已初始化时也能吃到热更新，避免「讲什么」漏路由
+        self.video_keywords: List[str] = [
+            "这个视频", "该视频", "当前视频", "讲解", "重点",
+            "讲了什么", "讲什么", "具体讲", "视频讲", "说了什么", "说什么",
+            "讲了啥", "说了啥", "讲的啥", "说了点啥",
+            "作者是谁", "up主是谁", "up主", "主播是谁", "视频简介",
+            "视频的简介", "时长", "总结一下", "总结这个",
+        ]
+        self.video_exclude: List[str] = [
+            "功能", "怎么用", "怎么使用", "如何使用", "有什么用",
+            "怎么上传", "怎么下载", "怎么删除", "设置", "帮助", "介绍平台",
+            "平台是什么", "这是什么平台",
+        ]
         self.recommend_keywords: List[str] = ["推荐", "推荐点", "推荐一些", "推荐几个", "有什么好看的", "看什么", "好看的",
                                    "有什么推荐", "有啥好看的", "热门", "新出"]
         self.user_data_markers: List[str] = USER_DATA_MARKERS
         self.data_keywords: List[str] = DATA_KEYWORDS
+        if self._initialized:
+            return
+        self._initialized = True
 
         self._load_exemplar_embeddings()
 
@@ -301,6 +308,15 @@ class Router:
             return False
         return any(k in question for k in self.video_keywords)
 
+    def _looks_like_video_content_question(self, question: str) -> bool:
+        """有 video_id 时的宽松内容问：含「视频/讲/内容」且不是推荐/个人数据/平台帮助。"""
+        q = question or ""
+        if any(k in q for k in self.video_exclude):
+            return False
+        if self._has_recommend_intent(q) or self._is_personal_data_query(q):
+            return False
+        return any(h in q for h in ("视频", "讲", "内容", "主题", "总结", "介绍", "作者"))
+
     def _is_personal_data_query(self, question: str) -> bool:
         """判断是否为个人数据查询"""
         has_marker: bool = any(m in question for m in self.user_data_markers)
@@ -334,6 +350,9 @@ class Router:
             candidates.append((WorkflowType.VIDEO_QA, 1.0))
         elif self._is_about_current_video(question):
             candidates.append((WorkflowType.VIDEO_QA, 0.6))
+        elif ctx.get("video_id") and self._looks_like_video_content_question(question):
+            # 已带 video_id 但说法略偏（「视频具体讲什么」）仍走片内问答，避免落到 chat
+            candidates.append((WorkflowType.VIDEO_QA, 0.9))
 
         if self._is_personal_data_query(question):
             candidates.append((WorkflowType.USER_DATA, 0.9))
@@ -432,6 +451,10 @@ class Router:
                 if has_video_kw:
                     keyword_dict[WorkflowType.VIDEO_QA] = max(
                         keyword_dict.get(WorkflowType.VIDEO_QA, 0.0), 1.0
+                    )
+                elif self._looks_like_video_content_question(question):
+                    keyword_dict[WorkflowType.VIDEO_QA] = max(
+                        keyword_dict.get(WorkflowType.VIDEO_QA, 0.0), 0.9
                     )
                 else:
                     keyword_dict[WorkflowType.VIDEO_QA] = max(

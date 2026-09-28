@@ -53,19 +53,30 @@ def _row_to_video_info(row: dict) -> VideoInfo:
 class VideoTools:
     @staticmethod
     def get_video_info(video_id: str) -> Optional[VideoInfo]:
-        try:
-            with get_cursor() as cursor:
-                if cursor is None:
-                    return None
-                cursor.execute(
-                    _VIDEO_SELECT_SQL + " WHERE v.video_id = %s",
-                    (video_id,),
-                )
-                row = cursor.fetchone()
-            return _row_to_video_info(row) if row else None
-        except Exception as e:
-            logger.error(f"获取视频信息失败: {e}")
-            return None
+        last_err: Optional[Exception] = None
+        for attempt in range(2):
+            try:
+                with get_cursor() as cursor:
+                    if cursor is None:
+                        return None
+                    cursor.execute(
+                        _VIDEO_SELECT_SQL + " WHERE v.video_id = %s",
+                        (video_id,),
+                    )
+                    row = cursor.fetchone()
+                return _row_to_video_info(row) if row else None
+            except Exception as e:
+                last_err = e
+                msg = str(e).lower()
+                retryable = "canceling statement" in msg or "connection" in msg
+                if attempt == 0 and retryable:
+                    logger.warning("获取视频信息重试: %s", e)
+                    continue
+                logger.error(f"获取视频信息失败: {e}")
+                return None
+        if last_err:
+            logger.error(f"获取视频信息失败: {last_err}")
+        return None
 
     @staticmethod
     def get_video_info_batch(video_ids: List[str]) -> List[VideoInfo]:

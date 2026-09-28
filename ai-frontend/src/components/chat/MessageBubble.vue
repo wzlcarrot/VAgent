@@ -256,6 +256,10 @@ const renderedContent = computed(() => {
   let content = props.message.content
   // 过滤推理模型（DeepSeek 思考模式等）的 <think> 痕迹
   content = content.replace(/<think>[\s\S]*?<\/think>/g, '')
+  // 正文里的「依据：」和底部 citations 卡片是同一份，有卡片时只留卡片
+  if (props.message.citations && props.message.citations.length > 0) {
+    content = content.replace(/\n*\s*依据：\s*\n[\s\S]*$/, '').trimEnd()
+  }
   // 过滤历史脏数据：recommend workflow 之前会拼一段"为你推荐以下视频：..."文本
   // 现在改用 videos 事件直接给视频卡了，但 DB 里的旧记录还有这段文字
   // 有 videos 时整段隐藏（视频卡已经包含视频名+理由）
@@ -290,9 +294,10 @@ function formatStart(seconds: number): string {
 
 function citationHref(c: Citation): string | null {
   if (!c.video_id || c.start_s == null) return null
-  const base = import.meta.env.VITE_VIDEO_BASE_URL || 'http://localhost:7071'
+  const base = import.meta.env.VITE_VIDEO_BASE_URL || 'http://localhost:3000'
   const t = Math.max(0, Math.floor(c.start_s))
-  return `${base.replace(/\/$/, '')}/video/${encodeURIComponent(c.video_id)}?t=${t}`
+  const p = c.file_index != null && c.file_index > 1 ? `&p=${c.file_index}` : ''
+  return `${base.replace(/\/$/, '')}/video/${encodeURIComponent(c.video_id)}?t=${t}${p}`
 }
 
 function citationTitle(c: Citation): string {

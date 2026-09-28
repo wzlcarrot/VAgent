@@ -42,10 +42,17 @@ if (resp.statusCode() != 200 || !resp.body().contains("\"success\":true")) {
   "parts": {
     "title": {"indexed": true},
     "tags": {"indexed": true},
-    "introduction": {"indexed": true}
+    "introduction": {"indexed": true},
+    "subtitle": {
+      "indexed": true,
+      "segment_count": 42,
+      "index_block_count": 12
+    }
   }
 }
 ```
+
+`subtitle`：Python 侧 ASR（可选 `VIDEO_ASR_ENABLED`）写入 PostgreSQL 表 `video_subtitle_segment`，并索引为 `subtitle_*` 向量块（带真实 `start_s`）。未找到视频文件或未装 faster-whisper 时，`subtitle.indexed` 可能为 false，不影响 title/tags/introduction。
 
 ## 失败与重试
 

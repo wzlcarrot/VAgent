@@ -68,8 +68,8 @@ class ToolCallRecord:
 _DEFAULT_LIMITS: Dict[str, int] = {
     "default": 10,
     "vector_search": 5,
-    "retrieve_knowledge": 5,
-    "search_video_chunks": 5,
+    "retrieve_knowledge": 20,
+    "search_video_chunks": 20,
     "get_video_info": 8,
     "query_user_data": 5,
     "recommend_videos": 3,

@@ -292,7 +292,8 @@ def _get_headers(api_key: str) -> dict:
 def _build_payload(messages: List[Dict[str, str]], model: str, temperature: float = 0.7,
                    max_tokens: int = 2000, stream: bool = False,
                    tools: List[Dict] = None, json_mode: bool = False,
-                   provider: Optional[str] = None) -> dict:
+                   provider: Optional[str] = None,
+                   extra: Optional[Dict] = None) -> dict:
     payload = {
         "model": model,
         "messages": messages,
@@ -309,6 +310,8 @@ def _build_payload(messages: List[Dict[str, str]], model: str, temperature: floa
         from app.tools.providers import provider_factory
         prov_obj = provider_factory(provider or settings.llm_provider)
         payload = prov_obj.build_payload_extra(payload, json_mode=True)
+    if extra:
+        payload.update(extra)
     return payload
 
 
@@ -780,7 +783,8 @@ class LLM_tools:
     @staticmethod
     def chat_sync_json(messages: List[Dict[str, str]], temperature: float = 0.0,
                        max_tokens: int = 4000, timeout: float = 30.0,
-                       provider: Optional[str] = None) -> Optional[Dict]:
+                       provider: Optional[str] = None,
+                       extra_payload: Optional[Dict] = None) -> Optional[Dict]:
         base_url, model, api_key = _resolve_provider(provider)
         prov = provider or settings.llm_provider
 
@@ -798,7 +802,8 @@ class LLM_tools:
             response = client.post(
                 f"{base_url}/chat/completions",
                 headers=_get_headers(api_key),
-                json=_build_payload(msgs, model, temperature, max_tokens, json_mode=True, provider=prov),
+                json=_build_payload(msgs, model, temperature, max_tokens, json_mode=True, provider=prov, extra=extra_payload),
+                timeout=timeout,
             )
             response.raise_for_status()
             data = response.json()

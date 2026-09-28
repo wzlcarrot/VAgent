@@ -1,0 +1,44 @@
+"""精排降级链单测：cross-encoder → LLM → 召回原始分。"""
+from unittest.mock import patch
+
+
+def _cands():
+    return [
+        {"content": "a", "score": 0.2},
+        {"content": "b", "score": 0.9},
+    ]
+
+
+def test_rerank_prefers_cross_encoder():
+    from app.tools import ranker
+
+    cands = _cands()
+    with patch.object(ranker, "_cross_encoder_score", return_value=[(cands[0], 0.9), (cands[1], 0.1)]), \
+         patch.object(ranker, "_batch_llm_score", side_effect=AssertionError("成功时不应调用 LLM")), \
+         patch("app.config.settings.rag_rerank_backend", "cross_encoder"):
+        out = ranker.rerank("q", cands, top_k=1)
+    assert out[0]["content"] == "a"
+    assert out[0]["score"] == 0.9
+
+
+def test_rerank_falls_back_to_llm_when_cross_encoder_unavailable():
+    from app.tools import ranker
+
+    cands = _cands()
+    with patch.object(ranker, "_cross_encoder_score", return_value=None), \
+         patch.object(ranker, "_batch_llm_score", return_value=[(cands[0], 0.7), (cands[1], 0.2)]) as m_llm, \
+         patch("app.config.settings.rag_rerank_backend", "cross_encoder"):
+        out = ranker.rerank("q", cands, top_k=1)
+    assert out[0]["content"] == "a"
+    m_llm.assert_called_once()
+
+
+def test_rerank_score_backend_skips_models():
+    from app.tools import ranker
+
+    cands = _cands()
+    with patch.object(ranker, "_cross_encoder_score", side_effect=AssertionError("score 后端不应调用 cross-encoder")), \
+         patch.object(ranker, "_batch_llm_score", side_effect=AssertionError("score 后端不应调用 LLM")), \
+         patch("app.config.settings.rag_rerank_backend", "score"):
+        out = ranker.rerank("q", cands, top_k=1)
+    assert out[0]["content"] == "b"  # 原始分更高的 b 胜出

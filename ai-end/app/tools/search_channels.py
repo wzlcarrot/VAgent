@@ -84,7 +84,7 @@ def multi_channel_recall(
     top_k: int,
     video_id: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
-    """并行多通道召回后按 content 去重合并（RRF 前并集）。"""
+    """并行多通道召回后按「视频 ID + 正文」去重合并。"""
     import concurrent.futures
 
     channels = active_channels()

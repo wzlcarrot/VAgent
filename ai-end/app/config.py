@@ -190,6 +190,10 @@ class Settings(BaseSettings):
     rag_default_top_k: int = 5
     rag_recall_budget: int = 10
     rag_rerank_candidate_limit: int = 15
+    # 精排后端：cross_encoder（本地 bge-reranker）优先，失败自动降级 llm，再失败用召回原始分
+    rag_rerank_backend: str = "cross_encoder"
+    rag_rerank_model: str = "BAAI/bge-reranker-base"
+    rag_rerank_cache_dir: str = ""
     # 批级 EvidenceGate：整批最高 rerank 分低于此阈值则丢弃全部证据（0=关闭）
     rag_evidence_gate_min_score: float = 0.35
     # 无分可读时是否整批丢弃（True=fail-closed，避免 demo/降级路径乱放行）
@@ -219,6 +223,30 @@ class Settings(BaseSettings):
     index_pending_alert_threshold: int = 10
     # 启动兜底补索引条数
     index_backfill_limit: int = 50
+
+    # ─── 视频 ASR 字幕（PostgreSQL video_subtitle_segment + subtitle_* 向量块）───
+    # ViewHub projectFolder，例如 /data/viewhub（其下应有 file/video/...）
+    video_storage_root: str = ""
+    video_asr_enabled: bool = False
+    video_asr_model: str = "tiny"
+    video_asr_device: str = "cpu"
+    video_asr_compute_type: str = "int8"
+    video_asr_language: str = "zh"
+    # 索引前合并相邻 ASR 句，控制向量条数
+    video_asr_merge_max_chars: int = 280
+    video_asr_merge_max_gap_s: float = 1.0
+    # ASR 字幕后处理纠错（LLM 校对，不改模型）
+    video_asr_correct_enabled: bool = True
+    video_asr_correct_batch_size: int = 40
+    video_asr_correct_max_chars: int = 1500
+    video_asr_correct_timeout_s: float = 180.0
+    video_asr_correct_max_tokens: int = 8000
+    # 纠错专用 LLM（留空用默认）；部分 provider 支持 effort 档位（low/high/max）
+    video_asr_correct_model: str = ""
+    video_asr_correct_effort: str = ""
+    # 纠错可指定更强的 LLM 与 effort（留空则用默认 provider 模型）
+    video_asr_correct_model: str = ""
+    video_asr_correct_effort: str = ""
 
     # ─── 推荐点击埋点 ───
     recommend_click_root: str = "data/recommend_clicks"

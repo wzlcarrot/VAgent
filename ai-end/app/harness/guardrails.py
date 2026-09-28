@@ -10,7 +10,7 @@ import re
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
-from app.tools.output_guard import VIDEO_QA_INSUFFICIENT_MSG
+from app.tools.output_guard import VIDEO_QA_INSUFFICIENT_MSG, VIDEO_QA_NOT_INDEXED_MSG
 
 # 明显越权 / 注入探测（轻量，fail-closed 只拦高置信）
 _INJECTION_PATTERNS = [
@@ -64,10 +64,14 @@ def check_output_video_qa(
             reason="empty_answer",
             rewritten=VIDEO_QA_INSUFFICIENT_MSG,
         )
+    # 系统提示 / 缺 ID / 未索引：原样返回，不要改写成「没有足够依据」
+    if VIDEO_QA_INSUFFICIENT_MSG[:20] in text:
+        return GuardDecision("pass", reason="already_refuse")
+    if VIDEO_QA_NOT_INDEXED_MSG[:12] in text:
+        return GuardDecision("pass", reason="not_indexed")
+    if "未找到视频" in text or "你想了解哪个视频" in text:
+        return GuardDecision("pass", reason="system_message")
     if not cites:
-        # 已是拒答文案则放行
-        if VIDEO_QA_INSUFFICIENT_MSG[:20] in text:
-            return GuardDecision("pass", reason="already_refuse")
         return GuardDecision(
             "rewrite",
             reason="missing_citations",

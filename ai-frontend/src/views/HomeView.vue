@@ -11,7 +11,7 @@
           </div>
           <h2>你好！我是 ViewHub AI</h2>
           <p class="welcome-text" v-if="currentVideoId">
-            当前视频上下文已就绪，我可以帮你<span class="highlight">回答片内问题</span>、
+            当前视频上下文已就绪，我可以帮你<span class="highlight">回答当前视频问题</span>、
             <span class="highlight">推荐类似视频</span>，也可以<span class="highlight">查询你的播放数据</span>。
           </p>
           <p class="welcome-text" v-else>
@@ -201,7 +201,7 @@ let activeStreamController: AbortController | null = null
 
 async function checkVideoService() {
   try {
-    const base = import.meta.env.VITE_VIDEO_BASE_URL || 'http://localhost:7071'
+    const base = import.meta.env.VITE_VIDEO_BASE_URL || 'http://localhost:3000'
     const controller = new AbortController()
     const timeout = setTimeout(() => controller.abort(), 2000)
     await fetch(base, { method: 'HEAD', signal: controller.signal })
@@ -463,7 +463,7 @@ function getRecommendationReason(videoId: string): string {
 }
 
 function getVideoUrl(videoId: string): string {
-  const base = import.meta.env.VITE_VIDEO_BASE_URL || 'http://localhost:7071'
+  const base = import.meta.env.VITE_VIDEO_BASE_URL || 'http://localhost:3000'
   return `${base}/video/${videoId}`
 }
 

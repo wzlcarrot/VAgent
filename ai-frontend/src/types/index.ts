@@ -63,6 +63,8 @@ export interface Citation {
   video_id?: string
   start_s?: number
   end_s?: number
+  file_id?: string
+  file_index?: number
 }
 
 export interface Message {

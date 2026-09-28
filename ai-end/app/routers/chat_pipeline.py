@@ -441,6 +441,8 @@ async def parallel_agent_pipeline(
                 winner_text = g.rewritten
                 citations = []
             if citations:
+                from app.tools.video_qa_retrieval import strip_evidence_footer
+                winner_text = strip_evidence_footer(winner_text)
                 yield citations_event(citations)
     winner_text = re.sub(r"<think>.*?</think>\s*", "", winner_text, flags=re.DOTALL).strip()
     from app.agents.workflows.chat_graph import _sanitize_platform

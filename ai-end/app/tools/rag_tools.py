@@ -1,4 +1,5 @@
 import logging
+import re
 import threading
 from typing import Any, Dict, List, Optional
 
@@ -11,6 +12,20 @@ logger = logging.getLogger(__name__)
 
 def _has_chinese(text: str) -> bool:
     return any('\u4e00' <= c <= '\u9fff' for c in text)
+
+
+def _bm25_query_text(query: str) -> str:
+    """清洗成 BM25 查询串：去掉 Tantivy 特殊符号，保留中英文与数字，避免语法解析报错。"""
+    return re.sub(r"[^\w\u4e00-\u9fff]+", " ", query or "", flags=re.UNICODE).strip()
+
+
+def _bm25_to_unit(score: Any) -> float:
+    """BM25 原始分（0~∞）单调压到 (0,1)，便于与余弦相似度混排、过证据闸门。"""
+    try:
+        v = float(score)
+    except (TypeError, ValueError):
+        return 0.0
+    return v / (v + 1.0) if v > 0 else 0.0
 
 
 def _char_bigrams(text: str) -> set:
@@ -177,7 +192,7 @@ class RAGTools:
     @classmethod
     def _retrieve_video_scoped_knowledge(cls, query: str, top_k: int,
                                          video_id: str) -> List[Dict[str, Any]]:
-        """限定单视频的 keyword 召回：优先 video_vector_block 分块，补充 video_info 元数据。"""
+        """限定单视频的 keyword 召回：BM25 优先，降级 pg_trgm/tsvector；补 video_info 元数据。"""
         if not query or not video_id:
             return []
         try:
@@ -188,34 +203,63 @@ class RAGTools:
             try:
                 cursor = conn.cursor(cursor_factory=RealDictCursor)
                 rows: List[Dict[str, Any]] = []
-                try:
-                    if _has_chinese(query):
+                used_bm25 = False
+                bm25_text = _bm25_query_text(query)
+                # 首选 ParadeDB BM25（片内关键词路）
+                if bm25_text:
+                    try:
                         cursor.execute("""
-                            SELECT video_id, block_type, block_content, start_s, end_s,
-                                   similarity(block_content, %s) AS score
+                            SELECT video_id, file_id, file_index, block_type, block_content, start_s, end_s,
+                                   paradedb.score(id) AS score
                             FROM video_vector_block
                             WHERE video_id = %s
-                              AND similarity(block_content, %s) > 0.05
+                              AND block_content @@@ %s
                             ORDER BY score DESC
                             LIMIT %s
-                        """, (query, video_id, query, top_k))
-                    else:
-                        cursor.execute("""
-                            SELECT video_id, block_type, block_content, start_s, end_s,
-                                   ts_rank(
-                                       to_tsvector('simple', coalesce(block_content, '')),
-                                       plainto_tsquery('simple', %s)
-                                   ) AS score
-                            FROM video_vector_block
-                            WHERE video_id = %s
-                              AND to_tsvector('simple', coalesce(block_content, ''))
-                                  @@ plainto_tsquery('simple', %s)
-                            ORDER BY score DESC
-                            LIMIT %s
-                        """, (query, video_id, query, top_k))
-                    rows = cursor.fetchall() or []
-                except Exception:
-                    conn.rollback()
+                        """, (video_id, bm25_text, top_k))
+                        rows = cursor.fetchall() or []
+                        used_bm25 = bool(rows)
+                    except Exception as e:
+                        conn.rollback()
+                        rows = []
+                        logger.debug("片内 BM25 召回失败，降级 pg_trgm/tsvector: %s", e)
+
+                if not rows:
+                    # 降级：pg_trgm（中文）/ tsvector（其它），BM25 索引缺失或不可用时兜底
+                    try:
+                        if _has_chinese(query):
+                            cursor.execute("""
+                                SELECT video_id, file_id, file_index, block_type, block_content, start_s, end_s,
+                                       similarity(block_content, %s) AS score
+                                FROM video_vector_block
+                                WHERE video_id = %s
+                                  AND similarity(block_content, %s) > 0.05
+                                ORDER BY score DESC
+                                LIMIT %s
+                            """, (query, video_id, query, top_k))
+                        else:
+                            cursor.execute("""
+                                SELECT video_id, file_id, file_index, block_type, block_content, start_s, end_s,
+                                       ts_rank(
+                                           to_tsvector('simple', coalesce(block_content, '')),
+                                           plainto_tsquery('simple', %s)
+                                       ) AS score
+                                FROM video_vector_block
+                                WHERE video_id = %s
+                                  AND to_tsvector('simple', coalesce(block_content, ''))
+                                      @@ plainto_tsquery('simple', %s)
+                                ORDER BY score DESC
+                                LIMIT %s
+                            """, (query, video_id, query, top_k))
+                        rows = cursor.fetchall() or []
+                    except Exception:
+                        conn.rollback()
+
+                # BM25 原始分压到 (0,1)，与余弦相似度同量纲，便于混排与证据闸门
+                if used_bm25:
+                    for r in rows:
+                        if isinstance(r, dict):
+                            r["score"] = _bm25_to_unit(r.get("score"))
 
                 if not rows:
                     cursor.execute("""
@@ -248,6 +292,8 @@ class RAGTools:
                     "score": float(r.get("score", 0)),
                     "start_s": r.get("start_s"),
                     "end_s": r.get("end_s"),
+                    "file_id": r.get("file_id"),
+                    "file_index": r.get("file_index"),
                 } for r in rows if r.get("block_content") or r.get("introduction") or r.get("video_name")]
             finally:
                 pool.putconn(conn)
@@ -350,7 +396,7 @@ class RAGTools:
                 vector_str = "[" + ",".join(str(v) for v in query_vector) + "]"
                 if video_id:
                     cursor.execute("""
-                        SELECT video_id, block_type, block_content, start_s, end_s,
+                        SELECT video_id, file_id, file_index, block_type, block_content, start_s, end_s,
                                (1.0 - (content_vector <=> %s::vector))
                                    * COALESCE(block_weight, 1.0) AS score
                         FROM video_vector_block
@@ -368,6 +414,8 @@ class RAGTools:
                         "score": float(r.get("score", 0)),
                         "start_s": r.get("start_s"),
                         "end_s": r.get("end_s"),
+                        "file_id": r.get("file_id"),
+                        "file_index": r.get("file_index"),
                     } for r in rows if r.get("block_content")]
                 cursor.execute("""
                     WITH weighted AS (
@@ -493,6 +541,239 @@ class RAGTools:
         return start, end
 
     @classmethod
+    def delete_subtitle_blocks(cls, video_id: str) -> None:
+        """删除该视频所有 subtitle 向量块（重建索引前清理）。"""
+        if not video_id:
+            return
+        pool = get_global_pool()
+        if pool is None:
+            return
+        conn = pool.getconn()
+        try:
+            cursor = conn.cursor()
+            cursor.execute(
+                "DELETE FROM video_vector_block WHERE video_id = %s AND block_type LIKE %s",
+                (video_id, "subtitle%"),
+            )
+            conn.commit()
+            cursor.close()
+        except Exception as e:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            logger.warning("清理字幕向量块失败 video_id=%s: %s", video_id, e)
+        finally:
+            pool.putconn(conn)
+
+    @classmethod
+    def index_subtitle_segments(
+        cls,
+        video_id: str,
+        segments: List[Dict[str, Any]],
+        *,
+        file_id: Optional[str] = None,
+        file_index: int = 1,
+        block_weight: float = 0.85,
+    ) -> bool:
+        """将带真实时间轴的字幕段写入 video_vector_block（block_type=subtitle_{file}_{i}）。"""
+        from app.tools.llm_tools import LLM_tools
+
+        if not video_id or not segments:
+            return False
+        try:
+            f_index = int(file_index)
+        except (TypeError, ValueError):
+            f_index = 1
+        f_id = (str(file_id).strip() if file_id else None) or None
+
+        texts: List[str] = []
+        meta: List[tuple] = []
+        for seg in segments:
+            if not isinstance(seg, dict):
+                continue
+            text = (seg.get("text") or "").strip()
+            if not text:
+                continue
+            try:
+                start_s = float(seg["start_s"])
+            except (TypeError, ValueError, KeyError):
+                continue
+            end_s = seg.get("end_s")
+            try:
+                end_s = float(end_s) if end_s is not None else None
+            except (TypeError, ValueError):
+                end_s = None
+            texts.append(text)
+            meta.append((start_s, end_s))
+
+        if not texts:
+            return False
+
+        try:
+            embeddings = LLM_tools.embed(texts)
+        except Exception as e:
+            logger.error(f"字幕 embedding 失败: {e}")
+            return False
+        if not embeddings or len(embeddings) != len(texts):
+            return False
+
+        pool = get_global_pool()
+        if pool is None:
+            return False
+        conn = pool.getconn()
+        try:
+            cursor = conn.cursor()
+            cursor.execute(
+                "DELETE FROM video_vector_block WHERE video_id = %s AND block_type LIKE %s",
+                (video_id, f"subtitle_{f_index}_%"),
+            )
+            for i, (text, vec, (start_s, end_s)) in enumerate(
+                zip(texts, embeddings, meta, strict=False),
+            ):
+                vector_str = "[" + ",".join(str(v) for v in vec) + "]"
+                cursor.execute(
+                    """
+                    INSERT INTO video_vector_block
+                        (video_id, file_id, file_index, block_type, block_content,
+                         content_vector, block_weight, start_s, end_s)
+                    VALUES (%s, %s, %s, %s, %s, %s::vector, %s, %s, %s)
+                    """,
+                    (video_id, f_id, f_index, f"subtitle_{f_index}_{i}",
+                     text, vector_str, block_weight, start_s, end_s),
+                )
+            conn.commit()
+            cursor.close()
+            logger.info(
+                "已索引 %s 字幕块 file_index=%s count=%d", video_id, f_index, len(texts),
+            )
+            return True
+        except Exception as e:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            logger.error(f"字幕索引失败: {e}")
+            return False
+        finally:
+            pool.putconn(conn)
+
+    @classmethod
+    def _video_context(cls, video_id: str) -> str:
+        """拼出视频标题/标签/简介，供字幕纠错做上下文。"""
+        try:
+            from app.tools import VideoTools
+            v = VideoTools.get_video_info(video_id)
+        except Exception:
+            return ""
+        if not v:
+            return ""
+        parts: List[str] = []
+        name = getattr(v, "videoName", None)
+        if name:
+            parts.append(f"标题：{name}")
+        tags = getattr(v, "tags", None)
+        if tags:
+            parts.append(f"标签：{tags}")
+        intro = (getattr(v, "introduction", None) or "").strip()
+        if intro:
+            parts.append(f"简介：{intro[:200]}")
+        return "\n".join(parts)
+
+    @classmethod
+    def index_video_subtitles(cls, video_id: str) -> Dict[str, Any]:
+        """逐分片 ASR → PostgreSQL 原始段 → 合并 → subtitle_* 向量块。
+
+        多分片（video_info_file 多行）时按 file 分别转写与存储，字幕和向量块都带
+        file_id/file_index，播放器切集时按 file 读取，引用也能定位到分片。
+        """
+        from app.config import settings
+        from app.services.video_asr import merge_segments_for_index, transcribe_media_file
+        from app.services.video_media_paths import list_video_files, resolve_media_path_for_file
+        from app.services.video_subtitle_storage import (
+            load_subtitle_segments,
+            save_subtitle_segments,
+        )
+
+        result: Dict[str, Any] = {
+            "indexed": False,
+            "segment_count": 0,
+            "index_block_count": 0,
+            "file_count": 0,
+            "corrected": False,
+        }
+
+        files = list_video_files(video_id)
+        if not files:
+            # 兼容：没有 video_info_file 记录时，按单文件处理
+            files = [{"file_id": None, "file_index": 1, "file_path": ""}]
+
+        context = cls._video_context(video_id)
+        cls.delete_subtitle_blocks(video_id)
+
+        any_indexed = False
+        reason_set = False
+        for f in files:
+            f_index = f["file_index"]
+            f_id = f["file_id"]
+            raw_segments: List[Dict[str, Any]] = []
+            corrected = False
+
+            if settings.video_asr_enabled and f["file_path"]:
+                media = resolve_media_path_for_file(f["file_path"])
+                if media is not None:
+                    raw_segments = transcribe_media_file(media)
+                    if raw_segments:
+                        from app.services.video_subtitle_correction import correct_segments
+                        fixed = correct_segments(raw_segments, context=context)
+                        if fixed:
+                            corrected = fixed != raw_segments
+                            raw_segments = fixed
+                        save_subtitle_segments(
+                            video_id, raw_segments,
+                            file_id=f_id, file_index=f_index,
+                            source="asr_llm" if corrected else "asr",
+                        )
+
+            if not raw_segments:
+                stored = load_subtitle_segments(video_id, file_index=f_index)
+                raw_segments = [
+                    {"text": s["text"], "start_s": s["start_s"], "end_s": s.get("end_s")}
+                    for s in stored
+                ]
+
+            if not raw_segments:
+                continue
+
+            result["segment_count"] += len(raw_segments)
+            result["file_count"] += 1
+            if corrected:
+                result["corrected"] = True
+
+            merged = merge_segments_for_index(
+                raw_segments,
+                max_gap_s=settings.video_asr_merge_max_gap_s,
+                max_chars=settings.video_asr_merge_max_chars,
+            )
+            if not merged:
+                continue
+            ok = cls.index_subtitle_segments(
+                video_id, merged, file_id=f_id, file_index=f_index,
+            )
+            if ok:
+                any_indexed = True
+                result["index_block_count"] += len(merged)
+            elif not reason_set:
+                result["reason"] = "index_failed"
+                reason_set = True
+
+        if not any_indexed and result.get("reason") is None:
+            result["reason"] = "asr_empty_or_unavailable"
+        result["indexed"] = any_indexed
+        return result
+
+
+    @classmethod
     def index_video(cls, video_id: str) -> Dict[str, Any]:
         """
         索引一条视频（接入"Java 上传视频 → Python 生成索引"链路）。
@@ -505,16 +786,7 @@ class RAGTools:
         if not video:
             return {"success": False, "video_id": video_id, "error": "视频不存在"}
 
-        # duration 可能是分钟（历史字段）或秒；>180 视为已是秒
-        raw_dur = getattr(video, "duration", None)
-        duration_s = None
-        try:
-            if raw_dur is not None and float(raw_dur) > 0:
-                d = float(raw_dur)
-                duration_s = d if d > 180 else d * 60.0
-        except (TypeError, ValueError):
-            duration_s = None
-
+        # 元数据块不写估算时间轴（避免 citations 误导）；真实时间仅来自 ASR subtitle_*
         parts = {
             "title": (video.videoName or "").strip(),
             "tags": (video.tags or "").strip(),
@@ -530,14 +802,19 @@ class RAGTools:
                     video_id, part_type, text,
                     # 与 vector_search 的加权语义一致：title 最重要，introduction 次要
                     block_weight=1.0 if part_type == "title" else (0.5 if part_type == "tags" else 0.3),
-                    duration_s=duration_s,
+                    duration_s=None,
                 )
                 results[part_type] = {"indexed": ok}
             except Exception as e:
                 results[part_type] = {"indexed": False, "error": str(e)}
 
+        try:
+            results["subtitle"] = cls.index_video_subtitles(video_id)
+        except Exception as e:
+            results["subtitle"] = {"indexed": False, "error": str(e)}
+
         success = any(r.get("indexed") for r in results.values())
-        return {"success": success, "video_id": video_id, "parts": results, "duration_s": duration_s}
+        return {"success": success, "video_id": video_id, "parts": results}
 PLATFORM_FAQ_FALLBACK = [
     {"title": "ViewHub 是什么", "content": "ViewHub 是一个视频分享平台，支持视频上传、播放、弹幕互动、评论交流等功能。你可以在这里找到各种有趣的视频内容。", "type": "faq"},
     {"title": "如何注册账号", "content": "点击登录弹窗的「注册」标签，填写邮箱、昵称、密码，通过邮箱验证码完成注册。注册成功后即可正常使用所有功能。", "type": "guide"},
