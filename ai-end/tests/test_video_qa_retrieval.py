@@ -13,6 +13,21 @@ from app.tools.video_qa_retrieval import (
 )
 
 
+def test_rewrite_strips_video_id_noise():
+    q = rewrite_video_qa_query("这个视频讲了什么 video_id:1dJZCYwEKg", title="外卖", tags="", use_llm=False)
+    assert "1dJZCYwEKg" not in q
+    assert "讲了什么" in q
+    assert "外卖" in q
+
+
+def test_extract_video_id_from_text():
+    from app.utils.video_id import extract_video_id_from_text
+
+    assert extract_video_id_from_text("这个视频讲了什么 video_id:1dJZCYwEKg") == "1dJZCYwEKg"
+    assert extract_video_id_from_text("id号是1dJZCYwEKg的视频具体讲什么") == "1dJZCYwEKg"
+    assert extract_video_id_from_text("这个视频讲了什么") is None
+
+
 def test_rewrite_colloquial():
     q = rewrite_video_qa_query("这个讲了啥", title="Python入门", tags="编程", use_llm=False)
     assert "这个讲了啥" in q
@@ -37,6 +52,9 @@ def test_rewrite_llm_success():
 
 def test_is_metadata_friendly():
     assert is_metadata_friendly_question("这个视频讲了什么")
+    assert is_metadata_friendly_question("讲了什么")
+    assert not is_metadata_friendly_question("")
+    assert not is_metadata_friendly_question("这个视频第三分钟说了什么")
     assert not is_metadata_friendly_question("第三个实验步骤的具体参数是多少")
 
 
@@ -102,9 +120,18 @@ def test_filter_scoped_chunks_drops_cross_video():
         {"content": "无 id", "score": 0.5},
     ]
     kept = filter_scoped_chunks(chunks, "v1")
-    assert len(kept) == 2
-    assert all(c["video_id"] == "v1" for c in kept)
+    assert len(kept) == 1
     assert kept[0]["content"] == "本片"
+    assert kept[0]["video_id"] == "v1"
+
+
+def test_search_video_chunks_falls_back_to_title_when_empty():
+    with patch("app.config.settings.video_qa_llm_rewrite", False):
+        with patch("app.tools.ranker.dual_recall_and_rerank", return_value=[]):
+            results, ok = search_video_chunks("v1", "这个视频讲了什么", title="外卖小哥")
+    assert ok is True
+    assert results[0]["content"] == "外卖小哥"
+    assert results[0]["block_type"] == "metadata"
 
 
 def test_search_video_chunks_filters_cross_video_pollution():
@@ -129,6 +156,13 @@ def test_corrective_retrieve_once_merges():
         )
     assert ok is True
     assert any(d["content"] == "new better" for d in merged)
+
+
+def test_strip_evidence_footer():
+    from app.tools.video_qa_retrieval import strip_evidence_footer
+
+    text = "这是回答。\n\n依据：\n[1] 片段一\n[2] 片段二"
+    assert strip_evidence_footer(text) == "这是回答。"
 
 
 def test_format_evidence_prompt_and_footer():
@@ -189,8 +223,8 @@ def test_corrective_node_appends_footer_and_citations():
     }
     with patch("app.config.settings.video_qa_corrective", True):
         out = corrective_node(state)
-    assert "依据：" in out["answer"]
-    assert "Python入门知识点" in out["answer"]
+    assert "依据：" not in out["answer"]
+    assert "入门课" in out["answer"]
     assert out["citations"] and out["citations"][0]["snippet"].startswith("Python")
 
 

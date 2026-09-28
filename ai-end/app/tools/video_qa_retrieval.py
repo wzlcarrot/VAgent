@@ -29,9 +29,11 @@ _COLLOQUIAL_EXPANSIONS: Dict[str, str] = {
     "核心": "核心 重点 主题",
 }
 
+# 仅「问标题/简介级信息」才算元数据友好。不要用「这个视频」作万能词，
+# 否则细粒度内容问也会跳过拒答。
 _METADATA_QUESTION_MARKERS = (
-    "讲了什么", "讲了啥", "说啥", "讲什么", "介绍一下", "介绍这个", "总结",
-    "主题", "内容是什么", "是什么视频", "这视频", "这个视频",
+    "讲了什么", "讲了啥", "说啥", "讲什么", "具体讲", "介绍一下", "介绍这个", "总结",
+    "主题", "内容是什么", "是什么视频",
 )
 
 
@@ -68,6 +70,14 @@ def format_evidence_footer(knowledge: list, max_items: int = 3, max_len: int = 8
     return "\n\n依据：\n" + "\n".join(parts)
 
 
+_FOOTER_RE = re.compile(r"\n*\s*依据：\s*\n[\s\S]*$")
+
+
+def strip_evidence_footer(answer: str) -> str:
+    """去掉正文末尾的「依据：」清单，避免和前端 citations 卡片重复。"""
+    return _FOOTER_RE.sub("", answer or "").rstrip()
+
+
 def build_citations(knowledge: list, max_items: int = 3, max_len: int = 120) -> List[Dict[str, Any]]:
     """结构化引用，供 SSE `citations` 事件消费（含可选 start_s 跳转）。"""
     out: List[Dict[str, Any]] = []
@@ -97,6 +107,16 @@ def build_citations(knowledge: list, max_items: int = 3, max_len: int = 120) -> 
                 item["end_s"] = float(end_s)
             except (TypeError, ValueError):
                 pass
+        # 多分片：带上分片信息，前端引用可跳转到对应 P
+        file_id = k.get("file_id")
+        if file_id:
+            item["file_id"] = str(file_id)
+        file_index = k.get("file_index")
+        if file_index is not None:
+            try:
+                item["file_index"] = int(file_index)
+            except (TypeError, ValueError):
+                pass
         out.append(item)
     return out
 
@@ -114,14 +134,10 @@ def filter_scoped_chunks(
         if not isinstance(c, dict):
             continue
         vid = (c.get("video_id") or "").strip()
-        if vid and vid != video_id:
+        if vid != video_id:
             dropped += 1
             continue
-        # 无 video_id 字段的旧数据：补上当前 video_id 后保留
-        item = dict(c)
-        if not vid:
-            item["video_id"] = video_id
-        kept.append(item)
+        kept.append(dict(c))
     if dropped:
         logger.warning(
             "filter_scoped_chunks: dropped %d cross-video chunks for video_id=%s",
@@ -132,7 +148,9 @@ def filter_scoped_chunks(
 
 def rewrite_video_qa_query_rules(question: str, title: str = "", tags: str = "") -> str:
     """规则改写：口语追加标准检索词。"""
-    q = (question or "").strip()
+    from app.utils.video_id import strip_video_id_noise
+
+    q = strip_video_id_noise(question or "").strip()
     parts: List[str] = []
     if q:
         parts.append(q)
@@ -158,7 +176,9 @@ def rewrite_video_qa_query(
     Query 改写：默认规则；开启 LLM 时用短提示生成检索关键词，失败回退规则。
     """
     from app.config import settings
+    from app.utils.video_id import strip_video_id_noise
 
+    question = strip_video_id_noise(question)
     rule_q = rewrite_video_qa_query_rules(question, title, tags)
     enabled = settings.effective_video_qa_llm_rewrite if use_llm is None else use_llm
     if not enabled or not (question or "").strip():
@@ -215,7 +235,7 @@ def rewrite_video_qa_query_legacy(*args, **kwargs):
 def is_metadata_friendly_question(question: str) -> bool:
     q = (question or "").strip()
     if not q:
-        return True
+        return False
     return any(m in q for m in _METADATA_QUESTION_MARKERS)
 
 
@@ -360,6 +380,9 @@ def search_video_chunks(
     if not video_id or not (question or title or tags):
         return [], False
 
+    from app.utils.video_id import strip_video_id_noise
+
+    question = strip_video_id_noise(question)
     query1 = rewrite_query or rewrite_video_qa_query(question, title, tags)
     results = filter_scoped_chunks(
         dual_recall_and_rerank(query1, top_k=top_k, video_id=video_id),
@@ -385,6 +408,17 @@ def search_video_chunks(
                 )
                 results = _merge_results(results, results3, top_k)
                 sufficient = has_sufficient_evidence(results, min_score)
+
+    if not results and (title.strip() or tags.strip()):
+        meta = " ".join(p for p in (title.strip(), tags.strip()) if p)
+        results = [{
+            "content": meta,
+            "score": max(MIN_EVIDENCE_SCORE, 0.3),
+            "block_type": "metadata",
+            "video_id": video_id,
+            "start_s": 0.0,
+        }]
+        sufficient = is_metadata_friendly_question(question)
 
     if is_metadata_friendly_question(question):
         sufficient = sufficient or bool(results)
