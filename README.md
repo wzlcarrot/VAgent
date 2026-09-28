@@ -18,7 +18,7 @@
 - 平台使用帮助与客服对话
 - 多轮对话与跨会话记忆
 - 赞踩反馈影响下次推荐排序
-- 意图路由：关键词 + 语义 + LLM 三阶段，决策实时可见（SSE meta 事件）
+- 意图路由：关键词 + 语义 + LLM 三阶段，**单标签**（一条请求只进入一个工作流）；决策实时可见（SSE meta 事件）
 - 显式 CoT：路由分歧时先分步推理再裁决，推理过程写入 Run Trace
 - 多模态：DeepSeek `deepseek-flash` 支持图文混合输入（`deepseek-vl` provider）
 
@@ -58,7 +58,7 @@ cd ai-end && python scripts/behavior_golden_set.py
 # 全链路 Workflow Golden（mock DB/LLM）
 cd ai-end && python scripts/workflow_golden_set.py
 
-# 同义口语片内问答（改写命中 / 硬负例拒答）
+# 同义口语「当前视频」问答（改写命中 / 硬负例拒答）
 cd ai-end && python scripts/synonym_video_qa_eval.py
 
 # 前端（statements/lines 75%）
@@ -67,15 +67,15 @@ cd ai-frontend && npx vitest run --coverage
 
 ## Agentic Video RAG
 
-片内问答不是一次性 RAG，而是轻量 Agent 闭环：
+针对**当前正在看的这个视频**做问答：不是一次性 RAG，而是轻量 Agent 闭环（只搜本视频内容，避免跨视频串答）：
 
 1. **Query rewrite**：规则口语扩展 + 可选 LLM 关键词改写  
 2. **检索漏斗**：`recall_budget` → `rerank_candidate_limit` → `default_top_k`（启动校验单调收窄）  
 3. **批级 EvidenceGate**：最高精排分低于阈值则整批不进 LLM（借鉴 Ragent）  
-4. **片内混合召回**：`pgvector` + ParadeDB BM25，证据不足则多轮补搜  
+4. **当前视频混合召回**：`pgvector` + ParadeDB BM25，并过滤掉其他视频的片段；证据不足则多轮补搜  
 5. **Corrective**：启发式 + 可选 LLM judge 校验证据支撑，不支撑则补搜一轮或拒答  
 6. **Bounded ReAct**：检索节点最多 3 次 `search_video_chunks` tool call（`video_qa_react`）  
-7. **Citations**：结构化引用经 SSE 回传并**持久化到 chat_history**，刷新会话仍可展示  
+7. **Citations**：结构化引用（含可跳转时间点）经 SSE 回传并**持久化到 chat_history**，刷新会话仍可展示  
 
 检索-only 调试：`GET /ai/rag/eval?question=...&video_id=...`（需登录，不调用答案生成 LLM）。
 
@@ -99,7 +99,7 @@ Playwright E2E：`cd ai-frontend && npm run test:e2e`（mock SSE）；`E2E_LIVE=
 | `behavior_golden_set.py` | 路由 + 指代 + Tool Policy（22/22） |
 | `synonym_video_qa_eval.py` | 口语 hit / 硬负例拒答（9/9） |
 
-演示：`export VAGENT_DEMO_MODE=1` 启用 LLM replay（**仅 mock LLM**；检索改写 / EvidenceGate / grounding 与生产一致）。片内问答支持 **Bounded ReAct**（默认最多 3 次 `search_video_chunks`）。
+演示：`export VAGENT_DEMO_MODE=1` 启用 LLM replay（**仅 mock LLM**；检索改写 / EvidenceGate / grounding 与生产一致）。当前视频问答支持 **Bounded ReAct**（默认最多 3 次 `search_video_chunks`）。
 
 ## License
 
