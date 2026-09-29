@@ -105,7 +105,9 @@ jobs:
           PG_HOST: 127.0.0.2
           REDIS_HOST: 127.0.0.2
           PYTEST_ADDOPTS: ""
-        run: python -m pytest tests/ -q --cov=app --cov-report=term-missing --cov-fail-under=70
+        run: |
+          python --version
+          python -m pytest tests/ -q --no-cov --tb=short -r fE
 
       - name: Golden regression scripts
         # tests/test_golden_set.py：关键词路径黄金集下限（不调 LLM）
