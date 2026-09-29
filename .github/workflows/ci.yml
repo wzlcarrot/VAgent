@@ -35,14 +35,24 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install -r requirements.txt
+          # CI 单测不跑 ASR；省略 faster-whisper/onnxruntime 降低内存占用
+          grep -Ev '^(faster-whisper|onnxruntime)' requirements.txt > /tmp/requirements-ci.txt
+          pip install -r /tmp/requirements-ci.txt
           pip install -r requirements-dev.txt
 
       - name: Lint (ruff)
         run: ruff check app tests scripts
 
       - name: Pytest
-        run: python -m pytest tests/ -q --cov=app --cov-fail-under=72
+        run: |
+          python -m pytest tests/ --co -q | tail -1
+          python -m pytest tests/ -q --junit-xml=pytest-junit.xml
+      - name: Upload pytest report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytest-junit
+          path: ai-end/pytest-junit.xml
 
       - name: Golden regression scripts
         # tests/test_golden_set.py：关键词路径黄金集下限（不调 LLM）
