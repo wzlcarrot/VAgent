@@ -10,6 +10,21 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import pytest  # noqa: E402
 
 
+@pytest.fixture(scope="session", autouse=True)
+def _ci_ensure_agent_schema():
+    """GitHub Actions 有 Postgres 服务但无 ViewHub 全量 schema，先建 Agent 表避免单测误连库失败。"""
+    if os.environ.get("GITHUB_ACTIONS") != "true":
+        return
+    try:
+        from app.tools.db.pool import close_global_pool
+        from app.tools.db.schema import init_agent_tables
+
+        close_global_pool()
+        init_agent_tables()
+    except Exception as exc:
+        raise RuntimeError(f"CI Agent schema init failed: {exc}") from exc
+
+
 @pytest.fixture(autouse=True)
 def _reset_login_rate_limit():
     """每个测试前清空登录限流计数，避免 e2e 多个 _login 触发 429。

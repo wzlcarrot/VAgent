@@ -100,7 +100,16 @@ jobs:
           PY
 
       - name: Pytest
-        run: python -m pytest tests/ -q --cov=app --cov-fail-under=72
+        run: |
+          set -o pipefail
+          python -m pytest tests/ -q --cov=app --cov-fail-under=72 --tb=line -r fE 2>&1 | tee pytest.log
+          code=${PIPESTATUS[0]}
+          if [ "$code" -ne 0 ]; then
+            echo "::group::pytest summary"
+            grep -E '^(FAILED|ERROR|=+|FAIL Required)' pytest.log | tail -40 || tail -40 pytest.log
+            echo "::endgroup::"
+          fi
+          exit "$code"
 
       - name: Golden regression scripts
         # tests/test_golden_set.py：关键词路径黄金集下限（不调 LLM）
