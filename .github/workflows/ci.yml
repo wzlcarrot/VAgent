@@ -13,40 +13,7 @@ jobs:
   backend:
     name: Backend (pytest + ruff)
     runs-on: ubuntu-latest
-    services:
-      postgres:
-        # pgvector 镜像自带 vector 扩展；pg_search 不可用时由 app 自动降级
-        image: pgvector/pgvector:pg16
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: viewhub
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U postgres -d viewhub"
-          --health-interval 5s
-          --health-timeout 3s
-          --health-retries 15
-      redis:
-        image: redis:7-alpine
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 5s
-          --health-timeout 3s
-          --health-retries 10
     env:
-      # 用 127.0.0.1 避免 localhost 解析到 ::1 而 service 只监听 IPv4
-      PG_HOST: 127.0.0.1
-      PG_PORT: 5432
-      PG_USER: postgres
-      PG_PASSWORD: postgres
-      PG_DATABASE: viewhub
-      REDIS_HOST: 127.0.0.1
-      REDIS_PORT: 6379
-      REDIS_DB: 0
       # e2e 测试登录用测试账户
       TEST_ACCOUNT_ENABLED: "true"
       TEST_ACCOUNT_EMAIL: test@viewhub.com
@@ -74,40 +41,8 @@ jobs:
       - name: Lint (ruff)
         run: ruff check app tests scripts
 
-      - name: Init DB schema
-        run: |
-          python - <<'PY'
-          import sys
-          import time
-          from app.tools.db.pool import close_global_pool
-          from app.tools.db.schema import init_agent_tables
-          from app.tools.db import get_cursor
-
-          for attempt in range(1, 13):
-              close_global_pool()
-              init_agent_tables()
-              with get_cursor() as cur:
-                  if cur is not None:
-                      cur.execute("SELECT to_regclass('public.video_vector_block') AS reg")
-                      row = cur.fetchone()
-                      reg = (row.get("reg") if isinstance(row, dict) else row[0]) if row else None
-                      if reg:
-                          print(f"schema ready (attempt {attempt})")
-                          sys.exit(0)
-              print(f"schema not ready, retry {attempt}/12", flush=True)
-              time.sleep(5)
-          raise SystemExit("video_vector_block missing after init retries")
-          PY
-
       - name: Pytest
-        # 单测以 mock 为主；勿连 CI 的 Postgres/Redis（缺 ViewHub 业务表会误失败）
-        env:
-          PG_HOST: 127.0.0.2
-          REDIS_HOST: 127.0.0.2
-          PYTEST_ADDOPTS: ""
-        run: |
-          python --version
-          python -m pytest tests/ -q --no-cov --tb=short -r fE
+        run: python -m pytest tests/ -q --cov=app --cov-fail-under=72
 
       - name: Golden regression scripts
         # tests/test_golden_set.py：关键词路径黄金集下限（不调 LLM）
