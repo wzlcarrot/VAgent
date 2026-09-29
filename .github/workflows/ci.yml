@@ -44,11 +44,7 @@ jobs:
         run: ruff check app tests scripts
 
       - name: Pytest
-        env:
-          COVERAGE_FILE: /tmp/vagent-pytest.coverage
-        run: |
-          rm -f .coverage .coverage.*
-          python -m pytest tests/ -q --junit-xml=pytest-junit.xml
+        run: bash scripts/ci_run_pytest.sh
       - name: Upload pytest report
         if: failure()
         uses: actions/upload-artifact@v4
