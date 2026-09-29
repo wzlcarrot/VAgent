@@ -193,20 +193,25 @@ def test_ranker_escape_and_fallback():
     assert rerank("q", []) == []
     one = [{"content": "a", "score": 0.9}]
     assert rerank("q", one) == one
-    with patch("app.tools.ranker._batch_llm_score", return_value=[
-        ({"content": "b", "score": 0.2}, 0.2),
-        ({"content": "a", "score": 0.9}, 0.9),
-    ]):
-        out = rerank("q", [{"content": "b"}, {"content": "a"}], top_k=1)
-    assert out[0]["content"] == "a"
-    docs = [{"content": "a", "score": 0.4}, {"content": "```hack```", "score": 0.8}]
-    with patch("app.tools.llm_tools.LLM_tools.chat_sync_json", return_value=None):
-        assert len(rerank("q", docs, top_k=2)) == 2
-    with patch("app.tools.llm_tools.LLM_tools.chat_sync_json", return_value=[{"index": 0, "score": 5}, {"index": 1, "score": 0}]):
-        ranked = rerank("q", docs, top_k=1)
-    assert ranked[0]["content"] == "a"
-    with patch("app.tools.llm_tools.LLM_tools.chat_sync_json", return_value=["bad"]):
-        assert len(rerank("q", docs, top_k=2)) == 2
+    # 默认 rag_rerank_backend=cross_encoder；CI 有 onnx 时会走模型精排，mock LLM 不生效
+    with patch("app.config.settings.rag_rerank_backend", "llm"):
+        with patch("app.tools.ranker._batch_llm_score", return_value=[
+            ({"content": "b", "score": 0.2}, 0.2),
+            ({"content": "a", "score": 0.9}, 0.9),
+        ]):
+            out = rerank("q", [{"content": "b"}, {"content": "a"}], top_k=1)
+        assert out[0]["content"] == "a"
+        docs = [{"content": "a", "score": 0.4}, {"content": "```hack```", "score": 0.8}]
+        with patch("app.tools.llm_tools.LLM_tools.chat_sync_json", return_value=None):
+            assert len(rerank("q", docs, top_k=2)) == 2
+        with patch(
+            "app.tools.llm_tools.LLM_tools.chat_sync_json",
+            return_value=[{"index": 0, "score": 5}, {"index": 1, "score": 0}],
+        ):
+            ranked = rerank("q", docs, top_k=1)
+        assert ranked[0]["content"] == "a"
+        with patch("app.tools.llm_tools.LLM_tools.chat_sync_json", return_value=["bad"]):
+            assert len(rerank("q", docs, top_k=2)) == 2
 
 
 def test_dual_recall_merges():
