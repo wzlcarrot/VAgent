@@ -88,9 +88,10 @@ jobs:
               init_agent_tables()
               with get_cursor() as cur:
                   if cur is not None:
-                      cur.execute("SELECT to_regclass('public.video_vector_block')")
+                      cur.execute("SELECT to_regclass('public.video_vector_block') AS reg")
                       row = cur.fetchone()
-                      if row and row[0]:
+                      reg = (row.get("reg") if isinstance(row, dict) else row[0]) if row else None
+                      if reg:
                           print(f"schema ready (attempt {attempt})")
                           sys.exit(0)
               print(f"schema not ready, retry {attempt}/12", flush=True)
