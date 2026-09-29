@@ -74,12 +74,34 @@ jobs:
         run: ruff check app tests scripts
 
       - name: Init DB schema
-        run: python -c "from app.tools.db.schema import init_agent_tables; init_agent_tables()"
+        run: |
+          python - <<'PY'
+          import sys
+          import time
+          from app.tools.db.pool import close_global_pool
+          from app.tools.db.schema import init_agent_tables
+          from app.tools.db import get_cursor
 
-      - name: Test
+          for attempt in range(1, 13):
+              close_global_pool()
+              init_agent_tables()
+              with get_cursor() as cur:
+                  if cur is not None:
+                      cur.execute("SELECT to_regclass('public.video_vector_block')")
+                      if cur.fetchone()[0]:
+                          print(f"schema ready (attempt {attempt})")
+                          sys.exit(0)
+              print(f"schema not ready, retry {attempt}/12", flush=True)
+              time.sleep(5)
+          sys.exit("video_vector_block missing after init retries")
+          PY
+
+      - name: Pytest
+        run: python -m pytest tests/ -q --cov=app --cov-fail-under=72
+
+      - name: Golden regression scripts
         # tests/test_golden_set.py：关键词路径黄金集下限（不调 LLM）
         run: |
-          python -m pytest tests/ -q --cov=app --cov-fail-under=72
           python scripts/workflow_golden_set.py
           python scripts/behavior_golden_set.py
           python scripts/intent_ternary_regression.py
