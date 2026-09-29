@@ -4,6 +4,8 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List
 
+from psycopg2 import errors as pg_errors
+
 from app.tools.db import get_cursor
 from app.tools.rag_tools import RAGTools
 
@@ -14,14 +16,17 @@ def is_video_indexed(video_id: str) -> bool:
     """video_id 在 video_vector_block 中至少有一条 chunk 视为已索引。"""
     if not (video_id or "").strip():
         return False
-    with get_cursor() as cursor:
-        if cursor is None:
-            return True
-        cursor.execute(
-            "SELECT 1 FROM video_vector_block WHERE video_id = %s LIMIT 1",
-            (video_id.strip(),),
-        )
-        return cursor.fetchone() is not None
+    try:
+        with get_cursor() as cursor:
+            if cursor is None:
+                return True
+            cursor.execute(
+                "SELECT 1 FROM video_vector_block WHERE video_id = %s LIMIT 1",
+                (video_id.strip(),),
+            )
+            return cursor.fetchone() is not None
+    except pg_errors.UndefinedTable:
+        return False
 
 
 def video_chunk_count(video_id: str) -> int:
