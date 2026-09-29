@@ -44,7 +44,8 @@ def test_format_history_ignores_non_dict():
 
 def test_run_video_qa_workflow_accepts_history():
     """workflow 接受 conversation_history 且图执行不报错。"""
-    with patch("app.agents.workflows.video_qa_workflow.VideoTools.get_video_info", return_value=None):
+    with patch("app.agents.workflows.video_qa_workflow.VideoTools.get_video_info", return_value=None), \
+         patch("app.services.video_indexing.is_video_indexed", return_value=False):
         result = vq.run_video_qa_workflow(
             "它讲什么",
             video_id="v1",

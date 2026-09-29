@@ -33,6 +33,10 @@ def test_index_subtitle_segments_mock_embed():
 
 def test_index_video_subtitles_from_storage_only():
     with patch("app.config.settings.video_asr_enabled", False), \
+         patch(
+             "app.services.video_media_paths.list_video_files",
+             return_value=[{"file_id": None, "file_index": 1, "file_path": ""}],
+         ), \
          patch("app.services.video_subtitle_storage.load_subtitle_segments", return_value=[
              {"text": "已有字幕", "start_s": 3.0, "end_s": 6.0, "seq": 0, "source": "asr"},
          ]), \

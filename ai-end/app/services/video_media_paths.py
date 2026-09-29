@@ -5,6 +5,8 @@ import logging
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from psycopg2 import errors as pg_errors
+
 from app.config import settings
 from app.tools.db import get_cursor
 
@@ -26,19 +28,23 @@ def list_video_files(video_id: str) -> List[Dict[str, Any]]:
     vid = (video_id or "").strip()
     if not vid:
         return []
-    with get_cursor() as cursor:
-        if cursor is None:
-            return []
-        cursor.execute(
-            """
-            SELECT file_id, file_index, file_path
-            FROM video_info_file
-            WHERE video_id = %s AND file_path IS NOT NULL AND file_path <> ''
-            ORDER BY file_index
-            """,
-            (vid,),
-        )
-        rows = cursor.fetchall() or []
+    try:
+        with get_cursor() as cursor:
+            if cursor is None:
+                return []
+            cursor.execute(
+                """
+                SELECT file_id, file_index, file_path
+                FROM video_info_file
+                WHERE video_id = %s AND file_path IS NOT NULL AND file_path <> ''
+                ORDER BY file_index
+                """,
+                (vid,),
+            )
+            rows = cursor.fetchall() or []
+    except pg_errors.UndefinedTable:
+        # Agent-only / CI 库可能只有 init_agent_tables，无 ViewHub 业务表
+        return []
     out: List[Dict[str, Any]] = []
     for r in rows:
         if not isinstance(r, dict):

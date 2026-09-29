@@ -73,6 +73,9 @@ jobs:
       - name: Lint (ruff)
         run: ruff check app tests scripts
 
+      - name: Init DB schema
+        run: python -c "from app.tools.db.schema import init_agent_tables; init_agent_tables()"
+
       - name: Test
         # tests/test_golden_set.py：关键词路径黄金集下限（不调 LLM）
         run: |

@@ -34,15 +34,19 @@ def init_agent_tables():
 
         # vector（pgvector）：语义检索/向量召回依赖；CI 的 pgvector 镜像必带，
         # 但仍有极少数环境未预装，故与其它扩展一致用 try/except 兜底，避免建表直接崩。
+        cursor.execute("SAVEPOINT sp_ext_vector")
         try:
             cursor.execute("CREATE EXTENSION IF NOT EXISTS vector")
         except Exception as e:
             logger.warning(f"vector 扩展不可用（向量召回将降级）: {e}")
+            cursor.execute("ROLLBACK TO SAVEPOINT sp_ext_vector")
         # pg_search（ParadeDB BM25）：与 init.sql 保持一致，确保任意初始化路径都有该扩展
+        cursor.execute("SAVEPOINT sp_ext_pg_search")
         try:
             cursor.execute("CREATE EXTENSION IF NOT EXISTS pg_search")
         except Exception as e:
             logger.warning(f"pg_search 扩展不可用（BM25 将降级到 tsvector）: {e}")
+            cursor.execute("ROLLBACK TO SAVEPOINT sp_ext_pg_search")
 
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS video_vector_block (
@@ -139,6 +143,7 @@ def init_agent_tables():
 
         # 片内关键词召回走 ParadeDB BM25（与 pgvector 组成双路召回）。
         # block_content 用中文兼容分词器；索引缺失时 rag_tools 会自动降级 pg_trgm/tsvector。
+        cursor.execute("SAVEPOINT sp_bm25_index")
         try:
             cursor.execute(
                 "CREATE INDEX IF NOT EXISTS idx_video_vector_block_bm25 "
@@ -148,6 +153,7 @@ def init_agent_tables():
             )
         except Exception as e:
             logger.warning(f"BM25 索引创建失败（片内关键词召回降级 pg_trgm/tsvector）: {e}")
+            cursor.execute("ROLLBACK TO SAVEPOINT sp_bm25_index")
 
         cursor.execute("SELECT COUNT(*) FROM platform_docs")
         count = cursor.fetchone()[0]
