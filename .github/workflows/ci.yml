@@ -38,12 +38,13 @@ jobs:
           --health-timeout 3s
           --health-retries 10
     env:
-      PG_HOST: localhost
+      # 用 127.0.0.1 避免 localhost 解析到 ::1 而 service 只监听 IPv4
+      PG_HOST: 127.0.0.1
       PG_PORT: 5432
       PG_USER: postgres
       PG_PASSWORD: postgres
       PG_DATABASE: viewhub
-      REDIS_HOST: localhost
+      REDIS_HOST: 127.0.0.1
       REDIS_PORT: 6379
       REDIS_DB: 0
       # e2e 测试登录用测试账户
@@ -88,12 +89,13 @@ jobs:
               with get_cursor() as cur:
                   if cur is not None:
                       cur.execute("SELECT to_regclass('public.video_vector_block')")
-                      if cur.fetchone()[0]:
+                      row = cur.fetchone()
+                      if row and row[0]:
                           print(f"schema ready (attempt {attempt})")
                           sys.exit(0)
               print(f"schema not ready, retry {attempt}/12", flush=True)
               time.sleep(5)
-          sys.exit("video_vector_block missing after init retries")
+          raise SystemExit("video_vector_block missing after init retries")
           PY
 
       - name: Pytest
