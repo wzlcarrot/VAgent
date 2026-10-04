@@ -20,7 +20,7 @@ from app.utils.task_cancel import WorkflowCancelled
 
 logger = logging.getLogger(__name__)
 
-_CHINESE_NUM = {"一": 1, "二": 2, "两": 2, "三": 3, "四": 4, "五": 5, "六": 6, "七": 7, "八": 8, "九": 9, "几": 3}
+_CHINESE_NUM = {"一": 1, "二": 2, "两": 2, "三": 3, "四": 4, "五": 5, "六": 6, "七": 7, "八": 8, "九": 9, "几": 3, "十": 5}
 
 WORKFLOW_TIMEOUT = 120.0
 
@@ -88,6 +88,19 @@ def record_workflow_request(wf_type: str) -> None:
 def _memory_pending_key(user_id: str, session_id: str) -> str:
     return f"vagent:mem_pending:{session_id or user_id}"
 
+# 原子攒批出队：够 min_turns 轮才取走全部（LRANGE+DEL 原子化）。
+# 非原子的 lrange→delete 竞态会：并发 rpush 的新轮被 delete 误删（丢记忆提取）、
+# 双请求同时 drain 重复提取（双倍 LLM 调用）。
+_DRAIN_PENDING_LUA = """
+local n = redis.call('LLEN', KEYS[1])
+if n < tonumber(ARGV[1]) then
+  return nil
+end
+local items = redis.call('LRANGE', KEYS[1], 0, -1)
+redis.call('DEL', KEYS[1])
+return items
+"""
+
 
 def maybe_extract_memories_from_conversation(user_id: str, question: str, answer: str,
                                              session_id: str = "") -> None:
@@ -113,10 +126,16 @@ def maybe_extract_memories_from_conversation(user_id: str, question: str, answer
         key = _memory_pending_key(user_id, session_id)
         r.rpush(key, json.dumps({"q": question, "a": answer}, ensure_ascii=False))
         r.expire(key, 3600)
-        if r.llen(key) < min_turns:
+        try:
+            raw = r.eval(_DRAIN_PENDING_LUA, 1, key, min_turns)
+        except Exception:
+            # Lua 不可用时退回非原子读清（与旧行为一致），不影响功能
+            if r.llen(key) < min_turns:
+                return
+            raw = r.lrange(key, 0, -1)
+            r.delete(key)
+        if not raw:
             return
-        raw = r.lrange(key, 0, -1)
-        r.delete(key)
         turns = []
         for item in raw or []:
             try:
