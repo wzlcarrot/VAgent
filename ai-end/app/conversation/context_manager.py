@@ -39,10 +39,21 @@ logger = logging.getLogger(__name__)
 
 
 # ─── 内存兜底（Redis 不可用时使用） ───
+# 与 _shared.py 的 token store 同构：无 TTL 数据结构 + 写入路径惰性清理。
 _memory_store: Dict[str, Dict[str, Any]] = {}
 _memory_lock = threading.Lock()
+_memory_clean_counter: int = 0
+_MEMORY_CLEAN_INTERVAL: int = 100
 _REDIS_PREFIX = "session_ref:"
 _CONTEXT_KEY = "session_ref"
+
+_DEFAULT_CONTEXT: Dict[str, Any] = {
+    "last_recommendations": [],
+    "last_video_qa": {},
+    "mentioned_items": [],
+    "intent_chain": [],
+    "updated_at": 0.0,
+}
 
 # ─── 指代词模式 ───
 _ORDINAL_PATTERN = re.compile(
@@ -107,6 +118,17 @@ def _redis_key(session_id: str) -> str:
     return f"{_REDIS_PREFIX}{session_id}"
 
 
+def _copy_context(entry: Dict[str, Any]) -> Dict[str, Any]:
+    """按 schema 显式拷贝嵌套可变结构（避免浅拷贝导致嵌套 list 与存储别名）"""
+    return {
+        "last_recommendations": [dict(v) for v in entry.get("last_recommendations", [])],
+        "last_video_qa": dict(entry.get("last_video_qa", {})),
+        "mentioned_items": [dict(v) for v in entry.get("mentioned_items", [])],
+        "intent_chain": list(entry.get("intent_chain", [])),
+        "updated_at": entry.get("updated_at", 0.0),
+    }
+
+
 def _load_context(session_id: str) -> Dict[str, Any]:
     """从 Redis 或内存加载 session 上下文"""
     r = _get_redis()
@@ -118,13 +140,29 @@ def _load_context(session_id: str) -> Dict[str, Any]:
         except Exception as e:
             logger.debug(f"读 Redis session_ref 失败: {e}")
     with _memory_lock:
-        return dict(_memory_store.get(session_id, {
-            "last_recommendations": [],
-            "last_video_qa": {},
-            "mentioned_items": [],
-            "intent_chain": [],
-            "updated_at": 0.0,
-        }))
+        entry = _memory_store.get(session_id)
+        if entry is not None:
+            return _copy_context(entry)
+    return {k: (dict(v) if isinstance(v, dict) else list(v) if isinstance(v, list) else v)
+            for k, v in _DEFAULT_CONTEXT.items()}
+
+
+def _clean_expired_memory_sessions() -> None:
+    """清掉超过 context_ttl 未更新的内存会话（仅 Redis 降级期间会积累）"""
+    from app.config import settings
+    cutoff = time.time() - max(int(getattr(settings, "context_ttl", 7200)), 60)
+    expired = [sid for sid, ctx in _memory_store.items()
+               if ctx.get("updated_at", 0.0) < cutoff]
+    for sid in expired:
+        _memory_store.pop(sid, None)
+
+
+def _maybe_clean_memory_store() -> None:
+    global _memory_clean_counter
+    _memory_clean_counter += 1
+    if _memory_clean_counter >= _MEMORY_CLEAN_INTERVAL:
+        _memory_clean_counter = 0
+        _clean_expired_memory_sessions()
 
 
 def _save_context(session_id: str, ctx: Dict[str, Any]) -> None:
@@ -139,7 +177,9 @@ def _save_context(session_id: str, ctx: Dict[str, Any]) -> None:
         except Exception as e:
             logger.debug(f"写 Redis session_ref 失败: {e}")
     with _memory_lock:
-        _memory_store[session_id] = ctx
+        # 入库前深拷贝嵌套结构，避免调用方事后修改污染存储
+        _memory_store[session_id] = _copy_context(ctx)
+        _maybe_clean_memory_store()
 
 
 def update_recommendations(session_id: str, videos: List[Dict[str, Any]]) -> None:
