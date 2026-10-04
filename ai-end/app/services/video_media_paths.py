@@ -77,7 +77,14 @@ def resolve_media_path_for_file(file_path: str) -> Optional[Path]:
     rel = str(file_path or "").replace("\\", "/").strip("/")
     if not rel:
         return None
-    base = root / "file" / rel
+    file_root = (root / "file").resolve()
+    base = (root / "file" / rel).resolve()
+    # 纵深防御：file_path 虽来自 DB 而非用户输入，仍防../穿越逃出媒体根目录
+    try:
+        base.relative_to(file_root)
+    except ValueError:
+        logger.warning(f"file_path 越界，已拒绝: {file_path}")
+        return None
     candidates: List[Optional[Path]] = [
         base / _TEMP_MP4_SUFFIX,
         base.parent / _TEMP_MP4_SUFFIX if base.suffix else None,

@@ -31,7 +31,7 @@ async def submit_approval(
     from app.harness.hitl_approval import resolve_approval
 
     result = await run_in_threadpool(
-        resolve_approval, approval_id, decision, session_id=session_id,
+        resolve_approval, approval_id, decision, session_id=session_id, user_id=authed_user_id,
     )
     if not result.get("ok"):
         raise HTTPException(status_code=400, detail=result.get("error") or "approval failed")

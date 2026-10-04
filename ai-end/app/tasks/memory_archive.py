@@ -22,19 +22,19 @@ async def _memory_archive_loop() -> None:
     interval = max(60, int(settings.memory_archive_interval_seconds))
     while True:
         try:
-            await asyncio.sleep(interval)
-            if int(settings.memory_archive_after_days) <= 0:
-                continue
-            from app.agents.workflows import run_sync_in_executor
-            from app.tools.memory_tools import MemoryTools
+            # 启动先跑一轮再进间隔等待：否则重启后最长一天内软失效记忆不归档
+            if int(settings.memory_archive_after_days) > 0:
+                from app.agents.workflows import run_sync_in_executor
+                from app.tools.memory_tools import MemoryTools
 
-            archived = await run_sync_in_executor(MemoryTools.archive_invalid_memories)
-            if archived:
-                logger.info("memory archive task: archived=%d rows", archived)
+                archived = await run_sync_in_executor(MemoryTools.archive_invalid_memories)
+                if archived:
+                    logger.info("memory archive task: archived=%d rows", archived)
         except asyncio.CancelledError:
             break
         except Exception as e:  # noqa: BLE001
             logger.debug(f"memory archive task 异常: {e}")
+        await asyncio.sleep(interval)
 
 
 def start_memory_archive_task() -> None:

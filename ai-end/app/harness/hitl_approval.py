@@ -16,6 +16,8 @@ _pending: Dict[str, "ApprovalRequest"] = {}
 # 审批缓存（借鉴 Codex with_cached_approval）：同会话内批准过一次后不再重复问
 _APPROVED: Dict[str, float] = {}
 _APPROVED_PREFIX = "vagent:hitl_approved:"
+# demo 模式 auto-approve 只告警一次
+_demo_auto_approve_warned = {"done": False}
 
 
 def _approval_cache_key(session_id: str, agent: str, tool_name: str) -> str:
@@ -79,6 +81,7 @@ class ApprovalRequest:
     agent: str
     tool_name: str
     arguments: Dict[str, Any]
+    user_id: str = ""  # 发起工具调用的用户（resolve 时强制校验，防他人批准）
     created_at: float = field(default_factory=time.time)
     timeout_s: float = 60.0
     decision: Optional[str] = None  # approve | deny | timeout
@@ -101,6 +104,7 @@ def create_approval(
     tool_name: str,
     arguments: Optional[Dict[str, Any]] = None,
     timeout_s: Optional[float] = None,
+    user_id: str = "",
 ) -> ApprovalRequest:
     from app.config import settings
 
@@ -111,6 +115,7 @@ def create_approval(
         agent=agent,
         tool_name=tool_name,
         arguments=dict(arguments or {}),
+        user_id=user_id or "",
         timeout_s=max(5.0, min(timeout, 300.0)),
     )
     with _lock:
@@ -118,8 +123,12 @@ def create_approval(
     return req
 
 
-def resolve_approval(approval_id: str, decision: str, *, session_id: str = "") -> Dict[str, Any]:
-    """用户确认/拒绝。decision: approve | deny"""
+def resolve_approval(approval_id: str, decision: str, *, session_id: str = "", user_id: str = "") -> Dict[str, Any]:
+    """用户确认/拒绝。decision: approve | deny
+
+    归属校验：审批请求记录了发起者 user_id 时，决策方必须一致
+    （approval_id 即使泄露，他人也无法批准/拒绝）。
+    """
     decision = (decision or "").strip().lower()
     if decision not in ("approve", "deny"):
         return {"ok": False, "error": "decision must be approve or deny"}
@@ -127,6 +136,10 @@ def resolve_approval(approval_id: str, decision: str, *, session_id: str = "") -
         req = _pending.get(approval_id)
         if req is None:
             return {"ok": False, "error": "approval not found or expired"}
+        if req.user_id and user_id and user_id != req.user_id:
+            return {"ok": False, "error": "user mismatch"}
+        if req.user_id and not user_id:
+            return {"ok": False, "error": "user mismatch"}
         if session_id and req.session_id and session_id != req.session_id:
             return {"ok": False, "error": "session mismatch"}
         if req.decision is not None:
@@ -194,6 +207,11 @@ def wait_for_decision(req: ApprovalRequest) -> str:
     )
     if not auto and demo:
         auto = "approve"
+        if not _demo_auto_approve_warned["done"]:
+            _demo_auto_approve_warned["done"] = True
+            logger.warning(
+                "demo_mode 开启：HITL 人工审批全部自动放行（生产环境请勿设置 VAGENT_DEMO_MODE/DEMO_MODE）"
+            )
     if auto in ("approve", "deny"):
         req.decision = auto
         req.event.set()

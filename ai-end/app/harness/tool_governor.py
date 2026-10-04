@@ -359,6 +359,7 @@ class ToolGovernor:
                         agent=agent,
                         tool_name=tool_name,
                         arguments=arguments,
+                        user_id=user_id,
                     )
                     if record_artifact:
                         self._write_artifact(ToolCallRecord(
