@@ -1,5 +1,6 @@
 import atexit
 import concurrent.futures
+import threading
 import logging
 import math
 from typing import Any, Dict, List, Optional, Tuple
@@ -118,36 +119,52 @@ def apply_evidence_gate(
 
 
 def _raw_score_fallback(candidates: List[Dict[str, Any]]) -> List[tuple]:
-    """无模型可用时的兜底：直接用召回原始分（压到 0~1）。"""
-    return [(d, min(1.0, max(0.0, float(d.get("score", 0.5))))) for d in candidates]
+    """无模型可用时的兜底：召回原始分做有界归一化。
+
+    BM25 原始分不是 0~1 量纲（相关文档轻松 >1），若直接 clamp 到 1.0，
+    下游 EvidenceGate（阈值 0.35）恒过、闸门失效——恰在最需要它的
+    「cross-encoder + LLM 双降级」时刻。s/(1+s) 单调有界：
+    0.35 阈值对应原始分约 0.54，弱证据仍能被拦住。
+    """
+    return [(d, float(d.get("score", 0.5)) / (1.0 + float(d.get("score", 0.5)))) for d in candidates]
 
 
 _cross_encoder = None
 _cross_encoder_unavailable = False
+_cross_encoder_lock = threading.Lock()
 
 
 def _get_cross_encoder():
-    """懒加载 cross-encoder（bge-reranker）；加载失败后不再重试，直接降级。"""
+    """懒加载 cross-encoder（bge-reranker）；加载失败后不再重试，直接降级。
+
+    加锁双重检查：recall 线程池两个 worker 可能并发首次触发，
+    无锁会重复构建模型实例（数百 MB 内存尖刺）。
+    """
     global _cross_encoder, _cross_encoder_unavailable
     if _cross_encoder is not None:
         return _cross_encoder
     if _cross_encoder_unavailable:
         return None
-    try:
-        from fastembed.rerank.cross_encoder import TextCrossEncoder
+    with _cross_encoder_lock:
+        if _cross_encoder is not None:
+            return _cross_encoder
+        if _cross_encoder_unavailable:
+            return None
+        try:
+            from fastembed.rerank.cross_encoder import TextCrossEncoder
 
-        model_name = (getattr(settings, "rag_rerank_model", "") or "BAAI/bge-reranker-base").strip()
-        cache_dir = (getattr(settings, "rag_rerank_cache_dir", "") or "").strip()
-        kwargs: Dict[str, Any] = {}
-        if cache_dir:
-            kwargs["cache_dir"] = cache_dir
-        _cross_encoder = TextCrossEncoder(model_name, **kwargs)
-        logger.info("cross-encoder 精排模型已加载: %s", model_name)
-        return _cross_encoder
-    except Exception as e:
-        logger.warning("cross-encoder 加载失败，将降级 LLM 精排: %s", e)
-        _cross_encoder_unavailable = True
-        return None
+            model_name = (getattr(settings, "rag_rerank_model", "") or "BAAI/bge-reranker-base").strip()
+            cache_dir = (getattr(settings, "rag_rerank_cache_dir", "") or "").strip()
+            kwargs: Dict[str, Any] = {}
+            if cache_dir:
+                kwargs["cache_dir"] = cache_dir
+            _cross_encoder = TextCrossEncoder(model_name, **kwargs)
+            logger.info("cross-encoder 精排模型已加载: %s", model_name)
+            return _cross_encoder
+        except Exception as e:
+            logger.warning("cross-encoder 加载失败，将降级 LLM 精排: %s", e)
+            _cross_encoder_unavailable = True
+            return None
 
 
 def _cross_encoder_score(query: str, candidates: List[Dict[str, Any]]) -> Optional[List[tuple]]:
