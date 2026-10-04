@@ -39,7 +39,11 @@ logger = logging.getLogger(__name__)
 class RequestIDMiddleware(BaseHTTPMiddleware):
     """为每个请求注入唯一 request_id，并贯穿到所有日志。"""
     async def dispatch(self, request: Request, call_next):
-        rid = request.headers.get("X-Request-ID") or str(uuid.uuid4())[:12]
+        # 截断 + 白名单字符：客户端传入的 X-Request-ID 不可信，防超长/异常
+        # 字符污染日志
+        raw_rid = request.headers.get("X-Request-ID") or ""
+        safe_rid = "".join(ch for ch in raw_rid[:64] if ch.isalnum() or ch in "-_")
+        rid = safe_rid or str(uuid.uuid4())[:12]
         request.state.request_id = rid
         token = _request_id_var.set(rid)
         try:

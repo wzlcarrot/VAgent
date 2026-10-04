@@ -120,6 +120,10 @@ def _verify_password(plain: str, stored: str) -> bool:
     return hmac.compare_digest(digest, stored)
 
 
+# 固定随机口令的 bcrypt 哈希：仅用于登录时"用户不存在"路径的计时抹平
+_DUMMY_BCRYPT_HASH = bcrypt.hashpw(secrets.token_urlsafe(16).encode("utf-8"), bcrypt.gensalt())
+
+
 def _auth_cookie_kwargs(expiry: float) -> dict:
     """httpOnly + SameSite=Lax cookie 参数（防 XSS 读取 + CSRF 缓解）"""
     return {
@@ -160,6 +164,11 @@ async def login(request: LoginRequest, req: Request):
         user = await run_in_threadpool(_get_user_by_email, request.email)
         if not user:
             _record_login_failure(ip)
+            # 防邮箱枚举：跑一次等价的 dummy bcrypt 校验，抹平"用户不存在"
+            # 与"密码错误"的响应时间差
+            await run_in_threadpool(
+                bcrypt.checkpw, request.password.encode("utf-8"), _DUMMY_BCRYPT_HASH
+            )
             raise HTTPException(status_code=401, detail="邮箱或密码错误")
 
         user_id = user.get("user_id")

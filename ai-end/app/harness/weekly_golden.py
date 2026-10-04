@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 import logging
 import threading
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -23,8 +23,13 @@ def _golden_root() -> Path:
 
 
 def _week_key(now: Optional[datetime] = None) -> str:
+    # 按 UTC+8（中国时区）划分自然周：原 UTC 写法会把中国用户周日晚
+    # 8 点后的反馈记到上一周。固定偏移量不依赖容器内 tzdata。
     dt = now or datetime.now(timezone.utc)
-    iso = dt.isocalendar()
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    dt_cn = dt.astimezone(timezone(timedelta(hours=8)))
+    iso = dt_cn.isocalendar()
     return f"{iso.year}-W{iso.week:02d}"
 
 
