@@ -45,9 +45,24 @@ def test_different_sessions_independent():
         assert ensure_session_owner("user_b", "s2") is True
 
 
-def test_redis_unavailable_degrades_open():
+def test_redis_unavailable_fails_closed():
+    """Redis 不可用时拒绝（fail-closed）：鉴权决策不能在依赖故障时放行。"""
     with patch("app.tools.context_tools._get_redis", return_value=None):
-        assert ensure_session_owner("user_a", "s1") is True
+        try:
+            ensure_session_owner("user_a", "s1")
+            raise AssertionError("should have raised RuntimeError")
+        except RuntimeError:
+            pass
+
+
+def test_redis_error_fails_closed():
+    """Redis 调用异常时同样 fail-closed。"""
+    with patch("app.tools.context_tools._get_redis", side_effect=Exception("boom")):
+        try:
+            ensure_session_owner("user_a", "s1")
+            raise AssertionError("should have raised RuntimeError")
+        except RuntimeError:
+            pass
 
 
 def test_empty_inputs_rejected():

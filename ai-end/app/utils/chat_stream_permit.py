@@ -23,6 +23,8 @@ _mem_token_user: Dict[str, str] = {}
 
 # KEYS: global, user, queue, token
 # ARGV: gmax, umax, uid, token, now, ttl
+# 注意：queue 的 member 用 uid（而非 uid:token）——同一用户重试时 ZADD
+# 覆盖旧条目，避免"每次重试留一个尸体成员"把排队位次越推越高。
 _ACQUIRE_LUA = """
 local gkey = KEYS[1]
 local ukey = KEYS[2]
@@ -34,7 +36,7 @@ local uid = ARGV[3]
 local token = ARGV[4]
 local now = tonumber(ARGV[5])
 local ttl = tonumber(ARGV[6])
-local member = uid .. ':' .. token
+local member = uid
 
 -- 清理过期排队项（超过 TTL）
 local stale = redis.call('ZRANGEBYSCORE', qkey, '-inf', now - ttl)
@@ -69,7 +71,7 @@ local qkey = KEYS[3]
 local tkey = KEYS[4]
 local uid = ARGV[1]
 local token = ARGV[2]
-local member = uid .. ':' .. token
+local member = uid
 
 redis.call('ZREM', qkey, member)
 if redis.call('EXISTS', tkey) == 1 then
@@ -197,28 +199,23 @@ def release_stream_permit(token: str, user_id: Optional[str] = None) -> None:
                 uid,
                 token,
             )
-            # 兜底：按 token 扫排队项（uid 未知时）
-            if user_id is None:
-                try:
-                    for member in r.zrange(_QUEUE_KEY, 0, -1) or []:
-                        m = member.decode() if isinstance(member, bytes) else str(member)
-                        if m.endswith(f":{token}"):
-                            r.zrem(_QUEUE_KEY, member)
-                except Exception:
-                    pass
             return
         except Exception as e:
             logger.debug("release stream permit redis failed: %s", e)
 
     global _mem_global
     with _lock:
-        uid = user_id or _mem_token_user.pop(token, None) or "anon"
+        mapped_uid = _mem_token_user.pop(token, None)
+        if mapped_uid is None:
+            # token 不是本进程内存模式颁发的（Redis 模式颁发 / 重复释放），
+            # 不做递减，防止计数往"更松"方向漂移
+            return
+        uid = user_id or mapped_uid
         _mem_global = max(0, _mem_global - 1)
         if uid in _mem_user:
             _mem_user[uid] = max(0, _mem_user[uid] - 1)
             if _mem_user[uid] == 0:
                 _mem_user.pop(uid, None)
-        _mem_token_user.pop(token, None)
 
 
 def reset_stream_permits() -> None:

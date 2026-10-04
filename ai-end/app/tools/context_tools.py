@@ -111,21 +111,24 @@ def ensure_session_owner(user_id: str, session_id: str) -> bool:
 
     - 首次使用：把 session 绑定到当前 user_id（SET NX，带 TTL）
     - 已绑定：仅归属者可继续，他人返回 False
-    - Redis 不可用：降级放行（保功能可用），但记录
+    - Redis 不可用/异常：抛 RuntimeError（fail-closed，由调用方转 503）。
+      鉴权决策不能 fail-open，否则 Redis 抖动期间可越权读写他人会话。
     """
     if not user_id or not session_id:
         return False
-    client = _get_redis()
-    if not client:
-        return True
     try:
+        client = _get_redis()
+        if not client:
+            raise RuntimeError("redis unavailable, session ownership cannot be verified")
         key = _owner_key(session_id)
         if client.set(key, user_id, nx=True, ex=settings.context_ttl):
             return True
         return client.get(key) == user_id
+    except RuntimeError:
+        raise
     except Exception as e:
-        logger.warning(f"会话归属校验失败（降级放行）: {e}")
-        return True
+        logger.warning(f"会话归属校验失败（fail-closed 拒绝）: {e}")
+        raise RuntimeError(f"session ownership check failed: {e}") from e
 
 
 def save_message(session_id: str, role: str, content: str) -> bool:

@@ -67,11 +67,16 @@ async def chat_stream(request: ChatRequest, http_request: Request, authed_user_i
         if request.userId and request.userId != authed_user_id:
             logger.warning(f"user_id 不匹配: 请求={request.userId}, token={authed_user_id}，已用 token 覆盖")
         # 会话归属校验：session_id 由客户端提供，防止用他人 session_id 读/写短期记忆（越权）
+        # 鉴权决策 fail-closed：校验依赖故障时 503 拒绝，而不是放行（否则
+        # DB/Redis 抖动期间可越权读写他人会话记忆）
         try:
             from app.agents.workflows import run_sync_in_executor as _rse_owner
             is_owner = await _rse_owner(ensure_session_owner, user_id, session_id)
-        except Exception:
-            is_owner = True
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"会话归属校验异常，fail-closed 拒绝: user={user_id} session={session_id[:8]}: {e}")
+            raise HTTPException(status_code=503, detail="会话校验暂时不可用，请重试")
         if not is_owner:
             logger.warning(f"会话越权拦截: user={user_id} session={session_id[:8]}")
             raise HTTPException(status_code=403, detail="会话不属于当前用户")
