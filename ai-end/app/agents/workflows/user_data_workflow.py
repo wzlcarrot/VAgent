@@ -220,7 +220,7 @@ def query_node(state: UserDataState) -> dict:
                 summary += "，还没有关注任何人"
             return {"users": users, "total": total, "summary_text": summary}
 
-        return {"error": "无法识别查询意图", "summary_text": FALLBACK_RESPONSE}
+        return {"error": "unsupported_query", "summary_text": "ViewHub 目前暂不支持查询这类信息。你可以问我点赞、收藏、观看历史、关注列表、投币数等。"}
 
     query_result = invoke_with_governor(sid, WorkflowType.USER_DATA, "user_data_query", _execute_query)
     if not query_result:

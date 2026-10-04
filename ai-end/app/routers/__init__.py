@@ -9,6 +9,7 @@ from app.routers.chat import router as chat_router
 from app.routers.chat_sessions import router as chat_sessions_router
 from app.routers.feedback import router as feedback_router
 from app.routers.media import router as media_router
+from app.routers.memory import router as memory_router
 from app.routers.rag_eval import router as rag_eval_router
 
 router = APIRouter(prefix="/ai", tags=["ai"])
@@ -21,6 +22,7 @@ router.include_router(chat_sessions_router)
 router.include_router(chat_router)
 router.include_router(feedback_router)
 router.include_router(media_router)
+router.include_router(memory_router)
 router.include_router(rag_eval_router)
 
 __all__ = ["router", "start_token_cleanup_task", "stop_token_cleanup_task"]
