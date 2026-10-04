@@ -39,8 +39,8 @@ def get_cursor(cursor_factory=RealDictCursor, commit: bool = False):
     注意：DB 不可用时 yield None，调用方需判断。
 
     异常处理：
-    - 用户代码异常 → rollback → 关闭 conn（不还 pool，因为状态可能损坏）
-    - rollback 自身失败 → 关闭 conn（不还 pool）
+    - 用户代码异常 → rollback → 连接归还 pool（rollback 成功后状态可信）
+    - rollback 自身失败 → 关闭 conn（不还 pool，状态不可信）
     - 正常完成 → commit（如果需要）→ putconn 还给 pool
     """
     pool = get_global_pool()

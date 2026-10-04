@@ -245,8 +245,6 @@ class Settings(BaseSettings):
     video_asr_correct_model: str = ""
     video_asr_correct_effort: str = ""
     # 纠错可指定更强的 LLM 与 effort（留空则用默认 provider 模型）
-    video_asr_correct_model: str = ""
-    video_asr_correct_effort: str = ""
 
     # ─── 推荐点击埋点 ───
     recommend_click_root: str = "data/recommend_clicks"

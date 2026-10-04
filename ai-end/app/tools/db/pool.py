@@ -36,6 +36,12 @@ def get_global_pool() -> Optional[pool.ThreadedConnectionPool]:
             _global_pool.putconn(conn)
             _last_health_check = now
             return _global_pool
+        except pool.PoolError:
+            # 池耗尽说明所有连接都在正常使用中（健康但忙），
+            # 不能当作池子损坏丢弃——否则在用连接会被换入无人引用的
+            # 旧池对象，用完后无法归还，造成连接泄漏直至打爆 PG max_connections。
+            _last_health_check = now
+            return _global_pool
         except Exception:
             _global_pool = None
             _last_health_check = 0.0
