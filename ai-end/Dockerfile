@@ -27,4 +27,8 @@ COPY . .
 
 EXPOSE 8001
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8001"]
+# --proxy-headers + --forwarded-allow-ips：采信 vagent-nginx 传来的
+# X-Forwarded-For，让 auth 登录限流按真实用户 IP 计数（否则所有用户
+# 共享 nginx 容器 IP，10 次失败会锁全站 15 分钟）。
+# 8001 仅绑定宿主机 127.0.0.1，外部无法直连伪造头，信任 * 安全。
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8001", "--proxy-headers", "--forwarded-allow-ips", "*"]
