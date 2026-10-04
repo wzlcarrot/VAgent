@@ -104,5 +104,12 @@ logs/
 models/
 vagent-intent-lora/
 vagent-intent-qwen3-0.6b/
-ai-end/data/traces/
-ai-end/data/finetune/
+# 运行时数据（traces/微调数据/点击流/周度黄金集）不入库，仅保留一份样例
+ai-end/data/**
+!ai-end/data/weekly_golden/
+!ai-end/data/weekly_golden/2026-W36.jsonl
+
+# CI / 测试本地产物
+.venv-ci/
+pytest-junit.xml
+test-results/
