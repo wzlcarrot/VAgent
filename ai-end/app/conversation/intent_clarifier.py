@@ -53,6 +53,9 @@ _CLARIFICATIONS = {
 
     "chat_vague_platform": "想了解 ViewHub 的哪方面功能？\n"
                            "例如：账号注册、视频上传、点赞收藏、弹幕、AI 助手使用等。",
+
+    "recommend_no_current_video": "现在没有带入当前视频，没法按「和它类似」来推。\n"
+                                  "从播放页打开助手，或告诉我视频标题 / ID，我再找类似的。",
 }
 
 
@@ -79,6 +82,17 @@ def has_category_keyword(question: str) -> bool:
             if alias and alias in question:
                 return True
     return False
+
+
+_CURRENT_VIDEO_HINTS = ("当前视频", "这个视频", "该视频", "本视频", "正在看", "像这个")
+
+
+def refers_to_current_video(question: str) -> bool:
+    """问的是「和当前/这个视频类似」，不是泛泛「推荐类似的」。"""
+    q = question or ""
+    if not has_similar_intent(q):
+        return False
+    return any(h in q for h in _CURRENT_VIDEO_HINTS)
 
 
 def has_similar_intent(question: str) -> bool:
@@ -125,6 +139,9 @@ class IntentClarifier:
         # 但问题已写明类别（「推荐科技类的」）或表达了相似意图（「推荐两个类似的」、
         # 「像这个的」）时不再追问，直接让推荐流程跑（画像/query 会用这些关键词）。
         if intent == WorkflowType.RECOMMEND:
+            # 「和当前视频类似」却没有 video_id：不能拿画像/目录冒充当前片。
+            if refers_to_current_video(question or "") and not video_id:
+                return True
             has_pref = bool(user_preference and (
                 user_preference.get("favorite_tags")
                 or user_preference.get("favorite_video_ids")
@@ -155,12 +172,15 @@ class IntentClarifier:
         video_id: Optional[str] = None,
         mentioned_keywords: Optional[List[str]] = None,
         has_history: bool = False,
+        question: Optional[str] = None,
     ) -> str:
         """
         生成追问话术。
         返回纯文本，前端可以直接发给用户。
         """
         if intent == WorkflowType.RECOMMEND:
+            if refers_to_current_video(question or "") and not video_id:
+                return _CLARIFICATIONS["recommend_no_current_video"]
             if has_history:
                 return _CLARIFICATIONS["recommend_no_history"].format(
                     categories=_format_categories(),

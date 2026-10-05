@@ -290,6 +290,7 @@ async def chat_stream(request: ChatRequest, http_request: Request, authed_user_i
                 clarification_text = clarifier.get_clarification(
                     intent=workflow_type, video_id=video_id,
                     mentioned_keywords=mentioned, has_history=has_history,
+                    question=question,
                 )
                 logger.info(f"智能追问: intent={workflow_type}, user={user_id[:8]}")
 
@@ -396,7 +397,9 @@ async def chat_stream(request: ChatRequest, http_request: Request, authed_user_i
                     logger.info(f"会话已删除，跳过本轮写回: session={session_id[:8]}")
                 else:
                     try:
-                        if recommended_videos:
+                        # 观看/点赞名单也会带 videos 事件，不能写进 last_recommendations，
+                        # 否则「第二个」会指到历史记录而不是上一轮推荐。
+                        if recommended_videos and winner_type_meta == WorkflowType.RECOMMEND:
                             from app.conversation.context_manager import update_recommendations
                             await _rse(update_recommendations, session_id, recommended_videos)
                         if winner_type_meta == WorkflowType.VIDEO_QA and video_id:

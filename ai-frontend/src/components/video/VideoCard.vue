@@ -7,51 +7,29 @@
     class="video-card"
     @click="onCardNavigate"
   >
+    <h4 class="title">{{ titleText }}</h4>
+    <p class="reason" v-if="reason">{{ reason }}</p>
     <div class="video-cover">
-      <img :src="video.cover || defaultCover" :alt="video.title" loading="lazy" @error="onImgError($event)" />
-      <span class="duration" v-if="video.duration">{{ video.duration }}</span>
-      <div class="scan-line"></div>
-    </div>
-    <div class="video-info">
-      <h4 class="title">{{ video.title }}</h4>
-      <div class="meta">
-        <span class="author" v-if="video.author">{{ video.author }}</span>
-        <span class="views" v-if="video.views">{{ video.views }}播放</span>
-      </div>
-      <p class="reason" v-if="reason">{{ reason }}</p>
-    </div>
-    <div class="actions" @click.stop>
-      <button class="action-btn play-btn" title="播放" aria-label="播放" @click="handlePlay">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-          <polygon points="5 3 19 12 5 21 5 3"></polygon>
+      <img :src="coverSrc" :alt="video.title" loading="lazy" @error="onImgError($event)" />
+      <span class="play-overlay" aria-hidden="true">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="white">
+          <polygon points="8 5 19 12 8 19 8 5"></polygon>
         </svg>
-      </button>
+      </span>
     </div>
   </a>
   <div v-else class="video-card video-card--disabled">
+    <h4 class="title">{{ titleText }}</h4>
+    <p class="reason" v-if="reason">{{ reason }}</p>
     <div class="video-cover">
-      <img :src="video.cover || defaultCover" :alt="video.title" loading="lazy" @error="onImgError($event)" />
-      <span class="duration" v-if="video.duration">{{ video.duration }}</span>
-    </div>
-    <div class="video-info">
-      <h4 class="title">{{ video.title }}</h4>
-      <div class="meta">
-        <span class="author" v-if="video.author">{{ video.author }}</span>
-        <span class="views" v-if="video.views">{{ video.views }}播放</span>
-      </div>
-      <p class="reason" v-if="reason">{{ reason }}</p>
-    </div>
-    <div class="actions">
-      <button class="action-btn play-btn" title="播放" aria-label="播放" disabled>
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-          <polygon points="5 3 19 12 5 21 5 3"></polygon>
-        </svg>
-      </button>
+      <img :src="coverSrc" :alt="video.title" loading="lazy" @error="onImgError($event)" />
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
+
 export interface VideoInfo {
   videoId: string
   title: string
@@ -61,216 +39,130 @@ export interface VideoInfo {
   views?: string
 }
 
-const defaultCover = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="320" height="180" viewBox="0 0 320 180"%3E%3Crect fill="%230a0a1a" width="320" height="180"/%3E%3Ctext fill="%234a6cf7" font-family="Arial" font-size="14" x="50%25" y="50%25" text-anchor="middle" dy=".3em"%3E%E6%97%A0%E5%9B%BE%E7%89%87%3C/text%3E%3C/svg%3E'
+const palettes = [
+  ['#1b2838', '#66c0f4'],
+  ['#2d1b4e', '#c77dff'],
+  ['#1a3a2a', '#7dcea0'],
+  ['#3d1f1f', '#e07a5f'],
+  ['#1a2744', '#5b8def'],
+]
 
-const props = defineProps<{
+function escapeXml(s: string): string {
+  return s.replace(/[&<>"']/g, (ch) => (
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' } as Record<string, string>)[ch] || ch
+  ))
+}
+
+function posterFromTitle(title: string): string {
+  let h = 0
+  for (let i = 0; i < title.length; i++) h = (h * 33 + title.charCodeAt(i)) >>> 0
+  const [c1, c2] = palettes[h % palettes.length]
+  const line = escapeXml((title || '视频').slice(0, 16))
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="160" height="214" viewBox="0 0 160 214">
+    <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${c1}"/><stop offset="1" stop-color="${c2}"/></linearGradient></defs>
+    <rect width="160" height="214" rx="12" fill="url(#g)"/>
+    <circle cx="80" cy="88" r="22" fill="rgba(255,255,255,0.22)"/>
+    <polygon points="74,76 74,100 98,88" fill="#fff"/>
+    <text x="80" y="148" text-anchor="middle" fill="#fff" font-size="13" font-family="sans-serif" font-weight="600">${line}</text>
+  </svg>`
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`
+}
+
+const props = withDefaults(defineProps<{
   video: VideoInfo
   reason?: string
   videoUrl?: string
   disabled?: boolean
-}>()
+  index?: number
+  heading?: string
+}>(), {
+  index: 1,
+  heading: '推荐',
+})
+
+const titleText = computed(() => {
+  const name = props.video.title || ''
+  const prefix = (props.heading || '').trim()
+  return prefix ? `${prefix} ${props.index}：${name}` : `${props.index}：${name}`
+})
 
 const emit = defineEmits<{
   play: [video: VideoInfo]
   navigate: [video: VideoInfo]
 }>()
 
+const coverSrc = computed(() => (props.video.cover && props.video.cover.trim()) || posterFromTitle(props.video.title || '视频'))
+
 function onImgError(e: Event) {
   const img = e.target as HTMLImageElement
-  if (img) img.src = defaultCover
+  if (img) img.src = posterFromTitle(props.video.title || '视频')
 }
 
 function onCardNavigate() {
   emit('navigate', props.video)
-}
-
-function handlePlay(e: Event) {
-  e.preventDefault()
-  e.stopPropagation()
-  if (!props.disabled) {
-    emit('play', props.video)
-  }
 }
 </script>
 
 <style scoped>
 .video-card {
   display: flex;
-  gap: var(--space-md);
-  padding: var(--space-md);
-  background: linear-gradient(135deg, rgba(10, 10, 26, 0.95), rgba(22, 33, 62, 0.95));
-  border: 1px solid rgba(74, 108, 247, 0.3);
-  border-radius: var(--radius-card);
-  cursor: pointer;
-  transition: all 0.3s ease;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 4px 0 20px;
   text-decoration: none;
   color: inherit;
-  position: relative;
-  overflow: hidden;
-}
-
-.video-card::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: -100%;
-  width: 100%;
-  height: 100%;
-  background: linear-gradient(90deg, transparent, rgba(74, 108, 247, 0.15), transparent);
-  transition: left 0.6s ease;
-}
-
-.video-card:hover {
-  transform: translateY(-3px);
-  border-color: rgba(74, 108, 247, 0.8);
-  box-shadow:
-    0 0 15px rgba(74, 108, 247, 0.4),
-    0 0 30px rgba(74, 108, 247, 0.2),
-    inset 0 0 15px rgba(74, 108, 247, 0.1);
-}
-
-.video-card:hover::before {
-  left: 100%;
+  max-width: 560px;
 }
 
 .video-card--disabled {
   opacity: 0.6;
   cursor: not-allowed;
-  filter: grayscale(30%);
 }
 
-.video-card--disabled:hover {
-  transform: none;
-  border-color: rgba(74, 108, 247, 0.3);
-  box-shadow: none;
+.title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 650;
+  line-height: 1.45;
+  color: var(--color-text);
 }
 
-.video-card--disabled::before {
-  display: none;
+.reason {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.65;
+  color: var(--color-text-secondary);
 }
 
 .video-cover {
   position: relative;
-  width: 120px;
-  height: 68px;
-  border-radius: var(--radius-btn);
+  width: 148px;
+  height: 198px;
+  border-radius: 12px;
   overflow: hidden;
   flex-shrink: 0;
-  border: 1px solid rgba(74, 108, 247, 0.2);
+  background: #222;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
 }
 
 .video-cover img {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  transition: transform 0.3s ease;
+  display: block;
 }
 
-.video-card:hover .video-cover img {
-  transform: scale(1.05);
-}
-
-.duration {
+.play-overlay {
   position: absolute;
-  bottom: 4px;
-  right: 4px;
-  background: rgba(0, 0, 0, 0.8);
-  color: var(--color-brand-accent);
-  font-size: 11px;
-  padding: 2px 6px;
-  border-radius: 4px;
-  font-family: monospace;
-  border: 1px solid rgba(0, 217, 255, 0.3);
-}
-
-.scan-line {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 2px;
-  background: linear-gradient(90deg, transparent, var(--color-primary-light), transparent);
-  opacity: 0;
-  transition: opacity 0.3s ease;
-}
-
-.video-card:hover .scan-line {
-  opacity: 1;
-  animation: scan 2s linear infinite;
-}
-
-@keyframes scan {
-  0% { top: 0; }
-  100% { top: 100%; }
-}
-
-.video-info {
-  flex: 1;
-  min-width: 0;
-}
-
-.title {
-  font-size: 14px;
-  font-weight: 500;
-  margin-bottom: var(--space-xs);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--color-primary-bg);
-  text-shadow: 0 0 8px rgba(74, 108, 247, 0.3);
-}
-
-.meta {
-  display: flex;
-  gap: var(--space-sm);
-  font-size: 12px;
-  color: var(--color-text-secondary);
-  margin-bottom: var(--space-xs);
-}
-
-.reason {
-  font-size: 12px;
-  color: var(--color-text-secondary);
-  line-height: 1.4;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-orient: vertical;
-  overflow: hidden;
-}
-
-.actions {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-xs);
-}
-
-.action-btn {
-  width: 32px;
-  height: 32px;
-  border-radius: var(--radius-btn);
+  inset: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--color-text-secondary);
-  transition: all 0.2s ease;
-  background: rgba(74, 108, 247, 0.1);
-  border: 1px solid rgba(74, 108, 247, 0.2);
+  background: rgba(0, 0, 0, 0.18);
 }
 
-.action-btn:hover:not(:disabled) {
-  background: rgba(74, 108, 247, 0.3);
-  color: var(--color-primary-light);
-  box-shadow: 0 0 10px rgba(74, 108, 247, 0.4);
-}
-
-.action-btn:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
-.play-btn:hover:not(:disabled) {
-  color: var(--color-brand-accent);
-  border-color: rgba(0, 217, 255, 0.5);
-  box-shadow: 0 0 10px rgba(0, 217, 255, 0.4);
+.video-card:hover .play-overlay {
+  background: rgba(0, 0, 0, 0.28);
 }
 </style>

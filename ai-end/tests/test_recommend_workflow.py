@@ -47,23 +47,22 @@ class TestBuildRecommendMarkdown:
             "tags": "AI,算法", "author": "老王", "create_time": "2026-08-01 10:00:00", "play_count": 123,
         }]
         md = _build_recommend_markdown(videos, ["算法相关"])
-        assert "## 1. 机器学习入门" in md
+        assert "**推荐 1：机器学习入门**" in md
         assert "![机器学习入门]" in md
-        assert "关键词：AI · 算法" in md
-        assert "作者：老王" in md
-        assert "创建时间：2026-08-01" in md
-        assert "播放量：123次" in md
-        assert "推荐理由：算法相关" in md
+        assert "算法相关" in md
+        assert "关键词" not in md
+        assert "播放量" not in md
+        assert "推荐理由：" not in md
 
     def test_missing_fields_omitted(self):
         videos = [{"video_id": "v1", "title": "无元数据"}]
         md = _build_recommend_markdown(videos)
-        assert "## 1. 无元数据" in md
+        assert "**推荐 1：无元数据**" in md
         assert "作者" not in md
 
     def test_empty_title_not_none(self):
         md = _build_recommend_markdown([{"video_id": "v1", "title": None}])
-        assert "## 1. 未知视频" in md
+        assert "**推荐 1：未知视频**" in md
         assert "None" not in md
 
 
@@ -273,6 +272,19 @@ class TestReasonNode:
         )
         result = reason_node(state)
         assert "你常看这个分区" in result["reasons"][0]
+
+    def test_reason_prefers_introduction(self):
+        state = _state(
+            candidate_videos=[{
+                "video_id": "v1", "title": "t", "tags": "AI",
+                "introduction": "用三个例子讲变量、循环和函数。",
+            }],
+            user_profile={"favorite_tags": ["AI"], "liked_video_ids": ["v1"]},
+            top_k=1,
+        )
+        result = reason_node(state)
+        assert result["reasons"][0] == "用三个例子讲变量、循环和函数。"
+        assert "你常看" not in result["reasons"][0]
 
 
 class TestSummaryNode:

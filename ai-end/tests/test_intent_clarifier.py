@@ -57,9 +57,27 @@ class TestNeedClarification:
             intent=WorkflowType.RECOMMEND, user_preference={}, question="推荐两个类似的",
         ) is False
 
-    def test_recommend_new_user_similar_phrase_does_not_ask(self):
+    def test_recommend_similar_to_current_without_id_asks(self):
+        """点了「类似当前视频」却没有带入 video_id，不能拿目录/画像冒充。"""
         assert IntentClarifier.need_clarification(
-            intent=WorkflowType.RECOMMEND, user_preference={}, question="这个视频有没有相似的",
+            intent=WorkflowType.RECOMMEND, user_preference={},
+            question="推荐和当前视频类似的视频",
+        ) is True
+        assert IntentClarifier.need_clarification(
+            intent=WorkflowType.RECOMMEND,
+            user_preference={"liked_video_ids": ["v1"]},
+            question="这个视频有没有相似的",
+        ) is True
+        text = IntentClarifier.get_clarification(
+            intent=WorkflowType.RECOMMEND, question="推荐和当前视频类似的视频",
+        )
+        assert "没有带入当前视频" in text
+
+    def test_recommend_similar_to_current_with_id_does_not_ask(self):
+        assert IntentClarifier.need_clarification(
+            intent=WorkflowType.RECOMMEND, video_id="demo01",
+            user_preference={"liked_video_ids": ["v1"]},
+            question="推荐和当前视频类似的视频",
         ) is False
 
     def test_recommend_new_user_bare_question_still_asks(self):

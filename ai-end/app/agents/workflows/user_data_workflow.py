@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Dict, TypedDict
+from typing import Any, Dict, List, Tuple, TypedDict
 
 from langgraph.constants import END, START
 from langgraph.graph import StateGraph
@@ -7,8 +7,9 @@ from langgraph.graph import StateGraph
 from app.agents.supervisor import Supervisor
 from app.agents.workflows.constants import WorkflowType
 from app.agents.workflows.harness_helpers import checkpoint, invoke_with_governor, save_checkpoint
+from app.config import build_cover_url
 from app.harness.checkpoint import CheckpointManager
-from app.tools import UserTools
+from app.tools import UserTools, VideoTools
 from app.tools.llm_tools import LLM_tools
 from app.tools.output_guard import FALLBACK_RESPONSE
 
@@ -134,9 +135,86 @@ def _list_lead(time_range: str, total: int, shown: int, all_time_lead: str) -> s
     """今天/本周只取出一部分时说明被截断。全部时间沿用「最近」。"""
     if time_range in ("today", "week"):
         if shown and total > shown:
-            return f"，这里只列出最近 {shown} 个：\n"
-        return "：\n"
-    return all_time_lead
+            return f"，这里只列出最近 {shown} 个："
+        return "："
+    return all_time_lead.rstrip("\n")
+
+
+def _clip_intro(text: str, limit: int = 100) -> str:
+    s = " ".join((text or "").split())
+    if not s:
+        return ""
+    if len(s) <= limit:
+        return s
+    return s[:limit].rstrip() + "…"
+
+
+def _display_name(raw: Any) -> str:
+    name = (raw or "").strip() if isinstance(raw, str) else ""
+    return name or "未知视频"
+
+
+def _cards_from_user_videos(
+    raw: List[Dict[str, Any]],
+    fallback_reason: str = "",
+) -> Tuple[List[Dict[str, Any]], List[str]]:
+    """把点赞/收藏/历史名单转成和推荐流一样的卡片字段。"""
+    shown = [v for v in (raw or [])[:10] if isinstance(v, dict)]
+    ids = [str(v.get("video_id")) for v in shown if v.get("video_id")]
+    infos = []
+    if ids:
+        try:
+            infos = VideoTools.get_video_info_batch(ids) or []
+        except Exception:
+            infos = []
+    by_id = {vi.videoId: vi for vi in infos if vi and getattr(vi, "videoId", None)}
+    cards: List[Dict[str, Any]] = []
+    reasons: List[str] = []
+    for v in shown:
+        vid = v.get("video_id") or ""
+        name = _display_name(v.get("video_name"))
+        vi = by_id.get(vid)
+        title = name
+        cover = ""
+        intro = ""
+        author = ""
+        if vi:
+            title = _display_name(vi.videoName or name)
+            cover = build_cover_url(vi.videoCover) if vi.videoCover else ""
+            intro = _clip_intro(vi.introduction or "")
+            author = vi.nickName or ""
+        count = v.get("count")
+        reason = intro
+        if not reason and count:
+            reason = f"点赞 {count} 次"
+        if not reason:
+            reason = fallback_reason
+        cards.append({
+            "video_id": vid,
+            "title": title,
+            "cover": cover,
+            "author": author,
+        })
+        reasons.append(reason)
+    return cards, reasons
+
+
+def _pack_user_data_result(state: Dict[str, Any], **extra: Any) -> Dict[str, Any]:
+    query_result = state.get("query_result") or {}
+    videos = query_result.get("videos") or []
+    if videos and isinstance(videos[0], str):
+        videos = []
+    reasons = query_result.get("reasons") or []
+    packed = {
+        "answer": state.get("answer", ""),
+        "intent": state.get("intent", {}),
+        "query_result": query_result,
+        "recommended_videos": videos if isinstance(videos, list) else [],
+        "reasons": reasons if isinstance(reasons, list) else [],
+        "workflow_type": WorkflowType.USER_DATA,
+    }
+    packed.update(extra)
+    return packed
 
 
 _ALL_TIME_WHEN_PERIOD = {
@@ -243,7 +321,7 @@ def query_node(state: UserDataState) -> dict:
             result_data = UserTools.get_recent_liked_videos(user_id, time_range=time_range or "all")
             videos = result_data.get("videos", [])
             total = result_data.get("total", 0)
-            video_names = [v.get("video_name") or "未知视频" for v in videos[:10]]
+            cards, reasons = _cards_from_user_videos(videos, fallback_reason="你最近点过这个")
             if time_range == "today":
                 summary = f"你今天点赞了 {total} 个视频"
                 empty = "，今天还没有点赞过视频"
@@ -253,18 +331,17 @@ def query_node(state: UserDataState) -> dict:
             else:
                 summary = f"你共点赞了 {total} 个视频"
                 empty = "，还没有点赞过视频"
-            lead = _list_lead(time_range, total, len(video_names), "，最近点赞：\n")
-            if video_names:
-                summary += lead + "\n".join(f"- {name}" for name in video_names)
+            if cards:
+                summary += _list_lead(time_range, total, len(cards), "，最近点赞：")
             else:
                 summary += empty
-            return {"videos": video_names, "total": total, "summary_text": summary}
+            return {"videos": cards, "reasons": reasons, "total": total, "summary_text": summary}
 
         elif data_type == "favorite" and aggregation == "list":
             result_data = UserTools.get_recent_favorites(user_id, time_range=time_range or "all")
             videos = result_data.get("videos", [])
             total = result_data.get("total", 0)
-            video_names = [v.get("video_name") or "未知视频" for v in videos[:10]]
+            cards, reasons = _cards_from_user_videos(videos, fallback_reason="你最近收藏过")
             if time_range == "today":
                 summary = f"你今天收藏了 {total} 个视频"
                 empty = "，今天还没有收藏过视频"
@@ -274,18 +351,17 @@ def query_node(state: UserDataState) -> dict:
             else:
                 summary = f"你共收藏了 {total} 个视频"
                 empty = "，还没有收藏过视频"
-            lead = _list_lead(time_range, total, len(video_names), "，最近收藏：\n")
-            if video_names:
-                summary += lead + "\n".join(f"- {name}" for name in video_names)
+            if cards:
+                summary += _list_lead(time_range, total, len(cards), "，最近收藏：")
             else:
                 summary += empty
-            return {"videos": video_names, "total": total, "summary_text": summary}
+            return {"videos": cards, "reasons": reasons, "total": total, "summary_text": summary}
 
         elif data_type == "history" and aggregation == "list":
             result_data = UserTools.get_recent_history(user_id, time_range=time_range or "all")
             videos = result_data.get("videos", [])
             total = result_data.get("total", 0)
-            video_names = [v.get("video_name") or "未知视频" for v in videos[:10]]
+            cards, reasons = _cards_from_user_videos(videos, fallback_reason="你最近看过")
             if time_range == "today":
                 summary = f"你今天看了 {total} 个视频"
                 empty = "，今天还没有播放记录"
@@ -295,25 +371,20 @@ def query_node(state: UserDataState) -> dict:
             else:
                 summary = f"你共观看了 {total} 个视频"
                 empty = "，还没有播放记录"
-            if video_names:
-                lead = _list_lead(time_range, total, len(video_names), "，最近观看：\n")
-                summary += lead + "\n".join(f"- {name}" for name in video_names)
+            if cards:
+                summary += _list_lead(time_range, total, len(cards), "，最近观看：")
             else:
                 summary += empty
-            return {"videos": video_names, "total": total, "summary_text": summary}
+            return {"videos": cards, "reasons": reasons, "total": total, "summary_text": summary}
 
         elif data_type == "like" and aggregation == "top":
             top_videos = UserTools.get_top_liked_videos(user_id)
-            if top_videos:
-                parts = []
-                for v in top_videos[:3]:
-                    name = v.get("video_name") or "未知视频"
-                    cnt = v.get("count", 0)
-                    parts.append(f"《{name}》（{cnt}次）")
-                summary = "你点赞最多的视频：\n" + "\n".join(f"{i+1}. {p}" for i, p in enumerate(parts))
+            cards, reasons = _cards_from_user_videos(top_videos[:3], fallback_reason="")
+            if cards:
+                summary = "你点赞最多的视频："
             else:
                 summary = "还没有点赞过视频"
-            return {"videos": top_videos, "summary_text": summary}
+            return {"videos": cards, "reasons": reasons, "summary_text": summary}
 
         elif data_type == "coin" and aggregation == "count":
             count = UserTools.get_coin_count(user_id)
@@ -402,15 +473,12 @@ def run_user_data_workflow(question: str, user_id: str = None,
             "answer": FALLBACK_RESPONSE,
             "intent": {},
             "query_result": {},
+            "recommended_videos": [],
+            "reasons": [],
             "workflow_type": WorkflowType.USER_DATA
         }
 
-    return {
-        "answer": result.get("answer", ""),
-        "intent": result.get("intent", {}),
-        "query_result": result.get("query_result", {}),
-        "workflow_type": WorkflowType.USER_DATA
-    }
+    return _pack_user_data_result(result)
 
 
 def resume_user_data_workflow(session_id: str) -> Dict[str, Any]:
@@ -424,13 +492,7 @@ def resume_user_data_workflow(session_id: str) -> Dict[str, Any]:
     state = last_cp.state_snapshot
 
     if completed_step == "supervisor_node":
-        return {
-            "answer": state.get("answer", ""),
-            "intent": state.get("intent", {}),
-            "query_result": state.get("query_result", {}),
-            "workflow_type": WorkflowType.USER_DATA,
-            "resumed_from": completed_step,
-        }
+        return _pack_user_data_result(state, resumed_from=completed_step)
 
     next_idx = USER_DATA_STEP_ORDER.index(completed_step) + 1 if completed_step in USER_DATA_STEP_ORDER else 0
     remaining_steps = USER_DATA_STEP_ORDER[next_idx:]
@@ -452,10 +514,4 @@ def resume_user_data_workflow(session_id: str) -> Dict[str, Any]:
                 return {"answer": state.get("answer", ""), "error": str(e),
                         "workflow_type": WorkflowType.USER_DATA, "failed_at": step_name}
 
-    return {
-        "answer": state.get("answer", ""),
-        "intent": state.get("intent", {}),
-        "query_result": state.get("query_result", {}),
-        "workflow_type": WorkflowType.USER_DATA,
-        "resumed_from": completed_step,
-    }
+    return _pack_user_data_result(state, resumed_from=completed_step)

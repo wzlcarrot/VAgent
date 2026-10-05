@@ -39,17 +39,39 @@ describe('MessageBubble 视频卡片去重', () => {
     expect(html).toContain('点击查看视频')
   })
 
-  it('纯文本没有视频时不应该渲染 videoLinks', () => {
+  it('没有 videos 但「个视频：」不应渲染假相关视频卡片', () => {
     const wrapper = mount(MessageBubble, {
       props: {
         message: {
-          id: '3', role: 'assistant',
-          content: '这是一段普通文字回答。',
+          id: '4', role: 'assistant',
+          content: '你今天看了 1 个视频：\n- Python 入门到实践：零基础学编程',
           timestamp: new Date(), status: 'success',
         },
       },
     })
     const html = wrapper.html()
     expect(html).not.toContain('点击查看视频')
+    expect(html).not.toContain('相关视频')
+  })
+
+  it('观看名单有 videos 时保留一句摘要并渲染推荐卡片', () => {
+    const wrapper = mount(MessageBubble, {
+      props: {
+        message: {
+          id: '5', role: 'assistant',
+          content: '你今天看了 1 个视频：\n- Python 入门到实践',
+          timestamp: new Date(), status: 'success',
+          videos: [
+            { videoId: 'v1', title: 'Python 入门到实践', author: 'up' },
+          ],
+          reasons: ['你最近看过'],
+        },
+      },
+    })
+    const html = wrapper.html()
+    expect(html).toContain('你今天看了 1 个视频')
+    expect(html).not.toContain('点击查看视频')
+    expect(html).toContain('Python 入门到实践')
+    expect(html).not.toContain('推荐 1：')
   })
 })

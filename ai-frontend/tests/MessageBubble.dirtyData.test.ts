@@ -41,18 +41,32 @@ describe('MessageBubble 过滤历史脏数据', () => {
     expect(html).not.toContain('为你推荐')
   })
 
+  it('有 videos 时隐藏正文 Markdown（卡片自己展示标题封面）', () => {
+    const wrapper = mount(MessageBubble, {
+      props: {
+        message: {
+          id: '4', role: 'assistant',
+          content: '**推荐 1：机器学习入门**\n\n关键词：AI\n播放量：40次',
+          timestamp: new Date(), status: 'success',
+          videos: [{ videoId: 'v1', title: '机器学习入门' }],
+        },
+      },
+    })
+    expect(wrapper.html()).not.toContain('关键词')
+    expect(wrapper.html()).not.toContain('播放量')
+  })
+
   it('没有 videos 时，文本应该正常显示', () => {
     const wrapper = mount(MessageBubble, {
       props: {
         message: {
           id: '3', role: 'assistant',
-          content: '为你推荐以下视频请明确告诉我你的偏好',  // 相似但不是 RECOMMEND 流程
+          content: '为你推荐以下视频请明确告诉我你的偏好',
           timestamp: new Date(), status: 'success',
         },
       },
     })
     const html = wrapper.html()
-    // 没有 videos，应该正常显示（不强制隐藏）
     expect(html.length).toBeGreaterThan(0)
   })
 })

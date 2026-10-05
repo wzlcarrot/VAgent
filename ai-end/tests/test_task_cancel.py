@@ -287,6 +287,48 @@ def test_pipeline_recommend_emits_videos_event():
     assert video_events[0]["reasons"] == ["你常看「AI」", "热门内容"]
 
 
+def test_pipeline_user_data_emits_videos_event():
+    route = SimpleNamespace(
+        workflow_type=WorkflowType.USER_DATA,
+        confidence=0.9,
+        method="consensus",
+    )
+    hist_videos = [
+        {"video_id": "v1", "title": "Python 入门到实践", "cover": "", "author": "up"},
+    ]
+
+    async def fake_run(wf, *args, **kwargs):
+        if wf == WorkflowType.USER_DATA:
+            return {
+                "workflow_type": wf,
+                "answer": "你今天看了 1 个视频：",
+                "confidence": 0.9,
+                "recommended_videos": hist_videos,
+                "reasons": ["你最近看过"],
+            }
+        return {
+            "workflow_type": WorkflowType.CHAT,
+            "answer": "兜底回答",
+            "confidence": 0.5,
+            "recommended_videos": [],
+            "reasons": [],
+        }
+
+    async def collect():
+        events = []
+        async for e in parallel_agent_pipeline(
+            WorkflowType.USER_DATA, "今天看了上面", user_id="u1", route_decision=route,
+        ):
+            events.append(e)
+        return events
+
+    with patch("app.routers.chat_pipeline.run_workflow_to_result", side_effect=fake_run):
+        events = asyncio.run(collect())
+    video_events = [e for e in events if e.get("type") == "videos"]
+    assert video_events, "user_data 名单未发出 videos 事件"
+    assert video_events[0]["videos"] == hist_videos
+
+
 def test_pipeline_all_failed():
     async def boom(*args, **kwargs):
         raise RuntimeError("down")

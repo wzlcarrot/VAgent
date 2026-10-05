@@ -289,7 +289,19 @@ async def run_workflow_to_result(
                 run_user_data_workflow, question, user_id, session_id,
                 timeout=WORKFLOW_TIMEOUT, cancel_event=cancel_event,
             )
-            return {"workflow_type": wf_type, "answer": result.get("answer", ""), "confidence": conf, "recommended_videos": [], "reasons": []}
+            query_result = result.get("query_result") or {}
+            rec_videos = query_result.get("videos") or []
+            if rec_videos and isinstance(rec_videos[0], str):
+                rec_videos = []
+            rec_reasons = query_result.get("reasons") or []
+            return {
+                "workflow_type": wf_type,
+                "answer": result.get("answer", ""),
+                "confidence": conf,
+                "recommended_videos": rec_videos if isinstance(rec_videos, list) else [],
+                "reasons": rec_reasons if isinstance(rec_reasons, list) else [],
+                "query_result": query_result,
+            }
         # 路由不是闲聊时，这条闲聊只是并行兜底。checkpoint 要标出来，避免恢复跟到更晚的闲聊。
         is_fallback = route_decision is not None and wf_type != route_decision.workflow_type
         result = await run_sync_in_executor(
@@ -479,7 +491,7 @@ async def parallel_agent_pipeline(
             winner_text = reformatted
         # 结构化推荐视频：单独发 videos 事件，前端 VideoCard 直接消费
         # （而不是只靠 markdown 文本里嵌的标题）
-        if winner_type == WorkflowType.RECOMMEND:
+        if winner_type in (WorkflowType.RECOMMEND, WorkflowType.USER_DATA):
             rec_videos = winner_result.get("recommended_videos") or []
             rec_reasons = winner_result.get("reasons") or []
             if rec_videos:

@@ -3,8 +3,8 @@
     <div class="avatar" v-if="message.role === 'assistant'">
       <span class="avatar-icon">🤖</span>
     </div>
-    <div class="bubble-content">
-      <div class="bubble-main" v-html="renderedContent"></div>
+    <div class="bubble-content" :class="{ 'has-recs': hasRecs }">
+      <div class="bubble-main" v-if="renderedContent" v-html="renderedContent"></div>
 
       <div class="image-grid" v-if="message.imageUrls && message.imageUrls.length > 0">
         <div class="image-item" v-for="url in message.imageUrls" :key="url">
@@ -36,6 +36,19 @@
             <div class="video-link-text">点击查看视频 →</div>
           </div>
         </a>
+      </div>
+
+      <div class="recommend-list" v-if="hasRecs">
+        <VideoCard
+          v-for="(video, i) in message.videos"
+          :key="video.videoId || i"
+          :index="i + 1"
+          :heading="cardHeading"
+          :video="video"
+          :reason="(message.reasons && message.reasons[i]) || ''"
+          :video-url="videoPlayUrl(video.videoId)"
+          @navigate="onRecNavigate"
+        />
       </div>
 
       <div
@@ -139,6 +152,7 @@ import { ref, computed, onBeforeUnmount } from 'vue'
 import { renderMarkdown } from '@/utils/markdown'
 import { submitFeedback } from '@/api/chat'
 import type { Citation, Message } from '@/types'
+import VideoCard from '@/components/video/VideoCard.vue'
 
 const props = defineProps<{
   message: Message
@@ -151,7 +165,27 @@ const props = defineProps<{
 const emit = defineEmits<{
   retry: [messageId: string]
   rebatch: []
+  'video-click': [video: { videoId: string }]
 }>()
+
+const hasRecs = computed(() => (props.message.videos?.length || 0) > 0)
+
+const cardHeading = computed(() => {
+  const c = props.message.content || ''
+  if (/你(?:今天|这周|共).{0,12}(?:看了|点赞|收藏|观看)/.test(c) || c.includes('点赞最多')) {
+    return ''
+  }
+  return '推荐'
+})
+
+function videoPlayUrl(videoId: string): string {
+  const base = import.meta.env.VITE_VIDEO_BASE_URL || 'http://localhost:3000'
+  return `${base.replace(/\/$/, '')}/video/${encodeURIComponent(videoId)}`
+}
+
+function onRecNavigate(video: { videoId: string }) {
+  emit('video-click', video)
+}
 
 const copied = ref(false)
 const feedbackState = ref<'helpful' | 'not_helpful' | ''>('')
@@ -218,7 +252,7 @@ const videoLinks = computed<VideoLink[]>(() => {
   const content = props.message.content
   const links: VideoLink[] = []
 
-  const urlPattern = /(?:Video|视频)链接[：:]\s*\[([^\]]+)\]\(([^)]+)\)|(?:Video|视频)[：:]\s*([^\s]+)|\[([^\]]+)\]\(([^)]+\.(?:mp4|webm|mov|avi))\)/gi
+  const urlPattern = /(?:Video|视频)链接[：:]\s*\[([^\]]+)\]\(([^)]+)\)|\[([^\]]+)\]\(([^)]+\.(?:mp4|webm|mov|avi))\)/gi
 
   for (const match of content.matchAll(urlPattern)) {
     if (match[1] && match[2]) {
@@ -226,15 +260,10 @@ const videoLinks = computed<VideoLink[]>(() => {
         title: match[1],
         url: match[2],
       })
-    } else if (match[3]) {
+    } else if (match[3] && match[4]) {
       links.push({
-        title: '相关视频',
-        url: match[3],
-      })
-    } else if (match[4] && match[5]) {
-      links.push({
-        title: match[4],
-        url: match[5],
+        title: match[3],
+        url: match[4],
       })
     }
   }
@@ -260,13 +289,16 @@ const renderedContent = computed(() => {
   if (props.message.citations && props.message.citations.length > 0) {
     content = content.replace(/\n*\s*依据：\s*\n[\s\S]*$/, '').trimEnd()
   }
-  // 过滤历史脏数据：recommend workflow 之前会拼一段"为你推荐以下视频：..."文本
-  // 现在改用 videos 事件直接给视频卡了，但 DB 里的旧记录还有这段文字
-  // 有 videos 时整段隐藏（视频卡已经包含视频名+理由）
+  // 推荐流的 Markdown 和卡片重复，丢掉；观看/点赞名单只留一句摘要
   if (props.message.videos && props.message.videos.length > 0) {
-    if (/^(根据你的喜好[，,]?\s*)?为你推荐(以下)?视频[：:]?/i.test(content.trim())) {
+    if (/\*\*推荐\s*\d+/.test(content)) {
       return ''
     }
+    const lead = content
+      .split('\n')
+      .map((line) => line.trim())
+      .find((line) => line && !line.startsWith('-') && !line.startsWith('*'))
+    return lead ? renderMarkdown(lead) : ''
   }
   content = content.replace(/\[([^\]]+)\]\(([^)]+\.(?:mp4|webm|mov|avi))\)/gi, '<a href="$2" target="_blank" class="video-link">[$1]</a>')
   return renderMarkdown(content)
@@ -376,6 +408,17 @@ function previewImage(url: string) {
 .bubble-content {
   max-width: 70%;
   min-width: 80px;
+}
+
+.bubble-content.has-recs {
+  max-width: min(560px, 92%);
+}
+
+.recommend-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 4px 0 8px;
 }
 
 .bubble-main {

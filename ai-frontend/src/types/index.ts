@@ -77,6 +77,7 @@ export interface Message {
   videos?: VideoInfo[]
   citations?: Citation[]
   imageUrls?: string[]
+  reasons?: string[]
 }
 
 export interface ChatSession {

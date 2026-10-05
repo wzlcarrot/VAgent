@@ -66,11 +66,17 @@ def _demote_by_feedback(videos: List[Dict[str, Any]], user_id: str, watched: set
     return [by_id[vid] for vid in order if vid in by_id]
 
 
-def _build_recommend_markdown(videos: List[Dict[str, Any]], reasons: List[str] = None) -> str:
-    """推荐结果生成纯 Markdown 文本（标题/封面/关键词/作者/创建时间/播放量/理由）。
+def _clip_intro(text: str, limit: int = 100) -> str:
+    s = " ".join((text or "").split())
+    if not s:
+        return ""
+    if len(s) <= limit:
+        return s
+    return s[:limit].rstrip() + "…"
 
-    替代"text 文本 + videos 卡片"双通道：信息全部由文本承载，避免冗余。
-    """
+
+def _build_recommend_markdown(videos: List[Dict[str, Any]], reasons: List[str] = None) -> str:
+    """推荐结果：推荐序号、简介、封面。不堆关键词/播放量。"""
     if not videos:
         return ""
     reasons = reasons or []
@@ -78,31 +84,13 @@ def _build_recommend_markdown(videos: List[Dict[str, Any]], reasons: List[str] =
     for i, v in enumerate(videos):
         title = v.get("title") or "未知视频"
         cover = v.get("cover", "")
-        tags = v.get("tags", "") or []
-        author = v.get("author", "")
-        create_time = v.get("create_time", "") or ""
-        play_count = v.get("play_count", 0)
         reason = reasons[i] if i < len(reasons) else ""
-
-        lines = [f"## {i+1}. {title}"]
+        lines = [f"**推荐 {i+1}：{title}**"]
+        if reason:
+            lines.append(reason)
         if cover:
             lines.append(f"![{title}]({cover})")
-        meta = []
-        if tags:
-            tag_str = " · ".join([t.strip() for t in str(tags).split(",") if t.strip()][:3]) if isinstance(tags, str) else " · ".join(tags[:3])
-            if tag_str:
-                meta.append(f"关键词：{tag_str}")
-        if author:
-            meta.append(f"作者：{author}")
-        if create_time:
-            meta.append(f"创建时间：{str(create_time)[:10]}")
-        if play_count:
-            meta.append(f"播放量：{play_count}次")
-        if reason:
-            meta.append(f"推荐理由：{reason}")
-        if meta:
-            lines.append("\n".join(meta))
-        blocks.append("\n".join(lines))
+        blocks.append("\n\n".join(lines))
     return "\n\n".join(blocks)
 
 
@@ -232,6 +220,7 @@ def search_node(state: RecommendState) -> dict:
                 "p_category_id": str(v.pCategoryId) if v.pCategoryId else "",
                 "create_time": str(v.createTime) if v.createTime else "",
                 "play_count": v.playCount or 0,
+                "introduction": (v.introduction or "").strip(),
             }
             for v in recent if v and v.videoId
         ]}
@@ -274,7 +263,8 @@ def search_node(state: RecommendState) -> dict:
                 "category_id": str(vi.categoryId) if vi.categoryId else "",
                 "p_category_id": str(vi.pCategoryId) if vi.pCategoryId else "",
                 "create_time": str(vi.createTime) if vi.createTime else "",
-                "play_count": vi.playCount or 0
+                "play_count": vi.playCount or 0,
+                "introduction": (vi.introduction or "").strip(),
             })
 
     return {"candidate_videos": result_videos}
@@ -298,6 +288,11 @@ def reason_node(state: RecommendState) -> dict:
         author = video.get("author", "")
         create_time = video.get("create_time", "") or ""
         video_id = video.get("video_id", "")
+
+        intro = _clip_intro(video.get("introduction") or "")
+        if intro:
+            reasons.append(intro)
+            continue
 
         # 用主站真实行为生成理由。点赞、收藏命中的是这一支视频，不是同类。
         tag_list = [t.strip() for t in str(tags).split(",") if t.strip()][:3]
@@ -400,6 +395,8 @@ def cold_start_node(state: RecommendState) -> dict:
                     v["author"] = info.nickName or ""
                     v["create_time"] = str(info.createTime) if info.createTime else ""
                     v["play_count"] = info.playCount or 0
+                    if info.introduction:
+                        v["introduction"] = str(info.introduction).strip()
         if recommended:
             recommended = _demote_by_feedback(recommended, user_id, watched, len(recommended))
             reasons = []
@@ -430,7 +427,8 @@ def cold_start_node(state: RecommendState) -> dict:
             "author": v.nickName,
             "tags": v.tags,
             "create_time": str(v.createTime) if v.createTime else "",
-            "play_count": v.playCount or 0
+            "play_count": v.playCount or 0,
+            "introduction": (v.introduction or "").strip(),
         })
 
     top_k = state.get("top_k", 5)
@@ -438,6 +436,10 @@ def cold_start_node(state: RecommendState) -> dict:
     reasons = []
     for v in recommended[:top_k]:
         title = v.get("title", "")
+        intro = _clip_intro(v.get("introduction") or "")
+        if intro:
+            reasons.append(intro)
+            continue
         tags = v.get("tags", "")
         author = v.get("author", "")
         create_time = v.get("create_time", "") or ""

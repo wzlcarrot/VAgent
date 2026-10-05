@@ -37,27 +37,8 @@
               :userQuestion="msgIndex > 0 && messages[msgIndex - 1]?.role === 'user' ? messages[msgIndex - 1].content : ''"
               @retry="handleRetry"
               @rebatch="handleRebatch"
+              @video-click="trackVideoClick"
             />
-
-            <!-- Video Cards for Recommendations -->
-            <div v-if="message.videos && message.videos.length > 0" class="video-recommendations">
-              <div class="recommendation-header">
-                <span class="recommendation-icon">◈</span>
-                <span class="recommendation-title">为你推荐</span>
-              </div>
-              <div class="video-list">
-                <VideoCard
-                  v-for="video in message.videos"
-                  :key="video.videoId"
-                  :video="video"
-                  :reason="getRecommendationReason(video.videoId)"
-                  :videoUrl="getVideoUrl(video.videoId)"
-                  :disabled="!videoServiceAvailable"
-                  @play="handleVideoPlay"
-                  @navigate="trackVideoClick"
-                />
-              </div>
-            </div>
           </template>
         </div>
 
@@ -118,7 +99,6 @@ import WorkflowIndicator from '@/components/chat/WorkflowIndicator.vue'
 import HarnessDebugPanel from '@/components/chat/HarnessDebugPanel.vue'
 import ToolProgressBar from '@/components/chat/ToolProgressBar.vue'
 import QuickActions from '@/components/chat/QuickActions.vue'
-import VideoCard from '@/components/video/VideoCard.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import { normalizeVideos, resolveVideoId, rememberUrlVideoId } from '@/utils/videos'
 import { useChatStream } from '@/composables/useChatStream'
@@ -144,8 +124,6 @@ const {
   applyStreamEvent,
 } = useChatStream()
 const showHarnessDebug = ref(false)
-const recommendationReasons = ref<Record<string, string>>({})
-const videoServiceAvailable = ref(true)
 // 当前上下文视频（来自 URL ?video=<id>，如从 ViewHub 播放页带参跳入）。
 // 用户问「这个视频讲了什么」时即使不手动贴 ID 也能路由到视频内回答。
 const currentVideoId = ref<string>('')
@@ -199,19 +177,6 @@ function _videoIdFromQuery(v: unknown): string {
 // 当前进行中的流式请求控制器（session 切换 / 卸载时 abort，避免浪费 LLM token）
 let activeStreamController: AbortController | null = null
 
-async function checkVideoService() {
-  try {
-    const base = import.meta.env.VITE_VIDEO_BASE_URL || 'http://localhost:3000'
-    const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), 2000)
-    await fetch(base, { method: 'HEAD', signal: controller.signal })
-    clearTimeout(timeout)
-    videoServiceAvailable.value = true
-  } catch {
-    videoServiceAvailable.value = false
-  }
-}
-
 function _needsWorkflowIndicator(text: string): boolean {
   return /讲解|重点|内容|推荐/.test(text)
 }
@@ -255,11 +220,10 @@ onMounted(() => {
   // URL query 中的当前视频（?video=<id>，从 ViewHub 播放页带参跳入），
   // 供「这个视频讲了什么」这类问题路由到视频内回答。
   // 数组防抖：?video=a&video=b 时 Vue Router 返回 string[]，取第一个。
+  // 只认播放页 URL 带入的 ?video=，不用演示默认 ID 冒充「当前视频」。
   currentVideoId.value = _videoIdFromQuery(route.query.video)
-    || String(import.meta.env.VITE_DEMO_VIDEO_ID || '')
   rememberUrlVideoId(currentVideoId.value)
 
-  checkVideoService()
   window.addEventListener('session-switched', _onSessionSwitched)
 })
 
@@ -267,7 +231,7 @@ onMounted(() => {
 watch(
   () => route.query.video,
   (v) => {
-    currentVideoId.value = _videoIdFromQuery(v) || String(import.meta.env.VITE_DEMO_VIDEO_ID || '')
+    currentVideoId.value = _videoIdFromQuery(v)
     rememberUrlVideoId(currentVideoId.value)
   },
 )
@@ -305,7 +269,6 @@ async function loadSessionHistory(sessionId: string) {
     }
 
     chatStore.clearCurrentSession()
-    recommendationReasons.value = {}
 
     const sortedHistory = [...history].sort((a, b) => {
       const timeA = a.timestamp ? new Date(a.timestamp).getTime() : 0
@@ -325,16 +288,6 @@ async function loadSessionHistory(sessionId: string) {
         // 后端历史接口返回 image_urls（snake_case）
         imageUrls: (msg.image_urls || msg.imageUrls) as any,
       } as any)
-    }
-    // 同步把 reasons 灌进 recommendationReasons（这样历史视频卡也能显示 reason）
-    for (const msg of sortedHistory) {
-      if (msg.role === 'assistant' && msg.videos && msg.reasons) {
-        normalizeVideos(msg.videos).forEach((v: any, i: number) => {
-          if (msg.reasons && msg.reasons[i] && v.videoId) {
-            recommendationReasons.value[v.videoId] = msg.reasons[i]
-          }
-        })
-      }
     }
   } catch (error) {
     console.error('[HomeView] Failed to load chat history:', error)
@@ -431,11 +384,9 @@ async function streamAiResponse(text: string, aiMessageId: string, extractedVide
         batchedUpdateContent({ content: fullContent, status: 'sending' })
       } else if (actionable.type === 'videos') {
         const normVideos = normalizeVideos(actionable.videos)
-        chatStore.updateMessage(aiMessageId, { videos: normVideos })
-        normVideos.forEach((v, i) => {
-          if (actionable.reasons[i] && v.videoId) {
-            recommendationReasons.value[v.videoId] = actionable.reasons[i]
-          }
+        chatStore.updateMessage(aiMessageId, {
+          videos: normVideos,
+          reasons: actionable.reasons || [],
         })
       } else if (actionable.type === 'citations') {
         chatStore.updateMessage(aiMessageId, { citations: actionable.citations })
@@ -484,15 +435,6 @@ function handleQuickAction(prompt: string) {
   handleSend(prompt)
 }
 
-function getRecommendationReason(videoId: string): string {
-  return recommendationReasons.value[videoId] || ''
-}
-
-function getVideoUrl(videoId: string): string {
-  const base = import.meta.env.VITE_VIDEO_BASE_URL || 'http://localhost:3000'
-  return `${base}/video/${videoId}`
-}
-
 function handleRebatch() {
   void handleSend('换一批推荐，避开我刚才觉得没用的')
 }
@@ -508,12 +450,6 @@ async function trackVideoClick(video: { videoId: string }) {
   } catch (e) {
     console.warn('推荐点击埋点失败', e)
   }
-}
-
-function handleVideoPlay(video: { videoId: string }) {
-  void trackVideoClick(video)
-  const url = getVideoUrl(video.videoId)
-  window.open(url, '_blank', 'noopener,noreferrer')
 }
 </script>
 
@@ -618,74 +554,6 @@ function handleVideoPlay(video: { videoId: string }) {
   flex: 1;
   overflow-y: auto;
   padding: var(--space-md);
-}
-
-/* 输入框上方的指示器区域 */
-.input-indicator-area {
-  min-height: 32px;
-  padding: 0 var(--space-md);
-  display: flex;
-  align-items: center;
-}
-
-.video-recommendations {
-  margin: var(--space-md) 0;
-  padding: var(--space-md);
-  background: linear-gradient(135deg, rgba(10, 10, 26, 0.6), rgba(22, 33, 62, 0.6));
-  border: 1px solid rgba(74, 108, 247, 0.2);
-  border-radius: var(--radius-card);
-  position: relative;
-  overflow: hidden;
-}
-
-.video-recommendations::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, var(--color-primary-light), transparent);
-  animation: scan-h 3s linear infinite;
-}
-
-@keyframes scan-h {
-  0% { transform: translateX(-100%); }
-  100% { transform: translateX(100%); }
-}
-
-.recommendation-header {
-  margin-bottom: var(--space-sm);
-  display: flex;
-  align-items: center;
-  gap: var(--space-sm);
-}
-
-.recommendation-title {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--color-primary-light);
-  text-transform: uppercase;
-  letter-spacing: 1px;
-  text-shadow: 0 0 10px rgba(74, 108, 247, 0.5);
-}
-
-.recommendation-icon {
-  color: var(--color-brand-accent);
-  font-size: 16px;
-  text-shadow: 0 0 8px rgba(0, 217, 255, 0.6);
-  animation: pulse 2s ease-in-out infinite;
-}
-
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
-}
-
-.video-list {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-sm);
 }
 
 .harness-debug-btn {

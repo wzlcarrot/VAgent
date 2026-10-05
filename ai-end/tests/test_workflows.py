@@ -364,6 +364,27 @@ class TestChatGraph:
 
 
 class TestUserDataWorkflow:
+    @pytest.fixture(autouse=True)
+    def _stub_video_batch(self, monkeypatch):
+        monkeypatch.setattr(
+            "app.agents.workflows.user_data_workflow.VideoTools.get_video_info_batch",
+            lambda ids: [],
+        )
+
+    def test_pack_user_data_result_keeps_cards(self):
+        from app.agents.workflows.user_data_workflow import _pack_user_data_result
+
+        packed = _pack_user_data_result({
+            "answer": "你今天看了 1 个视频：",
+            "intent": {"data_type": "history"},
+            "query_result": {
+                "videos": [{"video_id": "v1", "title": "Python"}],
+                "reasons": ["你最近看过"],
+            },
+        })
+        assert packed["recommended_videos"][0]["title"] == "Python"
+        assert packed["reasons"] == ["你最近看过"]
+
     def test_intent_node_keyword_like_count_today(self):
         from app.agents.workflows.user_data_workflow import UserDataState, intent_node
 
@@ -688,7 +709,7 @@ class TestUserDataWorkflow:
 
         result = query_node(state)
         assert result["query_result"]["total"] == 15
-        assert "测试视频" in result["query_result"]["summary_text"]
+        assert result["query_result"]["videos"][0]["title"] == "测试视频"
         assert "最近收藏" in result["query_result"]["summary_text"]
         mock_fav.assert_called_with("u1", time_range="all")
 
@@ -709,7 +730,7 @@ class TestUserDataWorkflow:
         }
         result = query_node(state)
         assert result["query_result"]["summary_text"].startswith("你这周点赞了 1 个视频")
-        assert "本周视频" in result["query_result"]["summary_text"]
+        assert result["query_result"]["videos"][0]["title"] == "本周视频"
         assert "只列出" not in result["query_result"]["summary_text"]
         mock_likes.assert_called_with("u1", time_range="week")
 
@@ -733,9 +754,11 @@ class TestUserDataWorkflow:
                 "response": "", "answer": "", "workflow_type": "user_data_workflow",
             }
 
-        like_text = query_node(_state("like", "today"))["query_result"]["summary_text"]
+        like_qr = query_node(_state("like", "today"))["query_result"]
+        like_text = like_qr["summary_text"]
         assert like_text.startswith("你今天点赞了 12 个视频，这里只列出最近 10 个：")
-        assert like_text.count("\n- ") == 10
+        assert like_text.count("\n- ") == 0
+        assert len(like_qr["videos"]) == 10
 
         fav_text = query_node(_state("favorite", "week"))["query_result"]["summary_text"]
         assert "你这周收藏了 15 个视频，这里只列出最近 10 个：" in fav_text
@@ -758,9 +781,9 @@ class TestUserDataWorkflow:
             "query_result": {},
             "response": "", "answer": "", "workflow_type": "user_data_workflow",
         }
-        text = query_node(state)["query_result"]["summary_text"]
-        assert "None" not in text
-        assert text.count("未知视频") == 2
+        qr = query_node(state)["query_result"]
+        assert "None" not in qr["summary_text"]
+        assert [v["title"] for v in qr["videos"]] == ["未知视频", "未知视频"]
 
     @patch("app.agents.workflows.user_data_workflow.UserTools.get_top_liked_videos")
     def test_query_node_top_liked(self, mock_top):
@@ -779,8 +802,8 @@ class TestUserDataWorkflow:
         }
 
         result = query_node(state)
-        assert "Python教程" in result["query_result"]["summary_text"]
-        assert "10" in result["query_result"]["summary_text"]
+        assert result["query_result"]["videos"][0]["title"] == "Python教程"
+        assert result["query_result"]["reasons"][0] == "点赞 10 次"
 
     @patch("app.agents.workflows.user_data_workflow.UserTools.get_top_liked_videos")
     def test_query_node_top_liked_missing_title(self, mock_top):
@@ -794,9 +817,10 @@ class TestUserDataWorkflow:
             "query_result": {},
             "response": "", "answer": "", "workflow_type": "user_data_workflow",
         }
-        text = query_node(state)["query_result"]["summary_text"]
-        assert "《未知视频》" in text
-        assert "None" not in text
+        qr = query_node(state)["query_result"]
+        assert qr["videos"][0]["title"] == "未知视频"
+        assert qr["reasons"][0] == "点赞 4 次"
+        assert "None" not in qr["summary_text"]
 
     def test_query_node_no_user_id(self):
         from app.agents.workflows.user_data_workflow import UserDataState, query_node
@@ -845,7 +869,7 @@ class TestUserDataWorkflow:
 
         result = query_node(state)
         assert result["query_result"]["total"] == 8
-        assert "看过视频" in result["query_result"]["summary_text"]
+        assert result["query_result"]["videos"][0]["title"] == "看过视频"
         assert "最近观看" in result["query_result"]["summary_text"]
         mock_history.assert_called_with("u1", time_range="all")
 
@@ -882,7 +906,7 @@ class TestUserDataWorkflow:
         }
         result = query_node(state)
         assert result["query_result"]["summary_text"].startswith("你今天看了 1 个视频")
-        assert "今日视频" in result["query_result"]["summary_text"]
+        assert result["query_result"]["videos"][0]["title"] == "今日视频"
         mock_history.assert_called_with("u1", time_range="today")
 
     def test_parse_intent_skips_view_count_as_today_history(self):
@@ -911,9 +935,9 @@ class TestUserDataWorkflow:
             "query_result": {},
             "response": "", "answer": "", "workflow_type": "user_data_workflow",
         }
-        text = query_node(state)["query_result"]["summary_text"]
-        assert text.startswith("你今天收藏了 1 个视频")
-        assert "今日收藏" in text
+        qr = query_node(state)["query_result"]
+        assert qr["summary_text"].startswith("你今天收藏了 1 个视频")
+        assert qr["videos"][0]["title"] == "今日收藏"
         mock_fav.assert_called_with("u1", time_range="today")
 
     @patch("app.agents.workflows.user_data_workflow.UserTools.get_recent_history")
@@ -931,10 +955,10 @@ class TestUserDataWorkflow:
             "query_result": {},
             "response": "", "answer": "", "workflow_type": "user_data_workflow",
         }
-        text = query_node(state)["query_result"]["summary_text"]
-        assert text.count("未知视频") == 2
-        assert "\n- \n" not in text
-        assert "None" not in text
+        qr = query_node(state)["query_result"]
+        assert [v["title"] for v in qr["videos"]] == ["未知视频", "未知视频"]
+        assert "\n- \n" not in qr["summary_text"]
+        assert "None" not in qr["summary_text"]
 
     @patch("app.agents.workflows.user_data_workflow.LLM_tools.chat_sync")
     def test_response_node_returns_exact_summary(self, mock_llm):

@@ -1,5 +1,5 @@
 /**
- * VideoCard 组件测试 - 渲染、play 事件、disabled 状态、封面兜底
+ * VideoCard 组件测试 - 渲染、navigate、disabled、封面兜底
  */
 import { describe, it, expect, afterEach } from 'vitest'
 import { mount } from '@vue/test-utils'
@@ -20,38 +20,36 @@ describe('VideoCard', () => {
     wrapper?.unmount()
   })
 
-  it('渲染标题、作者、播放量', () => {
-    wrapper = mount(VideoCard, { props: { video } })
-    expect(wrapper.find('.title').text()).toBe('机器学习入门')
-    expect(wrapper.find('.author').text()).toBe('老王')
-    expect(wrapper.find('.views').text()).toBe('1.2万播放')
+  it('渲染推荐序号、标题和简介', () => {
+    wrapper = mount(VideoCard, { props: { video, index: 1, reason: '用三个例子讲变量。' } })
+    expect(wrapper.find('.title').text()).toBe('推荐 1：机器学习入门')
+    expect(wrapper.find('.reason').text()).toBe('用三个例子讲变量。')
+    expect(wrapper.find('.author').exists()).toBe(false)
   })
 
-  it('无 cover 时使用默认封面', () => {
+  it('观看名单不使用「推荐」前缀', () => {
+    wrapper = mount(VideoCard, { props: { video, index: 1, heading: '' } })
+    expect(wrapper.find('.title').text()).toBe('1：机器学习入门')
+  })
+
+  it('无 cover 时用标题生成封面，不显示「无封面」', () => {
     wrapper = mount(VideoCard, { props: { video: { ...video, cover: '' } } })
     const img = wrapper.find('img').element as HTMLImageElement
     expect(img.src).toContain('data:image/svg')
+    expect(wrapper.text()).not.toContain('无封面')
   })
 
-  it('渲染 reason 文案', () => {
-    wrapper = mount(VideoCard, { props: { video, reason: '与你的偏好匹配' } })
-    expect(wrapper.find('.reason').text()).toBe('与你的偏好匹配')
+  it('点击卡片触发 navigate', async () => {
+    wrapper = mount(VideoCard, { props: { video, videoUrl: 'http://localhost:3000/video/v1' } })
+    await wrapper.find('.video-card').trigger('click')
+    expect(wrapper.emitted('navigate')).toBeTruthy()
+    expect(wrapper.emitted('navigate')![0][0]).toEqual(video)
   })
 
-  it('点击播放按钮触发 play 事件并携带 video', async () => {
-    wrapper = mount(VideoCard, { props: { video } })
-    await wrapper.find('.play-btn').trigger('click')
-    expect(wrapper.emitted('play')).toBeTruthy()
-    expect(wrapper.emitted('play')![0][0]).toEqual(video)
-  })
-
-  it('disabled 时按钮禁用且点击不触发 play', async () => {
+  it('disabled 时不渲染链接', () => {
     wrapper = mount(VideoCard, { props: { video, disabled: true } })
     expect(wrapper.find('.video-card--disabled').exists()).toBe(true)
-    const btn = wrapper.find('.play-btn')
-    expect((btn.element as HTMLButtonElement).disabled).toBe(true)
-    await btn.trigger('click')
-    expect(wrapper.emitted('play')).toBeFalsy()
+    expect(wrapper.find('a.video-card').exists()).toBe(false)
   })
 
   it('图片加载失败回退默认封面', async () => {
