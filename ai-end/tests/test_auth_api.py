@@ -56,6 +56,18 @@ class TestChatRequestValidation:
         m = ChatRequest(question="hi")
         assert m.imageUrls is None
 
+    def test_image_only_fills_placeholder_question(self):
+        from app.models import ChatRequest, IMAGE_ONLY_QUESTION
+        m = ChatRequest(question="", image_urls=["data:image/png;base64,AAAA"])
+        assert m.question == IMAGE_ONLY_QUESTION
+
+    def test_empty_question_without_images_rejected(self):
+        from pydantic import ValidationError
+
+        from app.models import ChatRequest
+        with pytest.raises(ValidationError):
+            ChatRequest(question="")
+
     def test_oversized_single_url_rejected(self):
         from pydantic import ValidationError
 

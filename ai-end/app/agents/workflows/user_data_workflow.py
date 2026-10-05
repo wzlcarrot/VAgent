@@ -89,6 +89,16 @@ INTENT_KEYWORDS = [
     (["本周", "点赞", "哪些"], "like_list_week"),
     (["这周", "收藏", "哪些"], "favorite_list_week"),
     (["本周", "收藏", "哪些"], "favorite_list_week"),
+    (["今天", "点赞"], "like_list_today"),
+    (["今日", "点赞"], "like_list_today"),
+    (["今天", "收藏"], "favorite_list_today"),
+    (["今日", "收藏"], "favorite_list_today"),
+    (["今天", "播放历史"], "history_today"),
+    (["今日", "播放历史"], "history_today"),
+    (["今天", "观看记录"], "history_today"),
+    (["今日", "观看记录"], "history_today"),
+    (["今天", "浏览记录"], "history_today"),
+    (["今日", "浏览记录"], "history_today"),
     (["点赞", "哪些"], "like_list"),
     (["收藏", "哪些"], "favorite_list"),
     (["播放历史", "历史"], "history_list"),
@@ -129,11 +139,22 @@ def _list_lead(time_range: str, total: int, shown: int, all_time_lead: str) -> s
     return all_time_lead
 
 
+_ALL_TIME_WHEN_PERIOD = {
+    "like_list", "favorite_list", "history_list",
+    "like_count_total", "favorite_count_total", "like_top",
+}
+
+
 def _parse_intent_keywords(question: str) -> str:
+    today = any(k in question for k in ("今天", "今日"))
+    week = any(k in question for k in ("这周", "本周"))
     for keywords, intent in INTENT_KEYWORDS:
         if all(k in question for k in keywords):
             # 「观看」是「观看量」的子串，当前视频播放量不能当成今日观看历史。
             if intent.startswith("history") and "观看" in keywords and "观看量" in question:
+                continue
+            # 「我今天的点赞」会命中靠后的「我的点赞」全量列表，有时间词时跳过累计意图。
+            if (today or week) and intent in _ALL_TIME_WHEN_PERIOD:
                 continue
             return intent
     return ""

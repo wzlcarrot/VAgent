@@ -120,7 +120,7 @@ import ToolProgressBar from '@/components/chat/ToolProgressBar.vue'
 import QuickActions from '@/components/chat/QuickActions.vue'
 import VideoCard from '@/components/video/VideoCard.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
-import { normalizeVideos, resolveVideoId } from '@/utils/videos'
+import { normalizeVideos, resolveVideoId, rememberUrlVideoId } from '@/utils/videos'
 import { useChatStream } from '@/composables/useChatStream'
 
 const chatStore = useChatStore()
@@ -257,6 +257,7 @@ onMounted(() => {
   // 数组防抖：?video=a&video=b 时 Vue Router 返回 string[]，取第一个。
   currentVideoId.value = _videoIdFromQuery(route.query.video)
     || String(import.meta.env.VITE_DEMO_VIDEO_ID || '')
+  rememberUrlVideoId(currentVideoId.value)
 
   checkVideoService()
   window.addEventListener('session-switched', _onSessionSwitched)
@@ -267,6 +268,7 @@ watch(
   () => route.query.video,
   (v) => {
     currentVideoId.value = _videoIdFromQuery(v) || String(import.meta.env.VITE_DEMO_VIDEO_ID || '')
+    rememberUrlVideoId(currentVideoId.value)
   },
 )
 

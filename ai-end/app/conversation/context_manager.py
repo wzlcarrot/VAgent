@@ -272,16 +272,8 @@ def resolve_references(
         }
 
     def _ordinal_result(match: re.Match, video: Dict[str, Any], debug: str) -> Dict[str, Any]:
-        # 播放页已带当前 videoId，检索不会改用推荐项。
-        # 这时把「第二个」改成推荐标题，提示词和检索就不是同一支视频。
-        if _pronoun_binds_current_video(current_video_id, video.get("video_id")):
-            return {
-                "resolved": False,
-                "resolved_question": question,
-                "referenced_video": None,
-                "reference_type": None,
-                "debug": "ordinal kept: playback video differs from recommendation",
-            }
+        # 「第二个」明确指推荐列表，即使播放页带着另一支当前视频也要改写。
+        # 调用方按 reference_type=ordinal 覆盖检索 video_id，避免标题和检索不是同一支。
         resolved = question[:match.start()] + f"《{video.get('title', '未知')}》" + question[match.end():]
         return {
             "resolved": True,
@@ -374,7 +366,8 @@ def get_context_for_query(
     高阶 API：返回解析后的查询上下文。
     调用方应使用 resolved_question 作为下游 LLM/检索的输入，
     并把 referenced_video 注入到 system prompt。
-    current_video_id 是播放页当前视频；有值且和指代目标不是同一支时，代词和序数词都保持原句。
+    current_video_id 是播放页当前视频；有值且和指代目标不是同一支时，代词保持原句。
+    序数词仍解析为推荐列表中的那一支，由调用方切换检索 id。
     """
     resolution = resolve_references(session_id, question, current_video_id=current_video_id)
     ctx = _load_context(session_id)

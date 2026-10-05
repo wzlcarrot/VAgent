@@ -225,8 +225,12 @@ async def chat_stream(request: ChatRequest, http_request: Request, authed_user_i
                     f"指代消解: '{question}' → '{resolved_question}' "
                     f"({ctx['reference_type']}, video_id={referenced_video.get('video_id') if referenced_video else None})"
                 )
-                if referenced_video and not video_id:
-                    video_id = referenced_video.get("video_id")
+                if referenced_video:
+                    ref_vid = referenced_video.get("video_id")
+                    # 序数词指向推荐列表：即使播放页已带当前视频，也改去检索那一支。
+                    # 代词（这个/那个）仍只在没有当前 video_id 时才改绑，避免串台。
+                    if ref_vid and (ctx.get("reference_type") == "ordinal" or not video_id):
+                        video_id = ref_vid
                 question = resolved_question
         except Exception as e:
             logger.warning(f"指代消解失败(不影响响应): {e}")

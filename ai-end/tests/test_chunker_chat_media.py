@@ -182,10 +182,12 @@ def test_context_manager_memory_and_resolve():
         no_page = cm.resolve_references(sid, "那个视频讲什么")
         assert no_page["resolved"] is True
         assert "二号" in no_page["resolved_question"]
-        # 播放页当前视频不是推荐项时，序数词不能改写成推荐标题（检索 id 仍是当前视频）
+        # 「第二个」指推荐列表，即使播放页带着另一支当前视频也要改写（检索 id 由调用方覆盖）
         ordinal = cm.resolve_references(sid, "第二个讲什么", current_video_id="v-new")
-        assert ordinal["resolved"] is False
-        assert ordinal["resolved_question"] == "第二个讲什么"
+        assert ordinal["resolved"] is True
+        assert ordinal["reference_type"] == "ordinal"
+        assert "二号" in ordinal["resolved_question"]
+        assert ordinal["referenced_video"]["video_id"] == "v2"
         # 当前播放的就是列表里那一条时，改写标题和检索 id 一致
         same_ordinal = cm.resolve_references(sid, "第二个讲什么", current_video_id="v2")
         assert same_ordinal["resolved"] is True

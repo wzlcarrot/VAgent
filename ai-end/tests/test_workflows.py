@@ -892,6 +892,9 @@ class TestUserDataWorkflow:
         assert _parse_intent_keywords("我今天这个视频观看量多少") == ""
         assert _parse_intent_keywords("我的点赞") == "like_list"
         assert _parse_intent_keywords("今天点赞多少") == "like_count_today"
+        assert _parse_intent_keywords("我今天的点赞") == "like_list_today"
+        assert _parse_intent_keywords("我今天的收藏") == "favorite_list_today"
+        assert _parse_intent_keywords("我今天的播放历史") == "history_today"
 
     @patch("app.agents.workflows.user_data_workflow.UserTools.get_recent_favorites")
     def test_query_node_favorite_list_today(self, mock_fav):

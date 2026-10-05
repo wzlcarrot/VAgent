@@ -104,23 +104,23 @@ class TestNeedClarification:
             intent=WorkflowType.CHAT, mentioned_keywords=["上传", "视频"], question="怎么上传视频",
         ) is False
 
-    def test_chat_vague_greeting_asks(self):
-        """空泛招呼（你好）追问引导。"""
+    def test_chat_vague_greeting_goes_to_chat_not_clarifier(self):
+        """空泛招呼走闲聊工作流，澄清器不再截成功能菜单。"""
         assert IntentClarifier.need_clarification(
             intent=WorkflowType.CHAT, mentioned_keywords=[], question="你好",
-        ) is True
+        ) is False
         assert IntentClarifier.need_clarification(
             intent=WorkflowType.CHAT, mentioned_keywords=[], question="在吗",
-        ) is True
+        ) is False
 
     def test_chat_chinese_greeting_not_blocked_by_split_token(self):
-        """中文整句 split() 后是一个词，不能因此让招呼追问失效。"""
+        """中文整句 split() 后是一个词，招呼仍不进澄清器。"""
         assert IntentClarifier.need_clarification(
             intent=WorkflowType.CHAT, mentioned_keywords=["你好"], question="你好",
-        ) is True
+        ) is False
         assert IntentClarifier.need_clarification(
             intent=WorkflowType.CHAT, mentioned_keywords=["在吗"], question="在吗",
-        ) is True
+        ) is False
 
     def test_chat_short_question_with_content_not_vague(self):
         """非空泛的短问题（有实质内容）不追问。"""

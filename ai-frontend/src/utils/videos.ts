@@ -45,6 +45,36 @@ export function resolveVideoId(questionText: string, urlVideoId: string | null |
   return undefined
 }
 
+const LAST_VIDEO_KEY = 'viewhub_last_video_id'
+
+/** 记住播放页带入的当前视频，历史页返回时还能带上。 */
+export function rememberUrlVideoId(videoId: string | null | undefined): void {
+  const v = (videoId || '').trim()
+  if (!v) return
+  try {
+    sessionStorage.setItem(LAST_VIDEO_KEY, v)
+  } catch {
+    /* sessionStorage 不可用则跳过 */
+  }
+}
+
+export function lastUrlVideoId(): string | undefined {
+  try {
+    const v = (sessionStorage.getItem(LAST_VIDEO_KEY) || '').trim()
+    return v || undefined
+  } catch {
+    return undefined
+  }
+}
+
+export function homeQuery(sessionId?: string): Record<string, string> {
+  const q: Record<string, string> = {}
+  if (sessionId) q.session = sessionId
+  const video = lastUrlVideoId()
+  if (video) q.video = video
+  return q
+}
+
 function normalizeTags(tags: unknown): string[] {
   if (Array.isArray(tags)) {
     return tags.map(t => String(t)).filter(Boolean)

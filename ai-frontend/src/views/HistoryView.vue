@@ -99,7 +99,7 @@
       </div>
 
       <div class="back-btn">
-        <button @click="router.push('/')">返回首页</button>
+        <button @click="router.push({ path: '/', query: homeQuery() })">返回首页</button>
       </div>
     </div>
 
@@ -122,6 +122,7 @@ import CheckpointViewer from '@/components/chat/CheckpointViewer.vue'
 import AppHeader from '@/components/layout/AppHeader.vue'
 import { useNotify } from '@/composables/useNotify'
 import { sessionsFromContentSearch } from '@/utils/historySearch'
+import { homeQuery } from '@/utils/videos'
 import type { DbSession, SessionView, SearchResult } from '@/types'
 
 const router = useRouter()
@@ -350,7 +351,7 @@ function formatDate(date: Date): string {
 
 function openSession(sessionId: string) {
   // URL query 是最可靠的跨页面通信方式，不依赖 store 在组件卸载/重挂周期中的状态
-  router.push({ path: '/', query: { session: sessionId } })
+  router.push({ path: '/', query: homeQuery(sessionId) })
 }
 
 async function deleteSession(sessionId: string) {

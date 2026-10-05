@@ -63,7 +63,7 @@ class TestRouter:
 
     def test_route_player_followup_is_video_qa(self):
         ctx = {"video_id": "123"}
-        for q in ("这啥意思", "为什么", "然后呢"):
+        for q in ("这啥意思", "为什么", "然后呢", "还有呢"):
             assert self.router.route(q, ctx) == "video_qa_workflow", q
 
     def test_route_video_question_on_player_not_smalltalk(self):

@@ -82,3 +82,13 @@ describe('resolveVideoId', () => {
     expect(resolveVideoId('视频 id: zzzz1111 是什么', 'urlvid99')).toBe('zzzz1111')
   })
 })
+
+describe('homeQuery', () => {
+  it('打开历史会话时带上记住的当前视频', async () => {
+    const { rememberUrlVideoId, homeQuery } = await import('@/utils/videos')
+    sessionStorage.clear()
+    rememberUrlVideoId('playABC')
+    expect(homeQuery('sess-1')).toEqual({ session: 'sess-1', video: 'playABC' })
+    expect(homeQuery()).toEqual({ video: 'playABC' })
+  })
+})

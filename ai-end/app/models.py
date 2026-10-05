@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import List, Optional
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.config import settings
 
@@ -52,8 +52,11 @@ MAX_IMAGE_URL_CHARS = 8_000_000
 MAX_IMAGE_URLS_TOTAL_CHARS = 7_500_000
 
 
+IMAGE_ONLY_QUESTION = "请结合图片回答"
+
+
 class ChatRequest(BaseModel):
-    question: str = Field(..., min_length=1, max_length=settings.max_question_length)
+    question: str = Field("", max_length=settings.max_question_length)
     userId: Optional[str] = Field(None, alias="user_id")
     videoId: Optional[str] = Field(None, alias="video_id")
     sessionId: Optional[str] = Field(None, alias="session_id")
@@ -78,6 +81,16 @@ class ChatRequest(BaseModel):
         if total_chars > MAX_IMAGE_URLS_TOTAL_CHARS:
             raise ValueError("image_urls 总大小超限")
         return v
+
+    @model_validator(mode="after")
+    def require_question_or_images(self):
+        q = (self.question or "").strip()
+        if q:
+            return self
+        if self.imageUrls:
+            self.question = IMAGE_ONLY_QUESTION
+            return self
+        raise ValueError("问题不能为空")
 
 
 class ChatHistory(BaseModel):

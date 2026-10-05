@@ -65,11 +65,6 @@ def _format_categories(limit: int = 6) -> str:
 # 已足够具体，不应追问。如「推荐两个类似的」「像这个的」。
 _SIMILAR_INTENT_KEYWORDS = ["类似", "相似", "同款", "差不多", "像这个", "这种", "同类"]
 
-# 空泛招呼词：chat 意图下仅命中这些（无实质功能诉求）才追问引导。
-# 中文 `question.split()` 会把整句当一个 token，不能用分词结果判断"有无关键词"，
-# 改为：问题本身不含任何功能/疑问实质词时才视为模糊。
-_VAGUE_GREETINGS = ["你好", "您好", "在吗", "在么", "hi", "hello", "help", "哈喽", "嗨", "有人吗"]
-
 
 def has_category_keyword(question: str) -> bool:
     """判断问题里是否已经写明了偏好类别（科技/美食/AI/教程…）。
@@ -148,13 +143,8 @@ class IntentClarifier:
         if intent == WorkflowType.VIDEO_QA and not video_id:
             return True
 
-        # chat：仅空泛招呼（你好/在吗）且无实质功能诉求 → 引导。
-        # 中文整句 split() 后仍是一个词，调用方传入的 mentioned_keywords 不会为空，
-        # 不能用「没有关键词」当条件，否则「你好」永远走不到这条规则。
+        # chat：招呼交给闲聊工作流自己回，不再用澄清器截成功能菜单。
         if intent == WorkflowType.CHAT:
-            q = (question or "").strip()
-            if any(g in q for g in _VAGUE_GREETINGS) and len(q) <= 8:
-                return True
             return False
 
         return False
