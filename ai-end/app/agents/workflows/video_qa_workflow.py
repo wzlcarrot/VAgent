@@ -38,7 +38,7 @@ VIDEO_QA_PROMPT_TEMPLATE = """你是 ViewHub 平台的视频内回答助手。�
 - 标签：{tags}
 - 简介：{introduction}
 
-相关证据片段（来自片内检索工具 search_video_chunks）：
+相关证据片段（来自当前视频检索工具 search_video_chunks）：
 {knowledge}
 
 对话历史（用于理解"它/这个/还有呢"等指代，仅作语境，不是证据）：

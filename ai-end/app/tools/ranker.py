@@ -330,7 +330,7 @@ def dual_recall_and_rerank(query: str, top_k: int = 5,
         merged = merged[:rerank_limit]
 
     reranked = rerank(query, merged, top_k=final_k)
-    # 片内回答才闸门：全站推荐问「推荐一个视频」与简介字面重合很低，闸门会把目录清空。
+    # 视频内回答才闸门：全站推荐问「推荐一个视频」与简介字面重合很低，闸门会把目录清空。
     if video_id:
         return apply_evidence_gate(reranked)
     return reranked

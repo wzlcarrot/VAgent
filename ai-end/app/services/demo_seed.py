@@ -7,7 +7,7 @@ logger = logging.getLogger(__name__)
 
 
 def _fill_missing_demo_vectors(cur) -> None:
-    """演示块原先只写文本；向量为空时片内 vector_search 会得到 NULL 分并拖垮检索。"""
+    """演示块原先只写文本；向量为空时当前视频 vector_search 会得到 NULL 分并拖垮检索。"""
     try:
         cur.execute(
             """

@@ -3,7 +3,7 @@
 
 Agentic RAG 轻量闭环：
 1. query rewrite（规则优先，可选 LLM 增强）
-2. 片内混合召回（最多多轮）
+2. 当前视频混合召回（最多多轮）
 3. 生成后 corrective（证据支撑校验，失败则补搜或拒答）
 """
 from __future__ import annotations
@@ -125,7 +125,7 @@ def filter_scoped_chunks(
     chunks: List[Dict[str, Any]],
     video_id: str,
 ) -> List[Dict[str, Any]]:
-    """片内硬过滤：丢掉 video_id 不一致的块，防止跨视频污染。"""
+    """当前视频硬过滤：丢掉 video_id 不一致的块，防止跨视频污染。"""
     if not video_id or not chunks:
         return chunks or []
     kept: List[Dict[str, Any]] = []
@@ -370,7 +370,7 @@ def search_video_chunks(
     rewrite_query: Optional[str] = None,
 ) -> tuple[List[Dict[str, Any]], bool]:
     """
-    片内混合检索（最多多轮）。
+    当前视频混合检索（最多多轮）。
 
     Returns:
         (chunks, knowledge_sufficient)

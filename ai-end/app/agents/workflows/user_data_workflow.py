@@ -132,7 +132,7 @@ def _list_lead(time_range: str, total: int, shown: int, all_time_lead: str) -> s
 def _parse_intent_keywords(question: str) -> str:
     for keywords, intent in INTENT_KEYWORDS:
         if all(k in question for k in keywords):
-            # 「观看」是「观看量」的子串，片内播放量不能当成今日观看历史。
+            # 「观看」是「观看量」的子串，当前视频播放量不能当成今日观看历史。
             if intent.startswith("history") and "观看" in keywords and "观看量" in question:
                 continue
             return intent

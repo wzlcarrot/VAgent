@@ -226,7 +226,7 @@ _SPECS = [
     {
         "name": "search_video_chunks",
         "description": (
-            "片内视频知识检索工具（Agentic RAG）：对指定 video_id 做口语 query 改写、"
+            "当前视频知识检索工具（Agentic RAG）：对指定 video_id 做口语 query 改写、"
             "混合召回与最多两轮补搜，返回带分值的证据片段；证据不足时由调用方拒答。"
         ),
         "parameters": {

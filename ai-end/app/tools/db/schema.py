@@ -141,7 +141,7 @@ def init_agent_tables():
         cursor.execute("ALTER TABLE video_vector_block ADD COLUMN IF NOT EXISTS file_id VARCHAR(64)")
         cursor.execute("ALTER TABLE video_vector_block ADD COLUMN IF NOT EXISTS file_index INTEGER")
 
-        # 片内关键词召回走 ParadeDB BM25（与 pgvector 组成双路召回）。
+        # 当前视频关键词召回走 ParadeDB BM25（与 pgvector 组成双路召回）。
         # block_content 用中文兼容分词器；索引缺失时 rag_tools 会自动降级 pg_trgm/tsvector。
         cursor.execute("SAVEPOINT sp_bm25_index")
         try:

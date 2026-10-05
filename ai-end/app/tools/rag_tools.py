@@ -128,7 +128,7 @@ class RAGTools:
     @classmethod
     def retrieve_knowledge(cls, query: str, top_k: int = 5,
                            video_id: Optional[str] = None) -> List[Dict[str, Any]]:
-        """BM25 全文搜索（ParadeDB），降级到 PG tsvector；可选 video_id 限定片内检索"""
+        """BM25 全文搜索（ParadeDB），降级到 PG tsvector；可选 video_id 限定当前视频检索"""
         if not cls._is_available():
             return []
         if video_id:
@@ -213,7 +213,7 @@ class RAGTools:
                 rows: List[Dict[str, Any]] = []
                 used_bm25 = False
                 bm25_text = _bm25_query_text(query)
-                # 首选 ParadeDB BM25（片内关键词路）
+                # 首选 ParadeDB BM25（当前视频关键词路）
                 if bm25_text:
                     try:
                         cursor.execute("SET LOCAL statement_timeout = '2000'")
@@ -232,7 +232,7 @@ class RAGTools:
                     except Exception as e:
                         conn.rollback()
                         rows = []
-                        logger.debug("片内 BM25 召回失败，降级 pg_trgm/tsvector: %s", e)
+                        logger.debug("当前视频 BM25 召回失败，降级 pg_trgm/tsvector: %s", e)
 
                 if not rows:
                     # 降级：pg_trgm（中文）/ tsvector（其它），BM25 索引缺失或不可用时兜底
@@ -308,7 +308,7 @@ class RAGTools:
             finally:
                 pool.putconn(conn)
         except Exception as e:
-            logger.error(f"片内 keyword 检索失败 video_id={video_id}: {e}")
+            logger.error(f"当前视频 keyword 检索失败 video_id={video_id}: {e}")
             return []
 
     @classmethod

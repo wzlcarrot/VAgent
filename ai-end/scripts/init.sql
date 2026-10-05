@@ -43,7 +43,7 @@ CREATE INDEX IF NOT EXISTS idx_video_subtitle_segment_video_id
 CREATE INDEX IF NOT EXISTS idx_video_subtitle_segment_video_file
     ON video_subtitle_segment (video_id, file_id);
 
--- 片内关键词召回：ParadeDB BM25（与 pgvector 组成双路召回），中文兼容分词
+-- 当前视频关键词召回：ParadeDB BM25（与 pgvector 组成双路召回），中文兼容分词
 CREATE INDEX IF NOT EXISTS idx_video_vector_block_bm25
     ON video_vector_block USING bm25 (id, block_content)
     WITH (key_field=id, text_fields='{"block_content": {"tokenizer": {"type": "chinese_compatible"}}}');
