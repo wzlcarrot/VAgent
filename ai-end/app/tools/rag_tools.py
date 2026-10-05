@@ -19,12 +19,19 @@ def _bm25_query_text(query: str) -> str:
     return re.sub(r"[^\w\u4e00-\u9fff]+", " ", query or "", flags=re.UNICODE).strip()
 
 
+def _safe_float(score: Any, default: float = 0.0) -> float:
+    """检索分可能是 Decimal / None；None 不能丢给 float()。"""
+    if score is None:
+        return default
+    try:
+        return float(score)
+    except (TypeError, ValueError):
+        return default
+
+
 def _bm25_to_unit(score: Any) -> float:
     """BM25 原始分（0~∞）单调压到 (0,1)，便于与余弦相似度混排、过证据闸门。"""
-    try:
-        v = float(score)
-    except (TypeError, ValueError):
-        return 0.0
+    v = _safe_float(score, 0.0)
     return v / (v + 1.0) if v > 0 else 0.0
 
 
@@ -134,6 +141,7 @@ class RAGTools:
             try:
                 cursor = conn.cursor(cursor_factory=RealDictCursor)
                 try:
+                    cursor.execute("SET LOCAL statement_timeout = '2000'")
                     cursor.execute("""
                         SELECT video_id, video_name, introduction, paradedb.score() as score
                         FROM video_info
@@ -148,7 +156,7 @@ class RAGTools:
                         "video_id": r["video_id"],
                         "video_name": r.get("video_name", ""),
                         "block_type": "introduction",
-                        "score": float(r.get("score", 0))
+                        "score": _safe_float(r.get("score", 0))
                     } for r in rows]
                 except Exception:
                     cursor.close()
@@ -179,7 +187,7 @@ class RAGTools:
                             "video_id": r["video_id"],
                             "video_name": r.get("video_name", ""),
                             "block_type": "introduction",
-                            "score": float(r.get("score", 0))
+                            "score": _safe_float(r.get("score", 0))
                         } for r in rows]
                     finally:
                         cursor2.close()
@@ -208,6 +216,7 @@ class RAGTools:
                 # 首选 ParadeDB BM25（片内关键词路）
                 if bm25_text:
                     try:
+                        cursor.execute("SET LOCAL statement_timeout = '2000'")
                         cursor.execute("""
                             SELECT video_id, file_id, file_index, block_type, block_content, start_s, end_s,
                                    paradedb.score(id) AS score
@@ -219,6 +228,7 @@ class RAGTools:
                         """, (video_id, bm25_text, top_k))
                         rows = cursor.fetchall() or []
                         used_bm25 = bool(rows)
+                        cursor.execute("SET LOCAL statement_timeout = 0")
                     except Exception as e:
                         conn.rollback()
                         rows = []
@@ -289,7 +299,7 @@ class RAGTools:
                     "video_id": r["video_id"],
                     "video_name": r.get("video_name", ""),
                     "block_type": r.get("block_type", "block"),
-                    "score": float(r.get("score", 0)),
+                    "score": _safe_float(r.get("score", 0)),
                     "start_s": r.get("start_s"),
                     "end_s": r.get("end_s"),
                     "file_id": r.get("file_id"),
@@ -401,6 +411,7 @@ class RAGTools:
                                    * COALESCE(block_weight, 1.0) AS score
                         FROM video_vector_block
                         WHERE video_id = %s
+                          AND content_vector IS NOT NULL
                         ORDER BY score DESC
                         LIMIT %s
                     """, (vector_str, video_id, top_k))
@@ -411,7 +422,7 @@ class RAGTools:
                         "video_id": r["video_id"],
                         "video_name": "",
                         "block_type": r.get("block_type", "vector"),
-                        "score": float(r.get("score", 0)),
+                        "score": _safe_float(r.get("score", 0)),
                         "start_s": r.get("start_s"),
                         "end_s": r.get("end_s"),
                         "file_id": r.get("file_id"),
@@ -444,7 +455,7 @@ class RAGTools:
                 "video_id": r["video_id"],
                 "video_name": r.get("video_name", ""),
                 "block_type": "vector",
-                "score": float(r.get("total_score", 0))
+                "score": _safe_float(r.get("total_score", 0))
             } for r in rows]
         except Exception as e:
             logger.error(f"向量搜索失败: {e}")

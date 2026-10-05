@@ -220,7 +220,21 @@ def search_node(state: RecommendState) -> dict:
             candidate_videos.append(video_id)
 
     if not candidate_videos:
-        return {"candidate_videos": []}
+        recent = VideoTools.get_recent_videos(limit=min(state.get("top_k", 5) + 3, 10))
+        return {"candidate_videos": [
+            {
+                "video_id": v.videoId,
+                "title": v.videoName or "未知视频",
+                "cover": build_cover_url(v.videoCover) if v.videoCover else "",
+                "author": v.nickName,
+                "tags": v.tags,
+                "category_id": str(v.categoryId) if v.categoryId else "",
+                "p_category_id": str(v.pCategoryId) if v.pCategoryId else "",
+                "create_time": str(v.createTime) if v.createTime else "",
+                "play_count": v.playCount or 0,
+            }
+            for v in recent if v and v.videoId
+        ]}
 
     watched = set(user_profile.get("watched_video_ids", []))
     not_helpful = set()

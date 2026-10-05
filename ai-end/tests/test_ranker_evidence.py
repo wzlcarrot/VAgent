@@ -78,6 +78,17 @@ def test_dual_recall_applies_evidence_gate():
     assert out == []
 
 
+def test_dual_recall_skips_evidence_gate_without_video_id():
+    from app.tools.ranker import dual_recall_and_rerank
+
+    low = [{"content": "intro", "video_id": "demo02", "score": 0.1}]
+    with patch("app.tools.search_channels.multi_channel_recall", return_value=low), \
+         patch("app.tools.ranker.rerank", return_value=[{"content": "intro", "video_id": "demo02", "score": 0.1}]), \
+         patch("app.config.settings.rag_evidence_gate_min_score", 0.35):
+        out = dual_recall_and_rerank("推荐一个视频", top_k=3)
+    assert out and out[0]["video_id"] == "demo02"
+
+
 def test_rag_eval_endpoint_disabled():
     from app.routers._shared import require_auth
     from app.routers.rag_eval import router as rag_eval_router

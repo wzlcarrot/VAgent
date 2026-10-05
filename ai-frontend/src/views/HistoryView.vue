@@ -40,7 +40,7 @@
             </div>
             <div class="session-meta">
               <span>{{ formatDate(session.updatedAt) }}</span>
-              <span>{{ session.messageCount }} 条消息</span>
+              <span>{{ session.messageCount }} 轮对话</span>
             </div>
             <div class="search-snippet" v-if="session.searchSnippet">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">

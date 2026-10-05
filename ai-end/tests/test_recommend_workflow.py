@@ -141,9 +141,14 @@ class TestSearchNode:
         assert vids == ["v1", "v2"]
 
     def test_no_candidates(self):
+        from app.models import VideoInfo
+        recent = [VideoInfo(videoId="r1", videoName="最近片", nickName="UP", tags="入门", playCount=4)]
         with patch("app.tools.ranker.dual_recall_and_rerank", return_value=[]), \
-             patch("app.agents.workflows.recommend_workflow.invoke_with_governor", side_effect=lambda *a, **k: a[3]()):
-            assert search_node(_state(top_k=3)) == {"candidate_videos": []}
+             patch("app.agents.workflows.recommend_workflow.invoke_with_governor", side_effect=lambda *a, **k: a[3]()), \
+             patch("app.agents.workflows.recommend_workflow.VideoTools.get_recent_videos", return_value=recent):
+            result = search_node(_state(top_k=3))
+        assert result["candidate_videos"][0]["video_id"] == "r1"
+        assert result["candidate_videos"][0]["title"] == "最近片"
 
     def test_negative_feedback_videos_are_demoted_not_dropped(self):
         from app.models import VideoInfo

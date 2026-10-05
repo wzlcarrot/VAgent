@@ -105,6 +105,12 @@ class TestRouter:
         assert "video_qa_workflow" in scores
         assert scores["video_qa_workflow"] > scores["recommend_workflow"]
 
+    def test_lexical_intent_scores_separate_video_and_recommend(self):
+        scores = self.router._lexical_intent_scores("这个视频讲了什么")
+        assert scores["video_qa_workflow"] > scores["recommend_workflow"]
+        likes = self.router._lexical_intent_scores("我的点赞")
+        assert likes["user_data_workflow"] > likes["video_qa_workflow"]
+
     def test_semantic_margin_threshold(self):
         assert Router._semantic_margin() == 0.03
 

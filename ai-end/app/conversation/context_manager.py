@@ -314,7 +314,6 @@ def resolve_references(
     # 3. 代词：这个视频 / 那个视频 / 刚才那个
     pronoun_match = _PRONOUN_PATTERN.search(question)
     if pronoun_match:
-        pronoun = pronoun_match.group(1)
         target = None
         ref_type = None
         debug = ""

@@ -5,6 +5,56 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+
+def _fill_missing_demo_vectors(cur) -> None:
+    """演示块原先只写文本；向量为空时片内 vector_search 会得到 NULL 分并拖垮检索。"""
+    try:
+        cur.execute(
+            """
+            SELECT id, block_content FROM video_vector_block
+            WHERE content_vector IS NULL
+              AND video_id LIKE 'demo%%'
+            ORDER BY id
+            """
+        )
+        rows = cur.fetchall()
+    except Exception as e:
+        logger.warning("demo seed 读取待嵌入块失败: %s", e)
+        return
+    if not isinstance(rows, (list, tuple)) or not rows:
+        return
+    ids: list = []
+    texts: list = []
+    for r in rows:
+        if isinstance(r, dict):
+            bid, text = r.get("id"), r.get("block_content")
+        elif isinstance(r, (list, tuple)) and len(r) >= 2:
+            bid, text = r[0], r[1]
+        else:
+            continue
+        if bid is None or not text:
+            continue
+        ids.append(bid)
+        texts.append(str(text))
+    if not texts:
+        return
+    try:
+        from app.tools.llm_tools import LLM_tools
+        embeddings = LLM_tools.embed(texts)
+    except Exception as e:
+        logger.warning("demo seed embedding 失败: %s", e)
+        return
+    if not embeddings or len(embeddings) != len(ids):
+        logger.warning("demo seed embedding 数量不匹配")
+        return
+    for bid, vec in zip(ids, embeddings, strict=False):
+        vector_str = "[" + ",".join(str(v) for v in vec) + "]"
+        cur.execute(
+            "UPDATE video_vector_block SET content_vector = %s::vector WHERE id = %s",
+            (vector_str, bid),
+        )
+
+
 _CHUNKS = (
     ("title_0", "Python 入门：变量、循环与函数", 0.0, 8.0),
     (
@@ -234,6 +284,7 @@ def seed_demo_corpus() -> None:
         except Exception as e:
             cur.execute("ROLLBACK TO SAVEPOINT sp_demo_behavior")
             logger.warning("demo seed 个人数据/推荐表跳过: %s", e)
+        _fill_missing_demo_vectors(cur)
         conn.commit()
         cur.close()
         logger.info("demo seed 完成 video_id=%s", vid)

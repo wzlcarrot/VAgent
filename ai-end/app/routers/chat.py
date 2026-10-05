@@ -80,7 +80,7 @@ async def chat_stream(request: ChatRequest, http_request: Request, authed_user_i
             raise
         except Exception as e:
             logger.error(f"会话归属校验异常，fail-closed 拒绝: user={user_id} session={session_id[:8]}: {e}")
-            raise HTTPException(status_code=503, detail="会话校验暂时不可用，请重试")
+            raise HTTPException(status_code=503, detail="会话校验暂时不可用，请重试") from e
         if not is_owner:
             logger.warning(f"会话越权拦截: user={user_id} session={session_id[:8]}")
             raise HTTPException(status_code=403, detail="会话不属于当前用户")

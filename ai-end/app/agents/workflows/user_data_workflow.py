@@ -112,6 +112,11 @@ INTENT_KEYWORDS = [
     (["关注", "up主"], "following_list"),
     (["关注的", "up"], "following_list"),
     (["关注", "了", "谁"], "following_list"),
+    (["我的", "点赞"], "like_list"),
+    (["点赞过"], "like_list"),
+    (["点赞"], "like_list"),
+    (["我的", "收藏"], "favorite_list"),
+    (["收藏"], "favorite_list"),
 ]
 
 

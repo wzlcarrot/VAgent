@@ -57,8 +57,8 @@ async def retract_my_memory(request: Request, authed_user_id: str = Depends(requ
     if memory_id is not None:
         try:
             memory_id = int(memory_id)
-        except (TypeError, ValueError):
-            raise HTTPException(status_code=400, detail="memory_id 必须是整数")
+        except (TypeError, ValueError) as err:
+            raise HTTPException(status_code=400, detail="memory_id 必须是整数") from err
         if memory_id <= 0:
             raise HTTPException(status_code=400, detail="memory_id 非法")
 

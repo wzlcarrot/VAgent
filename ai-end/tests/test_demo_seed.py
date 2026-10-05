@@ -14,6 +14,18 @@ def test_seed_skipped_without_pool():
         seed_demo_corpus()
 
 
+def test_fill_missing_demo_vectors_updates_null_rows():
+    from app.services.demo_seed import _fill_missing_demo_vectors
+
+    cur = MagicMock()
+    cur.fetchall.return_value = [(1, "hello chunk")]
+    with patch("app.tools.llm_tools.LLM_tools.embed", return_value=[[0.1, 0.2]]):
+        _fill_missing_demo_vectors(cur)
+    update_sql = str(cur.execute.call_args_list[-1].args[0])
+    assert "content_vector" in update_sql
+    assert "UPDATE video_vector_block" in update_sql
+
+
 def test_seed_writes_catalog_and_behavior():
     cur = MagicMock()
     conn = MagicMock()

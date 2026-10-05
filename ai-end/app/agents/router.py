@@ -56,6 +56,8 @@ INTENT_EXEMPLARS: Dict[str, List[str]] = {
         "这个视频的作者是谁",
         "讲解一下这个视频",
         "视频里说了什么",
+        "这啥意思",
+        "这段在讲什么",
     ],
     WorkflowType.RECOMMEND: [
         "推荐一些好看的视频",
@@ -64,6 +66,7 @@ INTENT_EXEMPLARS: Dict[str, List[str]] = {
         "有什么好看的视频",
         "给我推荐点内容",
         "热门视频有哪些",
+        "推荐一个视频",
     ],
     WorkflowType.USER_DATA: [
         "我今天的点赞数",
@@ -72,12 +75,15 @@ INTENT_EXEMPLARS: Dict[str, List[str]] = {
         "我的播放历史",
         "我点赞了哪些视频",
         "我的数据统计",
+        "我的点赞",
     ],
     WorkflowType.CHAT: [
         "你们平台有什么功能",
         "怎么使用这个平台",
         "帮助",
         "什么是ViewHub",
+        "怎么上传视频",
+        "平台怎么用",
         "你们支持哪些功能",
         "平台介绍",
         "推荐一家火锅店",
@@ -260,6 +266,31 @@ class Router:
                 best = sim
         return best
 
+    @staticmethod
+    def _char_bigrams(text: str) -> set:
+        chars = normalize_text(text)
+        if len(chars) < 2:
+            return {chars} if chars else set()
+        return {chars[i:i + 2] for i in range(len(chars) - 1)}
+
+    def _lexical_intent_scores(self, question: str) -> Dict[str, float]:
+        """中文短句在英文 BGE 上几乎挤成一团；用字 bigram 给意图示例真实区分度。"""
+        qg = self._char_bigrams(question)
+        if not qg:
+            return {}
+        result: Dict[str, float] = {}
+        for intent, queries in INTENT_EXEMPLARS.items():
+            best = 0.0
+            for ex in queries:
+                eg = self._char_bigrams(ex)
+                if not eg:
+                    continue
+                sim = len(qg & eg) / len(qg | eg)
+                if sim > best:
+                    best = sim
+            result[intent] = best
+        return result
+
     def _load_exemplar_embeddings(self) -> None:
         """加载意图示例的 embedding（单例，只加载一次）
 
@@ -313,9 +344,15 @@ class Router:
         if not query_vecs:
             return {}
         query_vec: List[float] = query_vecs[0]
-        result: Dict[str, float] = {}
+        cosine: Dict[str, float] = {}
         for intent, exemplar_vecs in self._exemplar_embeddings.items():
-            result[intent] = self._max_similarity(query_vec, exemplar_vecs)
+            cosine[intent] = self._max_similarity(query_vec, exemplar_vecs)
+        lexical = self._lexical_intent_scores(question)
+        intents = set(cosine) | set(lexical)
+        result: Dict[str, float] = {}
+        for intent in intents:
+            # 英文 BGE 对中文短句余弦挤在一起，字面重合承担区分；向量仍作弱先验。
+            result[intent] = 0.35 * cosine.get(intent, 0.0) + 0.65 * lexical.get(intent, 0.0)
         if result:
             top_vals = sorted(result.values(), reverse=True)
             margin = top_vals[0] - top_vals[1] if len(top_vals) > 1 else 1.0

@@ -111,6 +111,24 @@ def test_vector_search_no_pool():
         assert RAGTools.vector_search([0.1], 3) == []
 
 
+def test_vector_search_video_id_skips_null_score():
+    rows = [{
+        "video_id": "demo01",
+        "file_id": None,
+        "file_index": None,
+        "block_type": "title_0",
+        "block_content": "Python 入门",
+        "start_s": 0,
+        "end_s": 8,
+        "score": None,
+    }]
+    pool, conn, cursor = _pool_with_cursor(rows=rows)
+    with patch("app.tools.rag_tools.get_global_pool", return_value=pool):
+        out = RAGTools.vector_search([0.1, 0.2], 3, video_id="demo01")
+    assert out[0]["content"] == "Python 入门"
+    assert out[0]["score"] == 0.0
+
+
 def test_vector_search_exception():
     pool = MagicMock()
     pool.getconn.side_effect = RuntimeError("x")
