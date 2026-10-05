@@ -143,8 +143,21 @@ def search_chat_db(user_id: str, q: str, limit: int) -> List[Dict[str, Any]]:
                 "created_at": str(r.get("created_at") or ""),
             })
         return results[:limit]
+    except Exception:
+        # 失败事务必须先回滚再还池，否则下一次拿到这条连接会 InFailedSqlTransaction。
+        try:
+            conn.rollback()
+        except Exception as rb_err:
+            logger.error(f"搜索聊天记录 rollback 失败，丢弃连接: {rb_err}")
+            try:
+                conn.close()
+            except Exception:
+                pass
+            conn = None
+        raise
     finally:
-        pool.putconn(conn)
+        if conn is not None:
+            pool.putconn(conn)
 
 
 @router.delete("/chat/session/{session_id}")
@@ -156,12 +169,25 @@ async def delete_chat_session(session_id: str, authed_user_id: str = Depends(req
             logger.warning(f"删除会话越权拦截: user={authed_user_id} 试图删除 session={session_id}")
             raise HTTPException(status_code=404, detail="会话不存在")
         success = await run_sync_in_executor(ChatTools.delete_chat_session, authed_user_id, session_id)
+        if success:
+            await run_sync_in_executor(_purge_session_runtime, session_id)
         return {"success": success}
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"删除会话失败: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="删除会话失败") from e
+
+
+def _purge_session_runtime(session_id: str) -> None:
+    """数据库记录删掉之后，清掉还会被下一问读到的短期记忆和 checkpoint。"""
+    from app.conversation.context_manager import clear_session_context
+    from app.harness.checkpoint import CheckpointManager
+    from app.tools.context_tools import clear_session_memory
+
+    clear_session_memory(session_id)
+    clear_session_context(session_id)
+    CheckpointManager().clear_session(session_id)
 
 
 def collect_checkpoint_steps(session_id: str) -> List[Dict[str, Any]]:

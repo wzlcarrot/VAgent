@@ -1,5 +1,5 @@
 """
-片内视频问答检索：规则/LLM 改写 + 多轮召回 + 证据阈值 + Corrective + 引用。
+视频内回答检索：规则/LLM 改写 + 多轮召回 + 证据阈值 + Corrective + 引用。
 
 Agentic RAG 轻量闭环：
 1. query rewrite（规则优先，可选 LLM 增强）

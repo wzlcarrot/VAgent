@@ -59,6 +59,15 @@ class Supervisor:
         best: Tuple[str, str, float, int, bool] = scored[0]
         return (best[0], FALLBACK_RESPONSE, best[2])
 
+    def answer_usable(self, answer: str, result: Dict[str, Any] = None) -> bool:
+        """主流程是否已经给出可展示结果（有则不再跑闲聊兜底）。"""
+        extra = result or {}
+        if extra.get("recommended_videos") or extra.get("citations"):
+            return True
+        if extra.get("query_result"):
+            return True
+        return bool(answer) and not self._is_error(answer) and answer != FALLBACK_RESPONSE
+
     def _is_error(self, text: str) -> bool:
         """判断文本是否为错误信息"""
         if not text:
@@ -110,7 +119,7 @@ class Supervisor:
             return self._aggregate_default(outputs)
 
     def _aggregate_video_qa(self, outputs: Dict[str, Any]) -> str:
-        """聚合视频问答结果"""
+        """聚合视频内回答结果"""
         video_info: Dict[str, Any] = outputs.get("video_info", {})
         knowledge: List[Dict[str, Any]] = outputs.get("knowledge", [])
         summary: str = outputs.get("summary", "")
@@ -193,14 +202,17 @@ class Supervisor:
         response: str = outputs.get("response", "")
         query_result: Dict[str, Any] = outputs.get("query_result", {})
 
-        error_msg: str = query_result.get("error", "")
+        error_msg: str = query_result.get("error", "") or ""
+        summary_text: str = query_result.get("summary_text", "") or ""
+        # 不支持的查询和工具失败已经写了说明。error 只是内部码，不能盖住说明。
+        if error_msg and summary_text:
+            return summary_text
         if error_msg:
             return f"抱歉，无法查询：{error_msg}"
 
         if response:
             return response
 
-        summary_text: str = query_result.get("summary_text", "")
         if summary_text:
             return summary_text
 

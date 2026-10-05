@@ -32,13 +32,16 @@ describe('ChatInput 连续发送不卡死（回归）', () => {
     expect((wrapper.vm as any).isSending).toBe(false)
   })
 
-  it('isStreaming=true 时按钮应该 disable', async () => {
+  it('isStreaming=true 时展示停止按钮并可点击', async () => {
     const wrapper = mount(ChatInput, {
       props: { isStreaming: true },
     })
     await wrapper.find('textarea').setValue('内容')
-    const btn = wrapper.find('.send-btn')
-    expect((btn.element as HTMLButtonElement).disabled).toBe(true)
+    const btn = wrapper.find('.stop-btn')
+    expect(btn.exists()).toBe(true)
+    expect((btn.element as HTMLButtonElement).disabled).toBe(false)
+    await btn.trigger('click')
+    expect(wrapper.emitted('stop')).toBeTruthy()
   })
 
   it('isStreaming=false 且有内容时按钮可点击', async () => {

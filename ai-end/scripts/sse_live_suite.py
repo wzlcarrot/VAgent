@@ -87,7 +87,7 @@ def main() -> int:
     parser.add_argument("--email", default="")
     parser.add_argument("--password", default="")
     parser.add_argument("--token", default="")
-    parser.add_argument("--video-id", default="", help="片内问答 video_id（必填才能硬断言 citations）")
+    parser.add_argument("--video-id", default="", help="视频内回答 video_id（必填才能硬断言 citations）")
     parser.add_argument("--admin-key", default="", help="可选：索引该视频后再测")
     parser.add_argument("--skip-recommend", action="store_true")
     args = parser.parse_args()

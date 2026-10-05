@@ -355,3 +355,9 @@
 {"q": "这个视频适合几倍速", "expected": "video_qa_workflow", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
 {"q": "有没有勘误说明", "expected": "video_qa_workflow", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
 {"q": "视频引用了哪些资料", "expected": "video_qa_workflow", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "你会做什么", "expected": "chat_workflow", "tier": "easy"}
+{"q": "这个助手能做什么", "expected": "chat_workflow", "tier": "easy"}
+{"q": "比特币行情怎么样", "expected": "chat_workflow", "tier": "offtopic"}
+{"q": "推荐一家咖啡店", "expected": "chat_workflow", "tier": "offtopic"}
+{"q": "帮助我总结这个视频", "expected": "video_qa_workflow", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}
+{"q": "随便聊聊", "expected": "chat_workflow", "tier": "easy", "ctx": {"video_id": "video_demo_001"}}

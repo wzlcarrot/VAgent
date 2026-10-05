@@ -19,11 +19,10 @@ export default defineConfig({
       provider: 'v8',
       reporter: ['text', 'html'],
       include: ['src/**/*.{ts,vue}'],
-      // 集成胶水层（依赖路由/全局状态/复杂交互，单测成本远高于收益）不参与门槛
+      // layout/login 壳不进门槛；views 进 20% 挂载门槛，其余目录 75%
       exclude: [
         'src/**/*.{test,spec}.ts',
         'src/main.ts',
-        'src/views/**',
         'src/components/login/**',
         'src/components/layout/**',
         'src/types/**',
@@ -31,14 +30,22 @@ export default defineConfig({
         'src/App.vue',
         'src/config/**',
         'src/vite-env.d.ts',
-        // 开发调试面板（仅本地调试用，非产品功能）
         'src/components/chat/HarnessDebugPanel.vue',
       ],
       thresholds: {
-        lines: 75,
-        functions: 60,
-        statements: 75,
-        branches: 55,
+        // 页面壳单独门槛：纳入统计但不稀释核心 75%
+        'src/{api,components,composables,stores,utils}/**': {
+          lines: 75,
+          functions: 60,
+          statements: 75,
+          branches: 55,
+        },
+        'src/views/**': {
+          lines: 20,
+          functions: 8,
+          statements: 20,
+          branches: 10,
+        },
       },
     },
   },

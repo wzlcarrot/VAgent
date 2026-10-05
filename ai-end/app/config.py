@@ -4,7 +4,7 @@
 import os
 from typing import Optional
 
-from pydantic import field_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 try:
@@ -152,18 +152,18 @@ class Settings(BaseSettings):
     trace_root: str = "data/traces"
     # SSE 是否推送 harness 调试事件（node/tool/checkpoint）
     harness_sse_enabled: bool = True
-    # 视频问答：是否用 LLM 增强 query 改写（失败回退规则）
+    # 视频内回答：是否用 LLM 增强 query 改写（失败回退规则）
     video_qa_llm_rewrite: bool = True
-    # 视频问答：生成后 corrective（证据校验 + 最多一次补搜）
+    # 视频内回答：生成后 corrective（证据校验 + 最多一次补搜）
     video_qa_corrective: bool = True
-    # 视频问答：L2 grounding 用短 LLM judge（演示模式走 replay，不关闭逻辑）
+    # 视频内回答：L2 grounding 用短 LLM judge（演示模式走 replay，不关闭逻辑）
     video_qa_llm_grounding: bool = True
-    # 视频问答：Bounded ReAct 检索（最多 N 次 search_video_chunks）
+    # 视频内回答：Bounded ReAct 检索（最多 N 次 search_video_chunks）
     video_qa_react_enabled: bool = True
     video_qa_react_max_steps: int = 3
-    # 视频问答：独立评审 Agent（Reflection，与生成上下文隔离，只做质量复核）
+    # 视频内回答：独立评审 Agent（Reflection，与生成上下文隔离，只做质量复核）
     video_qa_critic_enabled: bool = True
-    # 视频问答：证据不足时语义重试（换角度改写后重检索，最多 N 次）
+    # 视频内回答：证据不足时语义重试（换角度改写后重检索，最多 N 次）
     video_qa_semantic_retry_enabled: bool = True
     video_qa_semantic_retry_max: int = 1
     # LLM Replay（CI / snapshot 测试）
@@ -183,8 +183,16 @@ class Settings(BaseSettings):
     agent_loop_deadline_seconds: float = 45.0
     # video_qa：证据已充足时提前结束检索循环（78 例 ablation：平均步数 2.00→1.00，省一次 LLM 调用）
     video_qa_react_stop_on_sufficient: bool = True
-    # 联网搜索通道占位（默认关闭；开启时走 web_search_stub）
-    web_search_enabled: bool = False
+    # 联网搜索：只给闲聊用。有 Bing Key 走官方 API，否则抽百度结果页。
+    # 视频内回答永远不走这两路（见 search_channels.active_channels）。
+    web_search_enabled: bool = True
+    bing_search_api_key: str = ""
+    bing_search_endpoint: str = "https://api.bing.microsoft.com/v7.0/search"
+    # 锁死后 ASR / LoRA / 全站 ReAct 环境变量无效；要开那些能力先 LOCK_DEFAULT_PATH=false
+    lock_default_path: bool = True
+    # 本仓独立演示：启动时写入 demo 视频片段（不依赖 ViewHub 索引回调）
+    demo_seed_enabled: bool = False
+    demo_video_id: str = "demo01"
 
     # ─── RAG 检索漏斗（recall → rerank 候选池 → top-k）───
     rag_default_top_k: int = 5
@@ -201,7 +209,7 @@ class Settings(BaseSettings):
     # 检索效果评测 HTTP 接口（仅返回召回，不调用生成 LLM）
     rag_eval_enabled: bool = True
 
-    # 同步 workflow 执行的线程池并发数（每请求并行 2 路 workflow，建议 ≥ 4 的倍数）
+    # 同步 workflow 执行的线程池并发数（主流程成功则不再跑闲聊兜底）
     agent_async_max_workers: int = 8
 
     # ─── LLM 熔断 ───
@@ -303,6 +311,15 @@ class Settings(BaseSettings):
     def cors_origins_list(self) -> list:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
 
+    @model_validator(mode="after")
+    def _enforce_default_path(self):
+        if not self.lock_default_path:
+            return self
+        self.orchestration_mode = "workflow"
+        self.video_asr_enabled = False
+        self.finetune_intent_enabled = False
+        return self
+
     @property
     def is_demo_mode(self) -> bool:
         return self.demo_mode or os.environ.get("VAGENT_DEMO_MODE", "").lower() in ("1", "true", "yes")
@@ -314,7 +331,10 @@ class Settings(BaseSettings):
 
     @property
     def effective_llm_replay_enabled(self) -> bool:
-        return self.llm_replay_enabled or self.is_demo_mode
+        """有 DeepSeek Key 时走真实 LLM；没 Key 才用 demo replay。"""
+        if (self.deepseek_api_key or "").strip():
+            return bool(self.llm_replay_enabled)
+        return bool(self.llm_replay_enabled or self.is_demo_mode)
 
     @property
     def effective_video_qa_llm_rewrite(self) -> bool:

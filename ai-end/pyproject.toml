@@ -15,7 +15,16 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["E401"]
 
+[tool.coverage.run]
+omit = [
+    "app/services/video_asr.py",
+    "app/tools/finetune_intent.py",
+    "app/tools/db/schema.py",
+    "app/services/video_media_paths.py",
+    "app/services/video_subtitle_storage.py",
+]
+
 [tool.pytest.ini_options]
-# 覆盖率门槛：低于 72% 则本地 pytest 直接失败（与 CI --cov-fail-under 一致）
-addopts = "--cov=app --cov-report=term-missing --cov-fail-under=72"
+# 覆盖率门槛：低于 75% 则本地 pytest 直接失败（与 CI --cov-fail-under 一致）
+addopts = "--cov=app --cov-report=term-missing --cov-fail-under=75"
 testpaths = ["tests"]

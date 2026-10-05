@@ -444,9 +444,12 @@ def test_abortable_http_client_no_scope_returns_none():
 
 
 def test_close_http_clients_clears_globals():
-    from app.tools.llm_tools import _sync_client, _tools_client
+    import app.tools.llm_tools as llm_mod
+
+    llm_mod._sync_client = MagicMock()
+    llm_mod._tools_client = MagicMock()
     close_http_clients()
-    assert _sync_client is None and _tools_client is None
+    assert llm_mod._sync_client is None and llm_mod._tools_client is None
 
 
 def test_aclose_async_client():

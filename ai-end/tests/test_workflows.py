@@ -61,6 +61,34 @@ class TestVideoQAWorkflow:
         assert call_kw["question"] == "这个视频讲了什么"
         assert call_kw.get("title") == "Python教程"
 
+    @patch("app.services.video_indexing.is_video_indexed", return_value=True)
+    @patch("app.agents.workflows.video_qa_workflow.VideoTools.get_video_info")
+    def test_empty_title_indexed_video_still_routes_to_knowledge(self, mock_video, _mock_idx):
+        from app.agents.workflows.video_qa_workflow import VideoQAState, router_after_video_info, video_info_node
+
+        mock_video.return_value = VideoInfo(videoId="v-empty", videoName=None, nickName="张三")
+        state: VideoQAState = {
+            "question": "这个视频讲了什么",
+            "video_id": "v-empty",
+            "user_id": "",
+            "session_id": "",
+            "video_info": {},
+            "video_error": "",
+            "knowledge": [],
+            "knowledge_sufficient": False,
+            "citations": [],
+            "corrective_applied": False,
+            "summary": "",
+            "llm_response": "",
+            "answer": "",
+            "workflow_type": "video_qa_workflow",
+        }
+        result = video_info_node(state)
+        assert result.get("video_error", "") == ""
+        assert result["video_info"]["title"] == "v-empty"
+        state.update(result)
+        assert router_after_video_info(state) == "knowledge_node"
+
     @patch("app.agents.workflows.video_qa_workflow.VideoTools.get_video_info")
     def test_video_info_node_without_video(self, mock_video):
         from app.agents.workflows.video_qa_workflow import VideoQAState, video_info_node
@@ -352,6 +380,120 @@ class TestUserDataWorkflow:
         assert intent["time_range"] == "today"
         assert intent["aggregation"] == "count"
 
+    def test_intent_node_keyword_like_count_week_not_total(self):
+        from app.agents.workflows.user_data_workflow import UserDataState, intent_node
+
+        for question in ("这周点赞了多少", "本周点赞了多少"):
+            state: UserDataState = {
+                "question": question,
+                "user_id": "u1", "session_id": "",
+                "intent": {}, "query_result": {},
+                "response": "", "answer": "", "workflow_type": "user_data_workflow",
+            }
+            intent = intent_node(state)["intent"]
+            assert intent["data_type"] == "like", question
+            assert intent["time_range"] == "week", question
+            assert intent["aggregation"] == "count", question
+
+    def test_intent_node_keyword_week_lists_not_all_time(self):
+        from app.agents.workflows.user_data_workflow import UserDataState, intent_node
+
+        like: UserDataState = {
+            "question": "这周点赞了哪些",
+            "user_id": "u1", "session_id": "",
+            "intent": {}, "query_result": {},
+            "response": "", "answer": "", "workflow_type": "user_data_workflow",
+        }
+        like_intent = intent_node(like)["intent"]
+        assert like_intent["data_type"] == "like"
+        assert like_intent["time_range"] == "week"
+        assert like_intent["aggregation"] == "list"
+
+        fav: UserDataState = {
+            "question": "本周收藏了哪些",
+            "user_id": "u1", "session_id": "",
+            "intent": {}, "query_result": {},
+            "response": "", "answer": "", "workflow_type": "user_data_workflow",
+        }
+        fav_intent = intent_node(fav)["intent"]
+        assert fav_intent["data_type"] == "favorite"
+        assert fav_intent["time_range"] == "week"
+        assert fav_intent["aggregation"] == "list"
+
+        all_time: UserDataState = {
+            "question": "我点赞了哪些",
+            "user_id": "u1", "session_id": "",
+            "intent": {}, "query_result": {},
+            "response": "", "answer": "", "workflow_type": "user_data_workflow",
+        }
+        assert intent_node(all_time)["intent"]["time_range"] == "all"
+
+        today_like: UserDataState = {
+            "question": "今天点赞了哪些",
+            "user_id": "u1", "session_id": "",
+            "intent": {}, "query_result": {},
+            "response": "", "answer": "", "workflow_type": "user_data_workflow",
+        }
+        today_like_intent = intent_node(today_like)["intent"]
+        assert today_like_intent["data_type"] == "like"
+        assert today_like_intent["time_range"] == "today"
+        assert today_like_intent["aggregation"] == "list"
+
+        today_fav: UserDataState = {
+            "question": "今天收藏了哪些",
+            "user_id": "u1", "session_id": "",
+            "intent": {}, "query_result": {},
+            "response": "", "answer": "", "workflow_type": "user_data_workflow",
+        }
+        today_fav_intent = intent_node(today_fav)["intent"]
+        assert today_fav_intent["data_type"] == "favorite"
+        assert today_fav_intent["time_range"] == "today"
+
+        jinri_like: UserDataState = {
+            "question": "今日点赞了哪些",
+            "user_id": "u1", "session_id": "",
+            "intent": {}, "query_result": {},
+            "response": "", "answer": "", "workflow_type": "user_data_workflow",
+        }
+        jinri_like_intent = intent_node(jinri_like)["intent"]
+        assert jinri_like_intent["data_type"] == "like"
+        assert jinri_like_intent["time_range"] == "today"
+        assert jinri_like_intent["aggregation"] == "list"
+
+        jinri_fav: UserDataState = {
+            "question": "今日收藏了哪些",
+            "user_id": "u1", "session_id": "",
+            "intent": {}, "query_result": {},
+            "response": "", "answer": "", "workflow_type": "user_data_workflow",
+        }
+        jinri_fav_intent = intent_node(jinri_fav)["intent"]
+        assert jinri_fav_intent["data_type"] == "favorite"
+        assert jinri_fav_intent["time_range"] == "today"
+        assert jinri_fav_intent["aggregation"] == "list"
+
+    def test_intent_node_keyword_jinri_counts_and_history_not_all_time(self):
+        from app.agents.workflows.user_data_workflow import UserDataState, intent_node
+
+        cases = [
+            ("今日点赞了多少", "like", "count"),
+            ("今日点了多少赞", "like", "count"),
+            ("今日收藏了多少", "favorite", "count"),
+            ("今日看了哪些视频", "history", "list"),
+            ("今日看过什么视频", "history", "list"),
+            ("今日观看了哪些", "history", "list"),
+        ]
+        for question, data_type, aggregation in cases:
+            state: UserDataState = {
+                "question": question,
+                "user_id": "u1", "session_id": "",
+                "intent": {}, "query_result": {},
+                "response": "", "answer": "", "workflow_type": "user_data_workflow",
+            }
+            intent = intent_node(state)["intent"]
+            assert intent["data_type"] == data_type, question
+            assert intent["time_range"] == "today", question
+            assert intent["aggregation"] == aggregation, question
+
     def test_intent_node_keyword_favorite_list(self):
         from app.agents.workflows.user_data_workflow import UserDataState, intent_node
 
@@ -395,7 +537,43 @@ class TestUserDataWorkflow:
             result = intent_node(state)
             intent = result["intent"]
             assert intent["data_type"] == "history", f"{question} 未识别为 history: {intent}"
+            assert intent["time_range"] == "all", f"{question} 不应按今天/本周过滤: {intent}"
             assert intent["aggregation"] == "list", f"{question} 未识别为 list: {intent}"
+
+    def test_intent_node_keyword_favorite_week_and_history_ranges(self):
+        from app.agents.workflows.user_data_workflow import UserDataState, intent_node
+
+        week_fav: UserDataState = {
+            "question": "这周收藏了多少",
+            "user_id": "u1", "session_id": "",
+            "intent": {}, "query_result": {},
+            "response": "", "answer": "", "workflow_type": "user_data_workflow",
+        }
+        fav = intent_node(week_fav)["intent"]
+        assert fav["data_type"] == "favorite"
+        assert fav["time_range"] == "week"
+        assert fav["aggregation"] == "count"
+
+        today_hist: UserDataState = {
+            "question": "我今天看了什么",
+            "user_id": "u1", "session_id": "",
+            "intent": {}, "query_result": {},
+            "response": "", "answer": "", "workflow_type": "user_data_workflow",
+        }
+        hist = intent_node(today_hist)["intent"]
+        assert hist["data_type"] == "history"
+        assert hist["time_range"] == "today"
+        assert hist["aggregation"] == "list"
+
+        week_hist: UserDataState = {
+            "question": "这周看了什么",
+            "user_id": "u1", "session_id": "",
+            "intent": {}, "query_result": {},
+            "response": "", "answer": "", "workflow_type": "user_data_workflow",
+        }
+        week = intent_node(week_hist)["intent"]
+        assert week["data_type"] == "history"
+        assert week["time_range"] == "week"
 
     def test_intent_node_keyword_top_liked(self):
         from app.agents.workflows.user_data_workflow import UserDataState, intent_node
@@ -511,6 +689,78 @@ class TestUserDataWorkflow:
         result = query_node(state)
         assert result["query_result"]["total"] == 15
         assert "测试视频" in result["query_result"]["summary_text"]
+        assert "最近收藏" in result["query_result"]["summary_text"]
+        mock_fav.assert_called_with("u1", time_range="all")
+
+    @patch("app.agents.workflows.user_data_workflow.UserTools.get_recent_liked_videos")
+    def test_query_node_like_list_week(self, mock_likes):
+        from app.agents.workflows.user_data_workflow import UserDataState, query_node
+
+        mock_likes.return_value = {
+            "videos": [{"video_id": "v1", "video_name": "本周视频"}],
+            "total": 1,
+        }
+        state: UserDataState = {
+            "question": "这周点赞了哪些",
+            "user_id": "u1", "session_id": "",
+            "intent": {"data_type": "like", "time_range": "week", "aggregation": "list"},
+            "query_result": {},
+            "response": "", "answer": "", "workflow_type": "user_data_workflow",
+        }
+        result = query_node(state)
+        assert result["query_result"]["summary_text"].startswith("你这周点赞了 1 个视频")
+        assert "本周视频" in result["query_result"]["summary_text"]
+        assert "只列出" not in result["query_result"]["summary_text"]
+        mock_likes.assert_called_with("u1", time_range="week")
+
+    @patch("app.agents.workflows.user_data_workflow.UserTools.get_recent_liked_videos")
+    @patch("app.agents.workflows.user_data_workflow.UserTools.get_recent_favorites")
+    @patch("app.agents.workflows.user_data_workflow.UserTools.get_recent_history")
+    def test_query_node_range_list_notes_truncation(self, mock_history, mock_fav, mock_likes):
+        from app.agents.workflows.user_data_workflow import UserDataState, query_node
+
+        names = [{"video_id": str(i), "video_name": f"视频{i}"} for i in range(10)]
+        mock_likes.return_value = {"videos": names, "total": 12}
+        mock_fav.return_value = {"videos": names, "total": 15}
+        mock_history.return_value = {"videos": names, "total": 11}
+
+        def _state(data_type: str, time_range: str) -> UserDataState:
+            return {
+                "question": "名单",
+                "user_id": "u1", "session_id": "",
+                "intent": {"data_type": data_type, "time_range": time_range, "aggregation": "list"},
+                "query_result": {},
+                "response": "", "answer": "", "workflow_type": "user_data_workflow",
+            }
+
+        like_text = query_node(_state("like", "today"))["query_result"]["summary_text"]
+        assert like_text.startswith("你今天点赞了 12 个视频，这里只列出最近 10 个：")
+        assert like_text.count("\n- ") == 10
+
+        fav_text = query_node(_state("favorite", "week"))["query_result"]["summary_text"]
+        assert "你这周收藏了 15 个视频，这里只列出最近 10 个：" in fav_text
+
+        hist_text = query_node(_state("history", "today"))["query_result"]["summary_text"]
+        assert "你今天看了 11 个视频，这里只列出最近 10 个：" in hist_text
+
+    @patch("app.agents.workflows.user_data_workflow.UserTools.get_recent_liked_videos")
+    def test_query_node_like_list_missing_title(self, mock_likes):
+        from app.agents.workflows.user_data_workflow import UserDataState, query_node
+
+        mock_likes.return_value = {
+            "videos": [{"video_id": "v1", "video_name": None}, {"video_id": "v2", "video_name": ""}],
+            "total": 2,
+        }
+        state: UserDataState = {
+            "question": "我点赞了哪些",
+            "user_id": "u1", "session_id": "",
+            "intent": {"data_type": "like", "time_range": "all", "aggregation": "list"},
+            "query_result": {},
+            "response": "", "answer": "", "workflow_type": "user_data_workflow",
+        }
+        text = query_node(state)["query_result"]["summary_text"]
+        assert "None" not in text
+        assert text.count("未知视频") == 2
 
     @patch("app.agents.workflows.user_data_workflow.UserTools.get_top_liked_videos")
     def test_query_node_top_liked(self, mock_top):
@@ -531,6 +781,22 @@ class TestUserDataWorkflow:
         result = query_node(state)
         assert "Python教程" in result["query_result"]["summary_text"]
         assert "10" in result["query_result"]["summary_text"]
+
+    @patch("app.agents.workflows.user_data_workflow.UserTools.get_top_liked_videos")
+    def test_query_node_top_liked_missing_title(self, mock_top):
+        from app.agents.workflows.user_data_workflow import UserDataState, query_node
+
+        mock_top.return_value = [{"video_id": "v1", "video_name": None, "count": 4}]
+        state: UserDataState = {
+            "question": "我点赞最多的视频",
+            "user_id": "u1", "session_id": "",
+            "intent": {"data_type": "like", "time_range": "all", "aggregation": "top"},
+            "query_result": {},
+            "response": "", "answer": "", "workflow_type": "user_data_workflow",
+        }
+        text = query_node(state)["query_result"]["summary_text"]
+        assert "《未知视频》" in text
+        assert "None" not in text
 
     def test_query_node_no_user_id(self):
         from app.agents.workflows.user_data_workflow import UserDataState, query_node
@@ -580,6 +846,105 @@ class TestUserDataWorkflow:
         result = query_node(state)
         assert result["query_result"]["total"] == 8
         assert "看过视频" in result["query_result"]["summary_text"]
+        assert "最近观看" in result["query_result"]["summary_text"]
+        mock_history.assert_called_with("u1", time_range="all")
+
+    @patch("app.agents.workflows.user_data_workflow.UserTools.get_week_favorite_count")
+    def test_query_node_week_favorite(self, mock_count):
+        from app.agents.workflows.user_data_workflow import UserDataState, query_node
+
+        mock_count.return_value = 4
+        state: UserDataState = {
+            "question": "这周收藏了多少",
+            "user_id": "u1", "session_id": "",
+            "intent": {"data_type": "favorite", "time_range": "week", "aggregation": "count"},
+            "query_result": {},
+            "response": "", "answer": "", "workflow_type": "user_data_workflow",
+        }
+        result = query_node(state)
+        assert result["query_result"]["summary_text"] == "你这周共收藏了 4 次"
+        mock_count.assert_called_once_with("u1")
+
+    @patch("app.agents.workflows.user_data_workflow.UserTools.get_recent_history")
+    def test_query_node_history_today(self, mock_history):
+        from app.agents.workflows.user_data_workflow import UserDataState, query_node
+
+        mock_history.return_value = {
+            "videos": [{"video_id": "v1", "video_name": "今日视频"}],
+            "total": 1,
+        }
+        state: UserDataState = {
+            "question": "我今天看了什么",
+            "user_id": "u1", "session_id": "",
+            "intent": {"data_type": "history", "time_range": "today", "aggregation": "list"},
+            "query_result": {},
+            "response": "", "answer": "", "workflow_type": "user_data_workflow",
+        }
+        result = query_node(state)
+        assert result["query_result"]["summary_text"].startswith("你今天看了 1 个视频")
+        assert "今日视频" in result["query_result"]["summary_text"]
+        mock_history.assert_called_with("u1", time_range="today")
+
+    def test_parse_intent_skips_view_count_as_today_history(self):
+        from app.agents.workflows.user_data_workflow import _parse_intent_keywords
+
+        assert _parse_intent_keywords("我今天看了哪些视频") == "history_today"
+        assert _parse_intent_keywords("我今天这个视频观看量多少") == ""
+
+    @patch("app.agents.workflows.user_data_workflow.UserTools.get_recent_favorites")
+    def test_query_node_favorite_list_today(self, mock_fav):
+        from app.agents.workflows.user_data_workflow import UserDataState, query_node
+
+        mock_fav.return_value = {
+            "videos": [{"video_id": "v1", "video_name": "今日收藏"}],
+            "total": 1,
+        }
+        state: UserDataState = {
+            "question": "今天收藏了哪些",
+            "user_id": "u1", "session_id": "",
+            "intent": {"data_type": "favorite", "time_range": "today", "aggregation": "list"},
+            "query_result": {},
+            "response": "", "answer": "", "workflow_type": "user_data_workflow",
+        }
+        text = query_node(state)["query_result"]["summary_text"]
+        assert text.startswith("你今天收藏了 1 个视频")
+        assert "今日收藏" in text
+        mock_fav.assert_called_with("u1", time_range="today")
+
+    @patch("app.agents.workflows.user_data_workflow.UserTools.get_recent_history")
+    def test_query_node_history_missing_title(self, mock_history):
+        from app.agents.workflows.user_data_workflow import UserDataState, query_node
+
+        mock_history.return_value = {
+            "videos": [{"video_id": "v1", "video_name": ""}, {"video_id": "v2", "video_name": None}],
+            "total": 2,
+        }
+        state: UserDataState = {
+            "question": "我的播放历史",
+            "user_id": "u1", "session_id": "",
+            "intent": {"data_type": "history", "time_range": "all", "aggregation": "list"},
+            "query_result": {},
+            "response": "", "answer": "", "workflow_type": "user_data_workflow",
+        }
+        text = query_node(state)["query_result"]["summary_text"]
+        assert text.count("未知视频") == 2
+        assert "\n- \n" not in text
+        assert "None" not in text
+
+    @patch("app.agents.workflows.user_data_workflow.LLM_tools.chat_sync")
+    def test_response_node_returns_exact_summary(self, mock_llm):
+        from app.agents.workflows.user_data_workflow import response_node
+
+        state = {
+            "question": "我有多少硬币",
+            "user_id": "u1",
+            "session_id": "",
+            "query_result": {"count": 128, "summary_text": "你当前共有 128 枚硬币"},
+        }
+        result = response_node(state)
+        mock_llm.assert_not_called()
+        assert result["answer"] == "你当前共有 128 枚硬币"
+        assert result["response"] == "你当前共有 128 枚硬币"
 
     @patch("app.agents.workflows.user_data_workflow.LLM_tools.chat")
     @patch("app.agents.workflows.user_data_workflow.UserTools.get_total_like_count")

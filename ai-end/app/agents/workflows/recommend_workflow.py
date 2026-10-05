@@ -50,6 +50,22 @@ def _rank_candidate_ids(
     return [vid for _, _, vid in ranked[:limit]]
 
 
+def _demote_by_feedback(videos: List[Dict[str, Any]], user_id: str, watched: set, limit: int) -> List[Dict[str, Any]]:
+    """冷启动和有播放记录的召回共用同一套降权：没用排最后，已看次之。"""
+    not_helpful = set()
+    if user_id:
+        try:
+            from app.tools.memory_tools import MemoryTools
+            not_helpful = set(MemoryTools.get_negative_feedback_video_ids(user_id))
+        except Exception:
+            not_helpful = set()
+    order = _rank_candidate_ids(
+        [v.get("video_id") for v in videos], watched, not_helpful, limit,
+    )
+    by_id = {v.get("video_id"): v for v in videos}
+    return [by_id[vid] for vid in order if vid in by_id]
+
+
 def _build_recommend_markdown(videos: List[Dict[str, Any]], reasons: List[str] = None) -> str:
     """推荐结果生成纯 Markdown 文本（标题/封面/关键词/作者/创建时间/播放量/理由）。
 
@@ -60,7 +76,7 @@ def _build_recommend_markdown(videos: List[Dict[str, Any]], reasons: List[str] =
     reasons = reasons or []
     blocks = []
     for i, v in enumerate(videos):
-        title = v.get("title", "未知视频")
+        title = v.get("title") or "未知视频"
         cover = v.get("cover", "")
         tags = v.get("tags", "") or []
         author = v.get("author", "")
@@ -237,10 +253,12 @@ def search_node(state: RecommendState) -> dict:
         if vi:
             result_videos.append({
                 "video_id": vi.videoId,
-                "title": vi.videoName,
+                "title": vi.videoName or "未知视频",
                 "cover": build_cover_url(vi.videoCover) if vi.videoCover else "",
                 "author": vi.nickName,
                 "tags": vi.tags,
+                "category_id": str(vi.categoryId) if vi.categoryId else "",
+                "p_category_id": str(vi.pCategoryId) if vi.pCategoryId else "",
                 "create_time": str(vi.createTime) if vi.createTime else "",
                 "play_count": vi.playCount or 0
             })
@@ -267,18 +285,24 @@ def reason_node(state: RecommendState) -> dict:
         create_time = video.get("create_time", "") or ""
         video_id = video.get("video_id", "")
 
-        # 用主站真实行为生成理由："你常看科技区且点过同类" 之类，而非空泛元数据拼接
+        # 用主站真实行为生成理由。点赞、收藏命中的是这一支视频，不是同类。
         tag_list = [t.strip() for t in str(tags).split(",") if t.strip()][:3]
         overlap = [t for t in tag_list if t in favorite_tags]
-        is_liked = video_id in liked_ids or video_id in favorite_ids
+        liked_this = video_id in liked_ids
+        favorited_this = video_id in favorite_ids
+        # 画像分区是 categoryId，没有子分区才退回父分区。候选视频用同一规则比对。
+        video_region = str(video.get("category_id") or video.get("p_category_id") or "")
+        region_hit = bool(video_region) and video_region in {str(r) for r in favorite_regions if r}
 
         parts = []
         if overlap:
             parts.append(f"你常看「{'/'.join(overlap[:2])}」")
-        elif favorite_regions:
+        elif region_hit:
             parts.append("你常看这个分区")
-        if is_liked:
-            parts.append("你点过同类")
+        if liked_this:
+            parts.append("你点过这个")
+        elif favorited_this:
+            parts.append("你收藏过这个")
         if author and len(parts) < 2:
             parts.append(f"作者 {author}")
         if tag_list and not overlap and len(parts) < 2:
@@ -301,7 +325,9 @@ def reason_node(state: RecommendState) -> dict:
 def has_history_router(state: RecommendState) -> Literal["search_node", "summary_node"]:
     user_profile = state.get("user_profile", {})
     play_count = user_profile.get("play_count", 0)
-    if play_count > 0:
+    liked = user_profile.get("liked_video_ids") or []
+    favorites = user_profile.get("favorite_video_ids") or []
+    if play_count > 0 or liked or favorites:
         return "search_node"
     return "summary_node"
 
@@ -324,6 +350,8 @@ def summary_node(state: RecommendState) -> dict:
 def cold_start_node(state: RecommendState) -> dict:
     question = (state.get("question") or "").strip()
     sid = state.get("session_id", "")
+    user_id = state.get("user_id", "")
+    watched = set((state.get("user_profile") or {}).get("watched_video_ids") or [])
 
     if question:
         top_k = state.get("top_k", 5)
@@ -342,7 +370,7 @@ def cold_start_node(state: RecommendState) -> dict:
                 seen_ids.add(video_id)
                 recommended.append({
                     "video_id": video_id,
-                    "title": r.get("video_name", "未知视频"),
+                    "title": r.get("video_name") or "未知视频",
                     "cover": "",
                     "author": "",
                     "tags": ""
@@ -359,6 +387,7 @@ def cold_start_node(state: RecommendState) -> dict:
                     v["create_time"] = str(info.createTime) if info.createTime else ""
                     v["play_count"] = info.playCount or 0
         if recommended:
+            recommended = _demote_by_feedback(recommended, user_id, watched, len(recommended))
             reasons = []
             for v in recommended[:top_k]:
                 title = v.get("title", "")
@@ -382,7 +411,7 @@ def cold_start_node(state: RecommendState) -> dict:
     for v in recent:
         recommended.append({
             "video_id": v.videoId,
-            "title": v.videoName,
+            "title": v.videoName or "未知视频",
             "cover": build_cover_url(v.videoCover) if v.videoCover else "",
             "author": v.nickName,
             "tags": v.tags,
@@ -391,6 +420,7 @@ def cold_start_node(state: RecommendState) -> dict:
         })
 
     top_k = state.get("top_k", 5)
+    recommended = _demote_by_feedback(recommended, user_id, watched, len(recommended))
     reasons = []
     for v in recommended[:top_k]:
         title = v.get("title", "")

@@ -31,11 +31,18 @@ class UserDataState(TypedDict):
 INTENT_MAP = {
     "like_count_today": {"data_type": "like", "time_range": "today", "aggregation": "count"},
     "favorite_count_today": {"data_type": "favorite", "time_range": "today", "aggregation": "count"},
+    "favorite_count_week": {"data_type": "favorite", "time_range": "week", "aggregation": "count"},
     "like_count_total": {"data_type": "like", "time_range": "all", "aggregation": "count"},
     "favorite_count_total": {"data_type": "favorite", "time_range": "all", "aggregation": "count"},
     "like_list": {"data_type": "like", "time_range": "all", "aggregation": "list"},
+    "like_list_today": {"data_type": "like", "time_range": "today", "aggregation": "list"},
+    "like_list_week": {"data_type": "like", "time_range": "week", "aggregation": "list"},
     "favorite_list": {"data_type": "favorite", "time_range": "all", "aggregation": "list"},
+    "favorite_list_today": {"data_type": "favorite", "time_range": "today", "aggregation": "list"},
+    "favorite_list_week": {"data_type": "favorite", "time_range": "week", "aggregation": "list"},
     "history_list": {"data_type": "history", "time_range": "all", "aggregation": "list"},
+    "history_today": {"data_type": "history", "time_range": "today", "aggregation": "list"},
+    "history_week": {"data_type": "history", "time_range": "week", "aggregation": "list"},
     "like_top": {"data_type": "like", "time_range": "all", "aggregation": "top"},
     "week_like_count": {"data_type": "like", "time_range": "week", "aggregation": "count"},
     "coin_count": {"data_type": "coin", "time_range": "all", "aggregation": "count"},
@@ -44,8 +51,29 @@ INTENT_MAP = {
 
 INTENT_KEYWORDS = [
     (["今天", "点赞", "多少"], "like_count_today"),
+    (["今日", "点赞", "多少"], "like_count_today"),
     (["今天", "赞", "多少"], "like_count_today"),
+    (["今日", "赞", "多少"], "like_count_today"),
+    (["这周", "点赞", "多少"], "week_like_count"),
+    (["本周", "点赞", "多少"], "week_like_count"),
+    (["这周", "赞", "多少"], "week_like_count"),
+    (["本周", "赞", "多少"], "week_like_count"),
     (["今天", "收藏", "多少"], "favorite_count_today"),
+    (["今日", "收藏", "多少"], "favorite_count_today"),
+    (["这周", "收藏", "多少"], "favorite_count_week"),
+    (["本周", "收藏", "多少"], "favorite_count_week"),
+    (["今天", "看了"], "history_today"),
+    (["今日", "看了"], "history_today"),
+    (["今天", "看过"], "history_today"),
+    (["今日", "看过"], "history_today"),
+    (["今天", "观看"], "history_today"),
+    (["今日", "观看"], "history_today"),
+    (["这周", "看了"], "history_week"),
+    (["这周", "看过"], "history_week"),
+    (["这周", "观看"], "history_week"),
+    (["本周", "看了"], "history_week"),
+    (["本周", "看过"], "history_week"),
+    (["本周", "观看"], "history_week"),
     (["总共", "点赞", "多少"], "like_count_total"),
     (["总共", "赞", "多少"], "like_count_total"),
     (["总共", "收藏", "多少"], "favorite_count_total"),
@@ -53,6 +81,14 @@ INTENT_KEYWORDS = [
     (["赞了", "多少"], "like_count_total"),
     (["收藏", "多少"], "favorite_count_total"),
     (["收藏了", "多少"], "favorite_count_total"),
+    (["今天", "点赞", "哪些"], "like_list_today"),
+    (["今日", "点赞", "哪些"], "like_list_today"),
+    (["今天", "收藏", "哪些"], "favorite_list_today"),
+    (["今日", "收藏", "哪些"], "favorite_list_today"),
+    (["这周", "点赞", "哪些"], "like_list_week"),
+    (["本周", "点赞", "哪些"], "like_list_week"),
+    (["这周", "收藏", "哪些"], "favorite_list_week"),
+    (["本周", "收藏", "哪些"], "favorite_list_week"),
     (["点赞", "哪些"], "like_list"),
     (["收藏", "哪些"], "favorite_list"),
     (["播放历史", "历史"], "history_list"),
@@ -79,9 +115,21 @@ INTENT_KEYWORDS = [
 ]
 
 
+def _list_lead(time_range: str, total: int, shown: int, all_time_lead: str) -> str:
+    """今天/本周只取出一部分时说明被截断。全部时间沿用「最近」。"""
+    if time_range in ("today", "week"):
+        if shown and total > shown:
+            return f"，这里只列出最近 {shown} 个：\n"
+        return "：\n"
+    return all_time_lead
+
+
 def _parse_intent_keywords(question: str) -> str:
     for keywords, intent in INTENT_KEYWORDS:
         if all(k in question for k in keywords):
+            # 「观看」是「观看量」的子串，片内播放量不能当成今日观看历史。
+            if intent.startswith("history") and "观看" in keywords and "观看量" in question:
+                continue
             return intent
     return ""
 
@@ -99,11 +147,18 @@ def intent_node(state: UserDataState) -> dict:
                  "只返回以下 JSON 格式之一，不要解释：\n"
                  '- {"data_type": "like", "time_range": "today", "aggregation": "count"}\n'
                  '- {"data_type": "like", "time_range": "all", "aggregation": "count"}\n'
+                 '- {"data_type": "like", "time_range": "today", "aggregation": "list"}\n'
+                 '- {"data_type": "like", "time_range": "week", "aggregation": "list"}\n'
                  '- {"data_type": "like", "time_range": "all", "aggregation": "list"}\n'
                  '- {"data_type": "like", "time_range": "all", "aggregation": "top"}\n'
                  '- {"data_type": "favorite", "time_range": "today", "aggregation": "count"}\n'
+                 '- {"data_type": "favorite", "time_range": "week", "aggregation": "count"}\n'
                  '- {"data_type": "favorite", "time_range": "all", "aggregation": "count"}\n'
+                 '- {"data_type": "favorite", "time_range": "today", "aggregation": "list"}\n'
+                 '- {"data_type": "favorite", "time_range": "week", "aggregation": "list"}\n'
                  '- {"data_type": "favorite", "time_range": "all", "aggregation": "list"}\n'
+                 '- {"data_type": "history", "time_range": "today", "aggregation": "list"}\n'
+                 '- {"data_type": "history", "time_range": "week", "aggregation": "list"}\n'
                  '- {"data_type": "history", "time_range": "all", "aggregation": "list"}\n'
                  '- {"data_type": "like", "time_range": "week", "aggregation": "count"}\n'
                  '- {"data_type": "coin", "time_range": "all", "aggregation": "count"}\n'
@@ -151,44 +206,74 @@ def query_node(state: UserDataState) -> dict:
             if time_range == "today":
                 count = UserTools.get_today_favorite_count(user_id)
                 return {"count": count, "summary_text": f"你今天共收藏了 {count} 次"}
+            elif time_range == "week":
+                count = UserTools.get_week_favorite_count(user_id)
+                return {"count": count, "summary_text": f"你这周共收藏了 {count} 次"}
             else:
                 count = UserTools.get_total_favorite_count(user_id)
                 return {"count": count, "summary_text": f"你共收藏了 {count} 次"}
 
         elif data_type == "like" and aggregation == "list":
-            result_data = UserTools.get_recent_liked_videos(user_id)
+            result_data = UserTools.get_recent_liked_videos(user_id, time_range=time_range or "all")
             videos = result_data.get("videos", [])
             total = result_data.get("total", 0)
-            video_names = [v.get("video_name", "未知视频") for v in videos[:10]]
-            summary = f"你共点赞了 {total} 个视频"
-            if video_names:
-                summary += "，最近点赞：\n" + "\n".join(f"- {name}" for name in video_names)
+            video_names = [v.get("video_name") or "未知视频" for v in videos[:10]]
+            if time_range == "today":
+                summary = f"你今天点赞了 {total} 个视频"
+                empty = "，今天还没有点赞过视频"
+            elif time_range == "week":
+                summary = f"你这周点赞了 {total} 个视频"
+                empty = "，这周还没有点赞过视频"
             else:
-                summary += "，还没有点赞过视频"
+                summary = f"你共点赞了 {total} 个视频"
+                empty = "，还没有点赞过视频"
+            lead = _list_lead(time_range, total, len(video_names), "，最近点赞：\n")
+            if video_names:
+                summary += lead + "\n".join(f"- {name}" for name in video_names)
+            else:
+                summary += empty
             return {"videos": video_names, "total": total, "summary_text": summary}
 
         elif data_type == "favorite" and aggregation == "list":
-            result_data = UserTools.get_recent_favorites(user_id)
+            result_data = UserTools.get_recent_favorites(user_id, time_range=time_range or "all")
             videos = result_data.get("videos", [])
             total = result_data.get("total", 0)
-            video_names = [v.get("video_name", "未知视频") for v in videos[:10]]
-            summary = f"你共收藏了 {total} 个视频"
-            if video_names:
-                summary += "，最近收藏：\n" + "\n".join(f"- {name}" for name in video_names)
+            video_names = [v.get("video_name") or "未知视频" for v in videos[:10]]
+            if time_range == "today":
+                summary = f"你今天收藏了 {total} 个视频"
+                empty = "，今天还没有收藏过视频"
+            elif time_range == "week":
+                summary = f"你这周收藏了 {total} 个视频"
+                empty = "，这周还没有收藏过视频"
             else:
-                summary += "，还没有收藏过视频"
+                summary = f"你共收藏了 {total} 个视频"
+                empty = "，还没有收藏过视频"
+            lead = _list_lead(time_range, total, len(video_names), "，最近收藏：\n")
+            if video_names:
+                summary += lead + "\n".join(f"- {name}" for name in video_names)
+            else:
+                summary += empty
             return {"videos": video_names, "total": total, "summary_text": summary}
 
         elif data_type == "history" and aggregation == "list":
-            result_data = UserTools.get_recent_history(user_id)
+            result_data = UserTools.get_recent_history(user_id, time_range=time_range or "all")
             videos = result_data.get("videos", [])
             total = result_data.get("total", 0)
-            video_names = [v.get("video_name", "未知视频") for v in videos[:10]]
-            summary = f"你共观看了 {total} 个视频"
-            if video_names:
-                summary += "，最近观看：\n" + "\n".join(f"- {name}" for name in video_names)
+            video_names = [v.get("video_name") or "未知视频" for v in videos[:10]]
+            if time_range == "today":
+                summary = f"你今天看了 {total} 个视频"
+                empty = "，今天还没有播放记录"
+            elif time_range == "week":
+                summary = f"你这周看了 {total} 个视频"
+                empty = "，这周还没有播放记录"
             else:
-                summary += "，还没有播放记录"
+                summary = f"你共观看了 {total} 个视频"
+                empty = "，还没有播放记录"
+            if video_names:
+                lead = _list_lead(time_range, total, len(video_names), "，最近观看：\n")
+                summary += lead + "\n".join(f"- {name}" for name in video_names)
+            else:
+                summary += empty
             return {"videos": video_names, "total": total, "summary_text": summary}
 
         elif data_type == "like" and aggregation == "top":
@@ -196,7 +281,7 @@ def query_node(state: UserDataState) -> dict:
             if top_videos:
                 parts = []
                 for v in top_videos[:3]:
-                    name = v.get("video_name", "未知视频")
+                    name = v.get("video_name") or "未知视频"
                     cnt = v.get("count", 0)
                     parts.append(f"《{name}》（{cnt}次）")
                 summary = "你点赞最多的视频：\n" + "\n".join(f"{i+1}. {p}" for i, p in enumerate(parts))
@@ -231,24 +316,12 @@ def query_node(state: UserDataState) -> dict:
 
 @checkpoint("response_node")
 def response_node(state: UserDataState) -> dict:
+    """点赞、收藏、硬币等查询已经有确定的 summary_text，直接返回，不再交给模型改写数字。"""
     query_result = state.get("query_result", {})
-    summary_text = query_result.get("summary_text", "")
-
-    if query_result.get("error"):
+    summary_text = query_result.get("summary_text", "") or ""
+    if summary_text:
         return {"response": summary_text, "answer": summary_text}
-
-    question = state.get("question", "")
-    messages = [
-        {"role": "system", "content": "你是一个温柔友好的用户数据查询助手。根据查询结果，用自然语言回答用户。"
-         "回答要简洁亲切，直接告诉用户结果。如果数据为空，用鼓励的语气。不要添加查询结果中没有的信息。"},
-        {"role": "user", "content": f"用户问题：{question}\n\n查询结果：{summary_text}"}
-    ]
-
-    result_text = LLM_tools.chat_sync(messages, temperature=0.3)
-    if not result_text:
-        result_text = summary_text
-
-    return {"response": result_text, "answer": result_text}
+    return {"response": FALLBACK_RESPONSE, "answer": FALLBACK_RESPONSE}
 
 
 @checkpoint("supervisor_node")

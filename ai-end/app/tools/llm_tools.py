@@ -516,7 +516,8 @@ class LLM_tools:
 
     @staticmethod
     def chat_sync(messages: List[Dict[str, str]], temperature: float = 0.7,
-                  max_tokens: int = 2000, provider: Optional[str] = None) -> Optional[str]:
+                  max_tokens: int = 2000, provider: Optional[str] = None,
+                  image_urls: Optional[List[str]] = None) -> Optional[str]:
         try:
             from app.harness.llm_replay import replay_chat, replay_enabled
             if replay_enabled():
@@ -528,12 +529,14 @@ class LLM_tools:
         base_url, model, api_key = _resolve_provider(provider)
         prov = provider or settings.llm_provider
 
+        msgs = LLM_tools._build_vision_messages(messages, image_urls or [])
+
         def _do(attempt: int) -> str:
             client = _get_sync_client()
             response = client.post(
                 f"{base_url}/chat/completions",
                 headers=_get_headers(api_key),
-                json=_build_payload(messages, model, temperature, max_tokens),
+                json=_build_payload(msgs, model, temperature, max_tokens),
             )
             response.raise_for_status()
             data = response.json()

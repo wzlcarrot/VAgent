@@ -1,4 +1,4 @@
-"""对话记忆（Memory）测试：视频问答指代消解。"""
+"""对话记忆（Memory）测试：视频内回答指代消解。"""
 from unittest.mock import patch
 
 from app.agents.workflows import video_qa_workflow as vq
@@ -40,6 +40,16 @@ def test_format_history_caps_rounds():
 def test_format_history_ignores_non_dict():
     text = vq._format_history(["bad", None, {"user": "有效", "assistant": "答"}], max_rounds=5)
     assert "有效" in text
+
+
+def test_format_history_keeps_summary_outside_window():
+    history = [{"system_memory": "【历史对话摘要】\n用户问过A"}] + [
+        {"user": f"q{i}", "assistant": f"a{i}"} for i in range(10)
+    ]
+    text = vq._format_history(history, max_rounds=2)
+    assert "用户问过A" in text
+    assert "q9" in text
+    assert "q0" not in text
 
 
 def test_run_video_qa_workflow_accepts_history():

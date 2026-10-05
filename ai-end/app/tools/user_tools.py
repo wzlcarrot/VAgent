@@ -9,6 +9,23 @@ from app.tools.db import get_cursor
 
 logger = logging.getLogger(__name__)
 
+# 会话 TimeZone=Asia/Shanghai。用半开区间代替 DATE(col)，索引更好走。
+# timestamptz 会转到上海日历；timestamp without tz 按会话时区解读（与主站 JVM 本地时一致）。
+def _sql_on_today(col: str) -> str:
+    return (
+        f"{col} >= date_trunc('day', CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Shanghai') "
+        f"AND {col} < date_trunc('day', CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Shanghai') "
+        f"+ INTERVAL '1 day'"
+    )
+
+
+def _sql_on_week(col: str) -> str:
+    return (
+        f"{col} >= date_trunc('week', CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Shanghai') "
+        f"AND {col} < date_trunc('week', CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Shanghai') "
+        f"+ INTERVAL '7 days'"
+    )
+
 
 class UserTools:
     @staticmethod
@@ -134,7 +151,7 @@ class UserTools:
                     return 0
                 cursor.execute(
                     "SELECT COUNT(*) FROM user_action WHERE user_id = %s AND action_type = 2 "
-                    "AND DATE(action_time) = CURRENT_DATE",
+                    f"AND {_sql_on_today('action_time')}",
                     (user_id,),
                 )
                 row = cursor.fetchone()
@@ -151,13 +168,30 @@ class UserTools:
                     return 0
                 cursor.execute(
                     "SELECT COUNT(*) FROM user_action WHERE user_id = %s AND action_type = 2 "
-                    "AND action_time >= date_trunc('week', CURRENT_DATE)::date",
+                    f"AND {_sql_on_week('action_time')}",
                     (user_id,),
                 )
                 row = cursor.fetchone()
             return row[0] if row else 0
         except Exception as e:
             logger.error(f"获取本周点赞数失败: {e}")
+            return 0
+
+    @staticmethod
+    def get_week_favorite_count(user_id: str) -> int:
+        try:
+            with get_cursor(cursor_factory=None) as cursor:
+                if cursor is None:
+                    return 0
+                cursor.execute(
+                    "SELECT COUNT(*) FROM user_action WHERE user_id = %s AND action_type = 3 "
+                    f"AND {_sql_on_week('action_time')}",
+                    (user_id,),
+                )
+                row = cursor.fetchone()
+            return row[0] if row else 0
+        except Exception as e:
+            logger.error(f"获取本周收藏数失败: {e}")
             return 0
 
     @staticmethod
@@ -168,7 +202,7 @@ class UserTools:
                     return 0
                 cursor.execute(
                     "SELECT COUNT(*) FROM user_action WHERE user_id = %s AND action_type = 3 "
-                    "AND DATE(action_time) = CURRENT_DATE",
+                    f"AND {_sql_on_today('action_time')}",
                     (user_id,),
                 )
                 row = cursor.fetchone()
@@ -178,21 +212,26 @@ class UserTools:
             return 0
 
     @staticmethod
-    def get_recent_liked_videos(user_id: str, limit: int = 10) -> Dict[str, Any]:
+    def get_recent_liked_videos(user_id: str, limit: int = 10, time_range: str = "all") -> Dict[str, Any]:
         try:
             with get_cursor() as cursor:
                 if cursor is None:
                     return {"videos": [], "total": 0}
+                time_sql = ""
+                if time_range == "today":
+                    time_sql = f" AND {_sql_on_today('ua.action_time')}"
+                elif time_range == "week":
+                    time_sql = f" AND {_sql_on_week('ua.action_time')}"
                 cursor.execute(
                     "SELECT ua.video_id, vi.video_name FROM user_action ua "
                     "LEFT JOIN video_info vi ON ua.video_id = vi.video_id "
-                    "WHERE ua.user_id = %s AND ua.action_type = 2 "
+                    "WHERE ua.user_id = %s AND ua.action_type = 2" + time_sql + " "
                     "ORDER BY ua.action_time DESC LIMIT %s",
                     (user_id, limit),
                 )
                 rows = cursor.fetchall()
                 cursor.execute(
-                    "SELECT COUNT(*) FROM user_action WHERE user_id = %s AND action_type = 2",
+                    "SELECT COUNT(*) FROM user_action ua WHERE ua.user_id = %s AND ua.action_type = 2" + time_sql,
                     (user_id,),
                 )
                 total = cursor.fetchone()
@@ -205,21 +244,26 @@ class UserTools:
             return {"videos": [], "total": 0}
 
     @staticmethod
-    def get_recent_favorites(user_id: str, limit: int = 10) -> Dict[str, Any]:
+    def get_recent_favorites(user_id: str, limit: int = 10, time_range: str = "all") -> Dict[str, Any]:
         try:
             with get_cursor() as cursor:
                 if cursor is None:
                     return {"videos": [], "total": 0}
+                time_sql = ""
+                if time_range == "today":
+                    time_sql = f" AND {_sql_on_today('ua.action_time')}"
+                elif time_range == "week":
+                    time_sql = f" AND {_sql_on_week('ua.action_time')}"
                 cursor.execute(
                     "SELECT ua.video_id, vi.video_name FROM user_action ua "
                     "LEFT JOIN video_info vi ON ua.video_id = vi.video_id "
-                    "WHERE ua.user_id = %s AND ua.action_type = 3 "
+                    "WHERE ua.user_id = %s AND ua.action_type = 3" + time_sql + " "
                     "ORDER BY ua.action_time DESC LIMIT %s",
                     (user_id, limit),
                 )
                 rows = cursor.fetchall()
                 cursor.execute(
-                    "SELECT COUNT(*) FROM user_action WHERE user_id = %s AND action_type = 3",
+                    "SELECT COUNT(*) FROM user_action ua WHERE ua.user_id = %s AND ua.action_type = 3" + time_sql,
                     (user_id,),
                 )
                 total = cursor.fetchone()
@@ -232,23 +276,26 @@ class UserTools:
             return {"videos": [], "total": 0}
 
     @staticmethod
-    def get_recent_history(user_id: str, limit: int = 10) -> Dict[str, Any]:
+    def get_recent_history(user_id: str, limit: int = 10, time_range: str = "all") -> Dict[str, Any]:
         try:
             with get_cursor() as cursor:
                 if cursor is None:
                     return {"videos": [], "total": 0}
+                time_sql = ""
+                if time_range == "today":
+                    time_sql = f" AND {_sql_on_today('ph.last_update_time')}"
+                elif time_range == "week":
+                    time_sql = f" AND {_sql_on_week('ph.last_update_time')}"
                 cursor.execute(
                     "SELECT ph.video_id, vi.video_name FROM video_play_history ph "
                     "LEFT JOIN video_info vi ON ph.video_id = vi.video_id "
-                    "WHERE ph.user_id = %s "
+                    "WHERE ph.user_id = %s" + time_sql + " "
                     "ORDER BY ph.last_update_time DESC LIMIT %s",
                     (user_id, limit),
                 )
                 rows = cursor.fetchall()
-                cursor.execute(
-                    "SELECT COUNT(*) FROM video_play_history WHERE user_id = %s",
-                    (user_id,),
-                )
+                count_sql = "SELECT COUNT(*) FROM video_play_history ph WHERE ph.user_id = %s" + time_sql
+                cursor.execute(count_sql, (user_id,))
                 total = cursor.fetchone()
             return {
                 "videos": [{"video_id": r["video_id"], "video_name": r["video_name"] or ""} for r in rows],

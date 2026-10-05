@@ -12,6 +12,7 @@ import {
   fetchTraceSummary,
   fetchWeeklyGolden,
   indexVideo,
+  registerLocalVideo,
   reindexPendingVideos,
 } from '@/api/admin'
 
@@ -51,6 +52,13 @@ describe('admin api', () => {
 
     await reindexPendingVideos('k3', 7)
     expect(post).toHaveBeenCalledWith('/ai/admin/reindex-pending?limit=7', null, H('k3'))
+
+    await registerLocalVideo('k4', { video_id: 'demo99', title: '本地登记' })
+    expect(post).toHaveBeenCalledWith(
+      '/ai/admin/register-video',
+      { video_id: 'demo99', title: '本地登记' },
+      H('k4'),
+    )
   })
 
   it('compact-stats：session_id 可选', async () => {

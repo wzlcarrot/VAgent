@@ -152,8 +152,24 @@ def init_agent_tables():
                 "text_fields='{\"block_content\": {\"tokenizer\": {\"type\": \"chinese_compatible\"}}}')"
             )
         except Exception as e:
-            logger.warning(f"BM25 索引创建失败（片内关键词召回降级 pg_trgm/tsvector）: {e}")
+            logger.warning(f"BM25 索引创建失败（关键词召回走 pg_trgm/tsvector）: {e}")
             cursor.execute("ROLLBACK TO SAVEPOINT sp_bm25_index")
+
+        cursor.execute("SAVEPOINT sp_block_trgm")
+        try:
+            cursor.execute("CREATE EXTENSION IF NOT EXISTS pg_trgm")
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_video_vector_block_trgm "
+                "ON video_vector_block USING gin (block_content gin_trgm_ops)"
+            )
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_video_vector_block_tsv "
+                "ON video_vector_block USING gin "
+                "(to_tsvector('simple', coalesce(block_content, '')))"
+            )
+        except Exception as e:
+            logger.warning(f"block_content trgm/tsvector 索引跳过: {e}")
+            cursor.execute("ROLLBACK TO SAVEPOINT sp_block_trgm")
 
         cursor.execute("SELECT COUNT(*) FROM platform_docs")
         count = cursor.fetchone()[0]
@@ -288,6 +304,11 @@ def init_agent_tables():
         conn.commit()
         cursor.close()
         logger.info("Agent 数据库初始化完成")
+        try:
+            from app.services.demo_seed import seed_demo_corpus
+            seed_demo_corpus()
+        except Exception as e:
+            logger.warning("demo seed 调用失败: %s", e)
 
         # 预热 FAQ 缓存（避免首请求穿透到 DB）
         try:

@@ -84,11 +84,11 @@ def test_gate_ask_fail_closed_without_hitl():
             gov.gate("sid", "chat_workflow", "recommend_videos", {}, lambda: "x")
 
 
-def test_recommend_policy_is_ask():
+def test_recommend_policy_is_allow():
     load_policy(force=True)
     from app.agents.workflows.constants import WorkflowType
     rule = resolve_rule(WorkflowType.RECOMMEND, "recommend_videos")
-    assert rule.decision == "ask"
+    assert rule.decision == "allow"
 
 
 def test_stop_and_pre_compact_hook_events():

@@ -70,7 +70,7 @@
         <ToolProgressBar v-if="chatStore.isStreaming" :tools="activeTools" />
 
         <!-- Input -->
-        <ChatInput :isStreaming="chatStore.isStreaming" @send="handleSendWithImages" />
+        <ChatInput :isStreaming="chatStore.isStreaming" @send="handleSendWithImages" @stop="handleStopStream" />
 
         <ConfirmDialog
           :visible="!!pendingApproval"
@@ -147,7 +147,7 @@ const showHarnessDebug = ref(false)
 const recommendationReasons = ref<Record<string, string>>({})
 const videoServiceAvailable = ref(true)
 // 当前上下文视频（来自 URL ?video=<id>，如从 ViewHub 播放页带参跳入）。
-// 用户问「这个视频讲了什么」时即使不手动贴 ID 也能路由到视频问答。
+// 用户问「这个视频讲了什么」时即使不手动贴 ID 也能路由到视频内回答。
 const currentVideoId = ref<string>('')
 
 const approvalMessage = computed(() => {
@@ -253,9 +253,10 @@ onMounted(() => {
   }
 
   // URL query 中的当前视频（?video=<id>，从 ViewHub 播放页带参跳入），
-  // 供「这个视频讲了什么」这类问题路由到视频问答。
+  // 供「这个视频讲了什么」这类问题路由到视频内回答。
   // 数组防抖：?video=a&video=b 时 Vue Router 返回 string[]，取第一个。
   currentVideoId.value = _videoIdFromQuery(route.query.video)
+    || String(import.meta.env.VITE_DEMO_VIDEO_ID || '')
 
   checkVideoService()
   window.addEventListener('session-switched', _onSessionSwitched)
@@ -265,7 +266,7 @@ onMounted(() => {
 watch(
   () => route.query.video,
   (v) => {
-    currentVideoId.value = _videoIdFromQuery(v)
+    currentVideoId.value = _videoIdFromQuery(v) || String(import.meta.env.VITE_DEMO_VIDEO_ID || '')
   },
 )
 
@@ -274,19 +275,35 @@ onUnmounted(() => {
   activeStreamController?.abort()
 })
 
+let historyLoadSeq = 0
+
 async function loadSessionHistory(sessionId: string) {
   if (!userStore.user?.userId) {
     console.warn('[HomeView] loadSessionHistory aborted: no userId')
     return
   }
 
+  const seq = ++historyLoadSeq
+  const idsWhenStarted = new Set(messages.value.map((m) => m.id))
   try {
     const history = await getChatHistory(
       sessionId,
       100
     )
+    if (seq !== historyLoadSeq || currentSessionId.value !== sessionId) {
+      return
+    }
+    // 同会话里用户已经开聊或 SSE 还在写：不能清掉当前消息再灌库。
+    // 跨会话仍靠 seq / sessionId 丢弃过期响应。
+    if (messages.value.some((m) => !idsWhenStarted.has(m.id))) {
+      return
+    }
+    if (chatStore.isStreaming && messages.value.some((m) => m.status === 'sending')) {
+      return
+    }
 
     chatStore.clearCurrentSession()
+    recommendationReasons.value = {}
 
     const sortedHistory = [...history].sort((a, b) => {
       const timeA = a.timestamp ? new Date(a.timestamp).getTime() : 0
@@ -332,6 +349,10 @@ function _scrollToBottom() {
 watch(messages, () => {
   nextTick(_scrollToBottom)
 }, { flush: 'post' })
+
+function handleStopStream() {
+  activeStreamController?.abort()
+}
 
 async function handleSend(text: string) {
   showWorkflow.value = false
@@ -426,7 +447,10 @@ async function streamAiResponse(text: string, aiMessageId: string, extractedVide
   } catch (error: unknown) {
     // abort 属于主动取消（切 session / 卸载），不显示错误
     if (controller.signal.aborted) {
-      chatStore.updateMessage(aiMessageId, { status: 'success' })
+      chatStore.updateMessage(aiMessageId, {
+        content: fullContent.trim() ? fullContent : '已停止生成',
+        status: 'error',
+      })
       return
     }
     const msg = error instanceof Error ? error.message : '请求失败，请稍后重试'

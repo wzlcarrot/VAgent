@@ -24,7 +24,12 @@ from app.routers.chat_pipeline import (
 )
 from app.routers.chat_rate_limit import chat_rate_limited
 from app.tools import ChatTools
-from app.tools.context_tools import build_context, ensure_session_owner, save_message
+from app.tools.context_tools import (
+    build_context,
+    ensure_session_owner,
+    history_from_context_messages,
+    save_message,
+)
 from app.tools.memory_tools import MemoryTools
 from app.tools.output_guard import FALLBACK_RESPONSE
 from app.utils.security import validate_session_id
@@ -54,9 +59,8 @@ async def chat_stream(request: ChatRequest, http_request: Request, authed_user_i
             video_id = extract_video_id_from_text(question)
         image_urls = request.imageUrls or []
         if request.sessionId and not validate_session_id(request.sessionId):
-            session_id = str(uuid.uuid4())
-        else:
-            session_id = request.sessionId or str(uuid.uuid4())
+            raise HTTPException(status_code=400, detail="会话 ID 无效")
+        session_id = request.sessionId or str(uuid.uuid4())
         # 每轮对话单独计工具次数：同一会话连问不应把检索额度用光
         try:
             from app.harness.tool_governor import ToolGovernor
@@ -80,6 +84,20 @@ async def chat_stream(request: ChatRequest, http_request: Request, authed_user_i
         if not is_owner:
             logger.warning(f"会话越权拦截: user={user_id} session={session_id[:8]}")
             raise HTTPException(status_code=403, detail="会话不属于当前用户")
+        write_token = ""
+        try:
+            from app.tools.context_tools import begin_session_write
+            write_token = await _rse_owner(begin_session_write, session_id)
+        except Exception as e:
+            logger.warning(f"记录会话写入标记失败(不影响响应): {e}")
+
+        async def _session_still_open() -> bool:
+            try:
+                from app.tools.context_tools import session_write_current
+                return await _rse_owner(session_write_current, session_id, write_token)
+            except Exception as e:
+                logger.warning(f"检查会话是否已删除失败，仍尝试保存: {e}")
+                return True
         if chat_rate_limited(user_id):
             try:
                 from app.utils.metrics import rate_limited_requests_total
@@ -164,15 +182,7 @@ async def chat_stream(request: ChatRequest, http_request: Request, authed_user_i
             try:
                 from app.agents.workflows import run_sync_in_executor as _rse
                 ctx_messages = await _rse(build_context, session_id)
-                pairs = []
-                for m in ctx_messages:
-                    if m.get("role") == "user":
-                        pairs.append({"user": m["content"]})
-                    elif m.get("role") == "assistant" and pairs:
-                        pairs[-1]["assistant"] = m["content"]
-                    elif m.get("role") == "system":
-                        continue
-                conversation_history = pairs
+                conversation_history = history_from_context_messages(ctx_messages)
             except Exception as e:
                 logger.warning(f"从Redis获取上下文失败: {e}")
                 try:
@@ -207,7 +217,7 @@ async def chat_stream(request: ChatRequest, http_request: Request, authed_user_i
         ctx = {}
         try:
             from app.agents.workflows import run_sync_in_executor as _rse
-            ctx = await _rse(get_context_for_query, session_id, question)
+            ctx = await _rse(get_context_for_query, session_id, question, video_id)
             resolved_question = ctx["resolved_question"]
             referenced_video = ctx["referenced_video"]
             if ctx["resolved"]:
@@ -234,6 +244,37 @@ async def chat_stream(request: ChatRequest, http_request: Request, authed_user_i
         route_decision = await run_sync_in_executor(Router().hybrid_route_full, question, {"video_id": video_id})
         workflow_type = route_decision.workflow_type
         logger.info(f" Routed to: {workflow_type} (method={route_decision.method}, conf={route_decision.confidence:.2f})")
+        if workflow_type == WorkflowType.RECOMMEND and user_id:
+            has_pref = bool(
+                user_pref.get("favorite_tags")
+                or user_pref.get("liked_video_ids")
+                or user_pref.get("favorite_video_ids")
+                or user_pref.get("play_count")
+                or user_pref.get("watched_video_ids")
+            )
+            if not has_pref:
+                try:
+                    from app.tools.user_tools import UserTools as _UserTools
+
+                    def _site_pref() -> dict:
+                        liked = _UserTools.get_liked_videos(user_id, 1)
+                        if liked:
+                            return {"liked_video_ids": liked}
+                        favs = _UserTools.get_favorites(user_id, 1)
+                        if favs:
+                            return {"favorite_video_ids": favs}
+                        hist = _UserTools.get_play_history(user_id, 1)
+                        if hist:
+                            vid = getattr(hist[0], "videoId", None)
+                            return {
+                                "play_count": len(hist),
+                                "watched_video_ids": [vid] if vid else ["1"],
+                            }
+                        return {}
+
+                    user_pref.update(await run_sync_in_executor(_site_pref))
+                except Exception as e:
+                    logger.warning(f"主站行为偏好探测失败(不影响响应): {e}")
         try:
             clarifier = IntentClarifier()
             has_history = bool(ctx.get("last_recommendations"))
@@ -250,6 +291,21 @@ async def chat_stream(request: ChatRequest, http_request: Request, authed_user_i
 
                 async def clarification_stream():
                     try:
+                        try:
+                            from app.agents.workflows import run_sync_in_executor as _rse_save
+                            if await _session_still_open():
+                                await _rse_save(save_message, session_id, "user", question)
+                                await _rse_save(save_message, session_id, "assistant", clarification_text)
+                                if user_id:
+                                    await _rse_save(
+                                        ChatTools.save_chat_history,
+                                        user_id, question, clarification_text,
+                                        session_id, image_urls or None,
+                                    )
+                            else:
+                                logger.info(f"会话已删除，跳过追问写回: session={session_id[:8]}")
+                        except Exception as save_err:
+                            logger.warning(f"追问落库失败(不影响响应): {save_err}")
                         yield f"data: {_json_dumps({'type': 'status', 'stage': 'clarifying', 'label': '需要更多信息'})}\n\n"
                         yield f"data: {_json_dumps({'type': 'text', 'content': clarification_text})}\n\n"
                         yield "data: [DONE]\n\n"
@@ -331,46 +387,49 @@ async def chat_stream(request: ChatRequest, http_request: Request, authed_user_i
                 _release_permit_once()
                 finish_run(status=run_status, error=None if run_status == "completed" else "stream_error")
                 from app.agents.workflows import run_sync_in_executor as _rse
-                try:
-                    if recommended_videos:
-                        from app.conversation.context_manager import update_recommendations
-                        await _rse(update_recommendations, session_id, recommended_videos)
-                    if winner_type_meta == WorkflowType.VIDEO_QA and video_id:
-                        from app.conversation.context_manager import update_video_qa
-                        from app.tools import VideoTools
-                        _video = await _rse(VideoTools.get_video_info, video_id)
-                        _title = _video.videoName if _video else ""
-                        _author = _video.nickName if _video else ""
-                        await _rse(update_video_qa, session_id, {"video_id": video_id, "title": _title, "author": _author})
-                except Exception as e:
-                    logger.warning(f"写入指代上下文失败(不影响响应): {e}")
-                has_anything = bool(full_response and full_response.strip()) or bool(recommended_videos)
-                if has_anything:
+                # 生成过程中另一端可能已经删掉这个会话。收尾再写会把同一个 sessionId 插回去。
+                if not await _session_still_open():
+                    logger.info(f"会话已删除，跳过本轮写回: session={session_id[:8]}")
+                else:
                     try:
-                        from app.agents.workflows import run_sync_in_executor as _rse
-                        await _rse(save_message, session_id, "user", question)
-                        await _rse(save_message, session_id, "assistant", full_response)
-                        from app.tools.context_tools import async_summarize_context
-                        await async_summarize_context(session_id)
+                        if recommended_videos:
+                            from app.conversation.context_manager import update_recommendations
+                            await _rse(update_recommendations, session_id, recommended_videos)
+                        if winner_type_meta == WorkflowType.VIDEO_QA and video_id:
+                            from app.conversation.context_manager import update_video_qa
+                            from app.tools import VideoTools
+                            _video = await _rse(VideoTools.get_video_info, video_id)
+                            _title = _video.videoName if _video else ""
+                            _author = _video.nickName if _video else ""
+                            await _rse(update_video_qa, session_id, {"video_id": video_id, "title": _title, "author": _author})
                     except Exception as e:
-                        logger.warning(f"保存上下文失败(不影响响应): {e}")
-                    if user_id:
-                        await _rse(
-                            ChatTools.save_chat_history,
-                            user_id, question, full_response,
-                            session_id, image_urls or None,
-                            videos=recommended_videos or None,
-                            reasons=recommended_reasons or None,
-                            citations=stream_citations or None,
-                        )
-                        if full_response and full_response.strip():
-                            try:
-                                from app.agents.workflows import run_sync_in_executor
-                                await run_sync_in_executor(
-                                    maybe_extract_memories_from_conversation, user_id, question, full_response, session_id,
-                                )
-                            except Exception as e:
-                                logger.warning(f"记忆提取失败(不影响响应): {e}")
+                        logger.warning(f"写入指代上下文失败(不影响响应): {e}")
+                    has_anything = bool(full_response and full_response.strip()) or bool(recommended_videos)
+                    if has_anything:
+                        try:
+                            await _rse(save_message, session_id, "user", question)
+                            await _rse(save_message, session_id, "assistant", full_response)
+                            from app.tools.context_tools import async_summarize_context
+                            await async_summarize_context(session_id)
+                        except Exception as e:
+                            logger.warning(f"保存上下文失败(不影响响应): {e}")
+                        if user_id:
+                            await _rse(
+                                ChatTools.save_chat_history,
+                                user_id, question, full_response,
+                                session_id, image_urls or None,
+                                videos=recommended_videos or None,
+                                reasons=recommended_reasons or None,
+                                citations=stream_citations or None,
+                            )
+                            if full_response and full_response.strip():
+                                try:
+                                    from app.agents.workflows import run_sync_in_executor
+                                    await run_sync_in_executor(
+                                        maybe_extract_memories_from_conversation, user_id, question, full_response, session_id,
+                                    )
+                                except Exception as e:
+                                    logger.warning(f"记忆提取失败(不影响响应): {e}")
 
         return StreamingResponse(generate(), media_type="text/event-stream")
     except HTTPException:
@@ -385,22 +444,43 @@ async def chat_stream(request: ChatRequest, http_request: Request, authed_user_i
         raise HTTPException(status_code=500, detail="聊天失败") from e
 
 
+def choose_resumable_workflow(shown: str | None, recent: List[Any]) -> str | None:
+    """恢复用户刚看到的工作流。
+
+    并行兜底闲聊会另写 checkpoint，而且常常更晚。有本轮展示记录时用它；
+    没有时跳过带 parallel_fallback 的闲聊记录，再按时间取最近一条。
+    """
+    from app.harness.checkpoint import SHOWN_WORKFLOW_TYPE
+    if shown:
+        return shown
+    for cp in recent or []:
+        if getattr(cp, "workflow_type", None) == SHOWN_WORKFLOW_TYPE:
+            continue
+        snap = getattr(cp, "state_snapshot", None) or {}
+        if isinstance(snap, dict) and snap.get("parallel_fallback"):
+            continue
+        workflow_type = getattr(cp, "workflow_type", None)
+        if workflow_type:
+            return workflow_type
+    for cp in recent or []:
+        workflow_type = getattr(cp, "workflow_type", None)
+        if workflow_type and workflow_type != SHOWN_WORKFLOW_TYPE:
+            return workflow_type
+    return None
+
+
 def _find_resumable_checkpoint(session_id: str) -> Dict[str, Any]:
+    """恢复本轮展示给用户的工作流，而不是时间上更晚的兜底闲聊。"""
     from app.harness.checkpoint import CheckpointManager
     mgr = CheckpointManager()
-    steps = mgr.list_steps(session_id, None)
-    if not steps:
-        for wf_type in WorkflowType.all():
-            steps = mgr.list_steps(session_id, wf_type)
-            if steps:
-                break
-    last_cp = None
-    for wf_type in WorkflowType.all():
-        last_cp = mgr.get_last_completed(session_id, wf_type)
-        if last_cp:
-            break
-    completed_steps = mgr.list_steps(session_id, last_cp.workflow_type) if last_cp else []
-    return {"steps": steps, "last_checkpoint": last_cp, "completed_steps": completed_steps}
+    shown = mgr.get_shown_workflow(session_id)
+    recent = [] if shown else mgr.list_recent(session_id)
+    wf_type = choose_resumable_workflow(shown, recent)
+    if not wf_type:
+        return {"steps": [], "last_checkpoint": None, "completed_steps": []}
+    last_cp = mgr.get_last_completed(session_id, wf_type)
+    steps = mgr.list_steps(session_id, wf_type)
+    return {"steps": steps, "last_checkpoint": last_cp, "completed_steps": steps}
 
 
 @router.post("/chat/resume")
@@ -433,14 +513,28 @@ async def resume_workflow(request: Request, authed_user_id: str = Depends(requir
         if not resume_fn:
             raise HTTPException(status_code=400, detail=f"不支持的 workflow 类型: {wf_type}")
         result = await run_sync_in_executor(resume_fn, session_id)
+        answer = result.get("answer", "") or ""
+        if not result.get("error") and answer:
+            try:
+                await run_sync_in_executor(
+                    ChatTools.save_chat_history,
+                    authed_user_id, "[从断点继续]", answer, session_id, None,
+                    result.get("recommended_videos") or None,
+                    result.get("reasons") or None,
+                    result.get("citations") or None,
+                )
+            except Exception as e:
+                logger.warning(f"resume 写回历史失败(不影响响应): {e}")
         return {
             "success": True,
             "workflow_type": wf_type,
             "resumed_from": result.get("resumed_from", "unknown"),
-            "answer": result.get("answer", ""),
+            "answer": answer,
             "error": result.get("error"),
             "failed_at": result.get("failed_at"),
             "completed_steps": ckpt["completed_steps"],
+            "recommended_videos": result.get("recommended_videos") or [],
+            "reasons": result.get("reasons") or [],
         }
     except HTTPException:
         raise

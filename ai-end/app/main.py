@@ -141,7 +141,20 @@ async def lifespan(app: FastAPI):
     threading.Thread(target=_backfill_video_index, name="video-index-backfill", daemon=True).start()
 
     logger.info("=" * 50)
-    logger.info(f"{settings.app_name} 服务已启动")
+    logger.info("%s 服务已启动", settings.app_name)
+    try:
+        from app.runtime_path import describe_default_path
+        dp = describe_default_path()
+        logger.info("默认路径: %s", dp["story"])
+        logger.info(
+            "orchestration=%s asr=%s lora=%s demo_video=%s",
+            dp["orchestration_mode"],
+            dp["video_asr_enabled"],
+            dp["finetune_intent_enabled"],
+            dp["demo_video_id"],
+        )
+    except Exception:
+        pass
     logger.info("=" * 50)
     yield
     # Graceful shutdown：清理连接池和后台 executor
@@ -298,12 +311,36 @@ async def ready():
         return False
     checks["redis"] = await run_in_threadpool(_check_redis)
 
-    # LLM provider
-    if settings.deepseek_api_key:
-        checks["llm"] = True
+    # LLM：有 key、熔断未开，并且 /models 探活成功（2s 超时，不调生成接口）
+    def _check_llm() -> bool:
+        if settings.effective_llm_replay_enabled:
+            return True
+        if not settings.deepseek_api_key:
+            return False
+        try:
+            from app.tools.llm_circuit import get_circuit_status
+            if get_circuit_status().get("status") == "open":
+                return False
+        except Exception:
+            pass
+        try:
+            import httpx
+            base = (settings.deepseek_base_url or "https://api.deepseek.com").rstrip("/")
+            r = httpx.get(
+                f"{base}/models",
+                headers={"Authorization": f"Bearer {settings.deepseek_api_key}"},
+                timeout=2.0,
+            )
+            return r.status_code < 500
+        except Exception:
+            return False
+
+    checks["llm"] = await run_in_threadpool(_check_llm)
 
     ok = all(checks.values())
-    return {"status": "ready" if ok else "degraded", "checks": checks}
+    from fastapi.responses import JSONResponse
+    body = {"status": "ready" if ok else "degraded", "checks": checks}
+    return JSONResponse(content=body, status_code=200 if ok else 503)
 
 
 if __name__ == "__main__":

@@ -16,9 +16,7 @@
         :show-password="showPassword"
       />
       <div class="footer-links">
-        <a href="#">隐私政策</a>
-        <a href="#">服务条款</a>
-        <a href="#">联系我们</a>
+        <span>ViewHub AI 助手</span>
       </div>
     </div>
 
@@ -79,13 +77,6 @@
             </div>
           </div>
 
-          <div class="form-options">
-            <label class="remember-me">
-              <input type="checkbox" checked /> 记住我 30 天
-            </label>
-            <a href="#" class="forgot-link">忘记密码？</a>
-          </div>
-
           <button type="submit" class="btn-login" :disabled="isLoading">
             <span class="btn-text">{{ isLoading ? '登录中...' : '登录' }}</span>
             <div class="btn-hover-content">
@@ -96,18 +87,6 @@
               </svg>
             </div>
           </button>
-
-          <div class="test-account-hint">
-            <div class="hint-label">测试账号（后端预置，直接使用）</div>
-            <div class="hint-row">
-              <span class="hint-key">邮箱:</span>
-              <span class="hint-val">test@viewhub.com</span>
-            </div>
-            <div class="hint-row">
-              <span class="hint-key">密码:</span>
-              <span class="hint-val">123456</span>
-            </div>
-          </div>
         </form>
       </div>
     </div>
@@ -130,12 +109,14 @@
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
+import { useChatStore } from '@/stores/chat'
 import { login } from '@/api/user'
 import { useLoginForm } from '@/composables/useLoginForm'
 import LoginCharacters from '@/components/login/LoginCharacters.vue'
 
 const router = useRouter()
 const userStore = useUserStore()
+const chatStore = useChatStore()
 const showPassword = ref(false)
 const mascotsRef = ref<InstanceType<typeof LoginCharacters> | null>(null)
 
@@ -164,6 +145,7 @@ async function handleLogin() {
       password: loginForm.password,
     })
     userStore.setUser(response.user)
+    chatStore.loadUserSessions(response.user.userId)
     isLoginSuccess.value = true
     successMessage.value = '登录成功，正在跳转...'
     setTimeout(() => {

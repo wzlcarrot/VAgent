@@ -24,8 +24,14 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-# token 有效期 7 天（登录时写入内存/Redis + httpOnly cookie）
-TOKEN_TTL = 7 * 24 * 3600
+def get_token_ttl() -> int:
+    """登录 token / cookie 有效期，读 settings.token_ttl_seconds。"""
+    from app.config import settings
+    return int(settings.token_ttl_seconds)
+
+
+# 兼容旧 import；值在导入时快照，auth 登录路径请用 get_token_ttl()
+TOKEN_TTL = get_token_ttl()
 
 _token_store: Dict[str, Tuple[str, float]] = {}
 _token_store_cleanup_counter: int = 0

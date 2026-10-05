@@ -1,4 +1,4 @@
-"""片内视频问答检索：改写、证据阈值、Corrective、引用。"""
+"""视频内回答检索：改写、证据阈值、Corrective、引用。"""
 from unittest.mock import patch
 
 from app.tools.output_guard import VIDEO_QA_INSUFFICIENT_MSG

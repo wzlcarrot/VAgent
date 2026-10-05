@@ -105,3 +105,41 @@ def reindex_pending(limit: int = 50) -> Dict[str, Any]:
         "failed": failed,
         "pending_remaining": len(remaining),
     }
+
+
+def register_local_video(
+    video_id: str,
+    title: str,
+    tags: str = "",
+    introduction: str = "",
+    body: str = "",
+) -> Dict[str, Any]:
+    """本仓登记视频并建索引：不经过 ViewHub 上传/转码回调。"""
+    vid = (video_id or "").strip()
+    name = (title or "").strip()
+    if not vid or not name:
+        return {"success": False, "error": "video_id 和 title 必填"}
+    intro = (introduction or "").strip()
+    extra = (body or "").strip()
+    if extra:
+        intro = f"{intro}\n{extra}".strip() if intro else extra
+    try:
+        with get_cursor(commit=True) as cursor:
+            if cursor is None:
+                return {"success": False, "error": "没有数据库"}
+            cursor.execute(
+                """
+                INSERT INTO video_info (video_id, video_name, user_id, tags, introduction, duration)
+                VALUES (%s, %s, %s, %s, %s, %s)
+                ON CONFLICT (video_id) DO UPDATE SET
+                    video_name = EXCLUDED.video_name,
+                    tags = EXCLUDED.tags,
+                    introduction = EXCLUDED.introduction
+                """,
+                (vid, name, "demo_up", (tags or "").strip(), intro, 6),
+            )
+    except Exception as e:
+        logger.warning("register_local_video 写 video_info 失败: %s", e)
+        return {"success": False, "video_id": vid, "error": str(e)}
+    indexed = RAGTools.index_video(vid)
+    return {"success": bool(indexed.get("success")), "video_id": vid, "index": indexed}

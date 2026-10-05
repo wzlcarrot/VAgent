@@ -126,6 +126,8 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--dual", action="store_true", help="用生产检索器（需 DB）")
     parser.add_argument("--limit", type=int, default=None)
+    parser.add_argument("--min-recall-at-5", type=float, default=0.0,
+                        help="CI 门禁用：offline recall@5 下限（0=不卡）")
     args = parser.parse_args()
 
     corpus, cases = load_fixture()
@@ -160,6 +162,10 @@ def main() -> int:
         print(f"  未召回用例 {len(misses)}（前 8）:")
         for c, ranked in misses[:8]:
             print(f"    {c['query']}  →  top: {ranked[:3]}  期望 {c['relevant']}")
+    recall5 = agg["recall@5"] / n
+    if args.min_recall_at_5 > 0 and recall5 + 1e-9 < args.min_recall_at_5:
+        print(f"FAIL: recall@5 {recall5:.3f} < {args.min_recall_at_5}")
+        return 1
     return 0
 
 

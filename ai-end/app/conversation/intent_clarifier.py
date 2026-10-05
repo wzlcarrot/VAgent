@@ -126,7 +126,7 @@ class IntentClarifier:
         Returns:
             True 表示应该追问
         """
-        # recommend：新用户 + 无偏好记忆 → 追问
+        # recommend：无长期记忆标签、也无主站点赞/收藏/播放时才追问。
         # 但问题已写明类别（「推荐科技类的」）或表达了相似意图（「推荐两个类似的」、
         # 「像这个的」）时不再追问，直接让推荐流程跑（画像/query 会用这些关键词）。
         if intent == WorkflowType.RECOMMEND:
@@ -134,6 +134,8 @@ class IntentClarifier:
                 user_preference.get("favorite_tags")
                 or user_preference.get("favorite_video_ids")
                 or user_preference.get("liked_video_ids")
+                or user_preference.get("watched_video_ids")
+                or user_preference.get("play_count")
             ))
             if not has_pref and (
                 has_category_keyword(question or "") or has_similar_intent(question or "")
@@ -146,10 +148,10 @@ class IntentClarifier:
         if intent == WorkflowType.VIDEO_QA and not video_id:
             return True
 
-        # chat：仅空泛招呼（你好/在吗）且无实质功能诉求 → 引导
-        # 中文不能靠 question.split() 判断"有无关键词"（整句一个 token），
-        # 改为直接对问题做子串匹配：命中空泛招呼词且问题很短（≤8 字）才追问。
-        if intent == WorkflowType.CHAT and not mentioned_keywords:
+        # chat：仅空泛招呼（你好/在吗）且无实质功能诉求 → 引导。
+        # 中文整句 split() 后仍是一个词，调用方传入的 mentioned_keywords 不会为空，
+        # 不能用「没有关键词」当条件，否则「你好」永远走不到这条规则。
+        if intent == WorkflowType.CHAT:
             q = (question or "").strip()
             if any(g in q for g in _VAGUE_GREETINGS) and len(q) <= 8:
                 return True

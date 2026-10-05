@@ -84,7 +84,7 @@
         {{ loadingMore ? '加载中...' : '加载更多' }}
       </button>
 
-      <div class="empty-state" v-else>
+      <div class="empty-state" v-if="filteredSessions.length === 0">
         <template v-if="searchQuery">
           <div class="empty-icon">🔍</div>
           <p v-if="searching">正在搜索对话内容...</p>
@@ -107,6 +107,7 @@
       :visible="showCheckpoints"
       :sessionId="checkpointSessionId"
       @close="showCheckpoints = false"
+      @resumed="onCheckpointResumed"
     />
   </div>
 </template>
@@ -115,14 +116,17 @@
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
+import { useChatStore } from '@/stores/chat'
 import { getChatSessions, getChatHistory, deleteChatSession, searchChatContent } from '@/api/chat'
 import CheckpointViewer from '@/components/chat/CheckpointViewer.vue'
 import AppHeader from '@/components/layout/AppHeader.vue'
 import { useNotify } from '@/composables/useNotify'
+import { sessionsFromContentSearch } from '@/utils/historySearch'
 import type { DbSession, SessionView, SearchResult } from '@/types'
 
 const router = useRouter()
 const userStore = useUserStore()
+const chatStore = useChatStore()
 const { showToast, showConfirm } = useNotify()
 
 const dbSessions = ref<SessionView[]>([])
@@ -143,21 +147,19 @@ function openCheckpoints(sessionId: string) {
   showCheckpoints.value = true
 }
 
+function onCheckpointResumed() {
+  showCheckpoints.value = false
+  if (checkpointSessionId.value) {
+    openSession(checkpointSessionId.value)
+  }
+}
+
 const filteredSessions = computed(() => {
   const q = searchQuery.value.toLowerCase()
   if (!q) return dbSessions.value
 
   if (searchMode.value === 'content' && searchResults.value.length > 0) {
-    const resultIds = new Set(searchResults.value.map(r => r.session_id))
-    const resultMap = new Map(searchResults.value.map(r => [r.session_id, r]))
-
-    return dbSessions.value
-      .filter(s => resultIds.has(s.id))
-      .map(s => ({
-        ...s,
-        searchSnippet: resultMap.get(s.id)?.snippet || '',
-        matched_in: resultMap.get(s.id)?.matched_in,
-      }))
+    return sessionsFromContentSearch(searchResults.value, dbSessions.value)
   }
 
   return dbSessions.value.filter(s =>
@@ -362,7 +364,12 @@ async function deleteSession(sessionId: string) {
   if (!userStore.user?.userId) return
 
   try {
-    await deleteChatSession(sessionId)
+    const deleted = await deleteChatSession(sessionId)
+    if (!deleted) {
+      showToast('删除失败，请重试', 'error')
+      return
+    }
+    chatStore.deleteSession(sessionId)
     dbSessions.value = dbSessions.value.filter(s => s.id !== sessionId)
     showToast('对话已删除', 'success')
   } catch (error) {

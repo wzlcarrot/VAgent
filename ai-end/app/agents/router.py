@@ -80,6 +80,9 @@ INTENT_EXEMPLARS: Dict[str, List[str]] = {
         "什么是ViewHub",
         "你们支持哪些功能",
         "平台介绍",
+        "推荐一家火锅店",
+        "附近有什么餐厅",
+        "比特币行情怎么样",
     ],
 }
 
@@ -151,14 +154,36 @@ class Router:
             "讲了啥", "说了啥", "讲的啥", "说了点啥",
             "作者是谁", "up主是谁", "up主", "主播是谁", "视频简介",
             "视频的简介", "时长", "总结一下", "总结这个",
+            "视频主题", "视频的主题", "片尾", "片头", "征稿",
+            "开头说了", "结尾说了",
         ]
         self.video_exclude: List[str] = [
-            "功能", "怎么用", "怎么使用", "如何使用", "有什么用",
-            "怎么上传", "怎么下载", "怎么删除", "设置", "帮助", "介绍平台",
+            "怎么用", "怎么使用", "如何使用", "有什么用",
+            "怎么上传", "怎么下载", "怎么删除", "介绍平台",
             "平台是什么", "这是什么平台",
+        ]
+        self.assistant_meta: List[str] = [
+            "你会做什么", "你能干啥", "助手能做", "这个助手",
+            "你是谁", "我该从哪开始", "你会写代码",
+        ]
+        self.smalltalk: List[str] = [
+            "随便聊聊", "闲聊", "聊会天", "随便问问", "聊聊天",
+            "在吗", "你好", "哈喽", "早上好", "晚上好", "嗨",
+        ]
+        self.player_followup: List[str] = [
+            "啥意思", "什么意思", "为什么", "为啥", "然后呢", "接着呢", "继续讲",
         ]
         self.recommend_keywords: List[str] = ["推荐", "推荐点", "推荐一些", "推荐几个", "有什么好看的", "看什么", "好看的",
                                    "有什么推荐", "有啥好看的", "热门", "新出"]
+        self.recommend_off_topic: List[str] = [
+            "餐厅", "饭店", "餐馆", "火锅", "酒店", "民宿", "景点", "旅游",
+            "股票", "基金", "比特币", "星座", "运势", "外卖", "奶茶",
+            "菜谱", "美食店", "理发", "医院", "咖啡店", "健身房",
+            "化妆品", "贷款", "保险", "考研班",
+        ]
+        self.recommend_video_hints: List[str] = [
+            "视频", "片子", "短片", "up主", "up 主", "内容", "看看", "类似", "好看的",
+        ]
         self.user_data_markers: List[str] = USER_DATA_MARKERS
         self.data_keywords: List[str] = DATA_KEYWORDS
         if self._initialized:
@@ -303,29 +328,85 @@ class Router:
         return result
 
     def _is_about_current_video(self, question: str) -> bool:
-        """判断问题是否关于当前视频"""
-        if any(k in question for k in self.video_exclude):
+        """判断问题是否关于当前视频。平台用法问句优先，避免「怎么上传视频」进视频内回答。"""
+        if not any(k in question for k in self.video_keywords):
             return False
-        return any(k in question for k in self.video_keywords)
+        if any(k in question for k in self.video_exclude):
+            return any(
+                k in question
+                for k in ("这个视频", "该视频", "当前视频", "讲了什么", "总结这个", "视频主题")
+            )
+        return True
+
+    def _is_assistant_meta(self, question: str) -> bool:
+        return any(p in question for p in self.assistant_meta)
+
+    def _is_smalltalk(self, question: str) -> bool:
+        q = (question or "").strip()
+        if not q:
+            return False
+        if self._is_about_current_video(q) or self._has_recommend_intent(q) or self._is_personal_data_query(q):
+            return False
+        return any(p in q for p in self.smalltalk)
 
     def _looks_like_video_content_question(self, question: str) -> bool:
-        """有 video_id 时的宽松内容问：含「视频/讲/内容」且不是推荐/个人数据/平台帮助。"""
+        """有 video_id 时的宽松内容问。不含单独的「介绍」，避免和平台介绍抢当前视频。"""
         q = question or ""
         if any(k in q for k in self.video_exclude):
             return False
         if self._has_recommend_intent(q) or self._is_personal_data_query(q):
             return False
-        return any(h in q for h in ("视频", "讲", "内容", "主题", "总结", "介绍", "作者"))
+        return any(h in q for h in ("视频", "讲", "内容", "主题", "总结", "作者", "片头", "片尾"))
+
+    def _must_stay_chat_on_player(self, question: str, context: Optional[Dict[str, Any]]) -> bool:
+        """播放页默认闲聊：没有视频/推荐/个人数据意图时，不把当前 video_id 交给语义/LLM 抢路由。"""
+        if not (context or {}).get("video_id"):
+            return False
+        if self._is_personal_data_query(question) or self._has_recommend_intent(question):
+            return False
+        if self._is_about_current_video(question) or self._looks_like_video_content_question(question):
+            return False
+        if self._is_player_video_followup(question):
+            return False
+        return True
+
+    def _is_player_video_followup(self, question: str) -> bool:
+        """播放页短追问：指当前片，不是新开闲聊。"""
+        q = (question or "").strip()
+        if not q or len(q) > 20:
+            return False
+        if self._has_recommend_intent(q) or self._is_personal_data_query(q) or self._is_assistant_meta(q):
+            return False
+        if any(p in q for p in ("平台", "餐厅", "天气")):
+            return False
+        return any(p in q for p in self.player_followup)
 
     def _is_personal_data_query(self, question: str) -> bool:
         """判断是否为个人数据查询"""
         has_marker: bool = any(m in question for m in self.user_data_markers)
         has_data_word: bool = any(w in question for w in self.data_keywords)
-        return has_marker and has_data_word
+        if has_marker and has_data_word:
+            return True
+        # 不带「我」的「今天/今日/这周/本周 + 点赞/收藏/观看」仍是个人数据。
+        # 否则关键词路由落到闲聊；播放页上带「视频」的观看历史还会被当成当前视频内回答。
+        time_words = ("今天", "今日", "这周", "本周")
+        if not any(t in question for t in time_words):
+            return False
+        if any(p in question for p in ("点赞", "收藏", "看了", "看过", "播放历史", "播放记录", "浏览记录")):
+            return True
+        if "观看" in question and "观看量" not in question:
+            return True
+        return "赞" in question and "多少" in question
 
     def _has_recommend_intent(self, question: str) -> bool:
-        """判断是否有推荐意图"""
-        return any(k in question for k in self.recommend_keywords)
+        """视频推荐。餐厅/火锅/股票等带「推荐」但不含视频域，不进推荐工作流。"""
+        if not any(k in question for k in self.recommend_keywords):
+            return False
+        if any(h in question for h in self.recommend_video_hints):
+            return True
+        if any(off in question for off in self.recommend_off_topic):
+            return False
+        return True
 
     def route(self, question: str, context: Optional[Dict[str, Any]] = None) -> str:
         """单意图路由：返回最佳 workflow 类型"""
@@ -341,18 +422,29 @@ class Router:
         ctx: Dict[str, Any] = context or {}
         candidates: List[Tuple[str, float]] = []
 
+        if self._must_stay_chat_on_player(question, ctx):
+            return [(WorkflowType.CHAT, 0.92)]
+
+        if (
+            (self._is_assistant_meta(question) or self._is_smalltalk(question))
+            and not self._is_about_current_video(question)
+        ):
+            return [(WorkflowType.CHAT, 0.92)]
+
         # video_qa：
         # - 有 video_id 且命中强视频词 → 高置信度 1.0
         # - 无 video_id 但命中强视频词（如「这个视频讲了什么」）→ 中置信度 0.6。
         #   否则演示第一句「这个视频讲了什么」会因前端不传 video_id 而落到 chat，
-        #   拿到泛泛客服回答而非视频问答（再引导用户提供视频）。
+        #   拿到泛泛客服回答而非视频内回答（再引导用户提供视频）。
         if ctx.get("video_id") and self._is_about_current_video(question):
             candidates.append((WorkflowType.VIDEO_QA, 1.0))
         elif self._is_about_current_video(question):
             candidates.append((WorkflowType.VIDEO_QA, 0.6))
         elif ctx.get("video_id") and self._looks_like_video_content_question(question):
-            # 已带 video_id 但说法略偏（「视频具体讲什么」）仍走片内问答，避免落到 chat
+            # 已带 video_id 但说法略偏（「视频具体讲什么」）仍走视频内回答，避免落到 chat
             candidates.append((WorkflowType.VIDEO_QA, 0.9))
+        elif ctx.get("video_id") and self._is_player_video_followup(question):
+            candidates.append((WorkflowType.VIDEO_QA, 0.85))
 
         if self._is_personal_data_query(question):
             candidates.append((WorkflowType.USER_DATA, 0.9))
@@ -420,11 +512,24 @@ class Router:
         - 纯关键词（embedding 不可用）：关键词强度
 
         上下文信号：
-        - video_id + 没有排除关键词 → video_qa 获得 0.5 上下文加分
-        - video_id + 明确排除关键词 → 不额外加分（排除规则优先）
+        - video_id + 明确视频问句 → video_qa 拉到 1.0 / 0.9
+        - 仅有 video_id、问句是闲聊/助手能力 → 不抬 video_qa，避免和当前视频抢路由
         """
         ctx = context or {}
         start_time = time.time()
+
+        if self._must_stay_chat_on_player(question, ctx):
+            _record_router_decision(WorkflowType.CHAT, "keyword_only")
+            _record_router_latency("keyword_only", time.time() - start_time)
+            return RouteDecision(WorkflowType.CHAT, 0.92, "keyword_only")
+
+        if (
+            (self._is_assistant_meta(question) or self._is_smalltalk(question))
+            and not self._is_about_current_video(question)
+        ):
+            _record_router_decision(WorkflowType.CHAT, "keyword_only")
+            _record_router_latency("keyword_only", time.time() - start_time)
+            return RouteDecision(WorkflowType.CHAT, 0.92, "keyword_only")
 
         # ① 微调意图分类模型优先（LoRA Qwen3-0.6B）；不可用/失败 → 回退下方混合路由
         if settings.finetune_intent_enabled:
@@ -456,9 +561,9 @@ class Router:
                     keyword_dict[WorkflowType.VIDEO_QA] = max(
                         keyword_dict.get(WorkflowType.VIDEO_QA, 0.0), 0.9
                     )
-                else:
+                elif self._is_player_video_followup(question):
                     keyword_dict[WorkflowType.VIDEO_QA] = max(
-                        keyword_dict.get(WorkflowType.VIDEO_QA, 0.0), 0.5
+                        keyword_dict.get(WorkflowType.VIDEO_QA, 0.0), 0.85
                     )
 
         CONFIDENCE_GATE = 0.3
@@ -577,6 +682,7 @@ class Router:
                     f"4. {WorkflowType.CHAT} — 闲聊、平台介绍、功能询问、其他无法归类的\n\n"
                     f"规则：\n"
                     f"- 如果问题同时匹配多个类型，按以上顺序取第一个\n"
+                    f"- 「推荐餐厅/火锅/股票/星座」等非视频内容 → {WorkflowType.CHAT}\n"
                     f"- 不确定时返回 {WorkflowType.CHAT}\n"
                     f"- 只输出意图名称，不要解释"
                 )},

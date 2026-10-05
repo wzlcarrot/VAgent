@@ -77,6 +77,18 @@ describe('chat store localStorage 去抖', () => {
 
     store.deleteSession(session.id)
     expect(setItemSpy).toHaveBeenCalled()
+    expect(store.currentSessionId).not.toBe(session.id)
+    expect(store.messages).toEqual([])
+  })
+
+  it('删除不在本地列表里的当前会话时，下一问不能沿用原 sessionId', () => {
+    const store = useChatStore()
+    store.setCurrentSessionId('from-db')
+    store.clearMessages()
+    store.deleteSession('from-db')
+    expect(store.currentSessionId).not.toBe('from-db')
+    expect(store.currentSessionId).toBeTruthy()
+    expect(store.messages).toEqual([])
   })
 
   it('localStorage 满时不应抛异常', () => {
@@ -93,14 +105,33 @@ describe('chat store localStorage 去抖', () => {
     store.addMessage({ role: 'user', content: 'hi', status: 'success' })
     expect(store.sessions.length).toBe(1)
     expect(store.messages.length).toBe(1)
-    expect(localStorage.getItem('viewhub_sessions')).toBeTruthy()
+    expect(localStorage.getItem('viewhub_sessions:anon')).toBeTruthy()
 
     store.reset()
 
     expect(store.sessions.length).toBe(0)
     expect(store.messages.length).toBe(0)
     expect(store.currentSessionId).toBeNull()
+    expect(localStorage.getItem('viewhub_sessions:anon')).toBeNull()
     expect(localStorage.getItem('viewhub_sessions')).toBeNull()
+  })
+
+  it('按用户分隔会话，换账号后不显示上一用户的对话', () => {
+    const store = useChatStore()
+    store.loadUserSessions('user-a')
+    store.createSession()
+    store.addMessage({ role: 'user', content: 'A 的问题', status: 'success' })
+    store.finalizeStreaming()
+    expect(localStorage.getItem('viewhub_sessions:user-a')).toBeTruthy()
+
+    store.loadUserSessions('user-b')
+    expect(store.sessions.length).toBe(0)
+    expect(store.messages.length).toBe(0)
+    expect(localStorage.getItem('viewhub_sessions:user-a')).toContain('A 的问题')
+
+    store.loadUserSessions('user-a')
+    expect(store.sessions.length).toBe(1)
+    expect(store.messages[0].content).toBe('A 的问题')
   })
 
   it('无 crypto.randomUUID 时 generateId 降级为合法 v4 UUID', () => {

@@ -165,6 +165,31 @@ def test_context_manager_memory_and_resolve():
         assert "二号" in r1["resolved_question"]
         r2 = cm.resolve_references(sid, "这个视频怎么样")
         assert r2["resolved"] is True
+        # 播放页已经换成另一支视频时，「这个视频」不能改写成上一支的标题
+        switched = cm.resolve_references(sid, "这个视频讲什么", current_video_id="v-new")
+        assert switched["resolved"] is False
+        assert switched["resolved_question"] == "这个视频讲什么"
+        same = cm.resolve_references(sid, "这个视频讲什么", current_video_id="v2")
+        assert same["resolved"] is True
+        assert "二号" in same["resolved_question"]
+        far = cm.resolve_references(sid, "那个视频讲什么", current_video_id="v-new")
+        assert far["resolved"] is False
+        assert far["resolved_question"] == "那个视频讲什么"
+        earlier = cm.resolve_references(sid, "刚才那个讲什么", current_video_id="v-new")
+        assert earlier["resolved"] is False
+        assert earlier["resolved_question"] == "刚才那个讲什么"
+        # 没有当前播放视频时，远指仍指向刚才问答过的那一支
+        no_page = cm.resolve_references(sid, "那个视频讲什么")
+        assert no_page["resolved"] is True
+        assert "二号" in no_page["resolved_question"]
+        # 播放页当前视频不是推荐项时，序数词不能改写成推荐标题（检索 id 仍是当前视频）
+        ordinal = cm.resolve_references(sid, "第二个讲什么", current_video_id="v-new")
+        assert ordinal["resolved"] is False
+        assert ordinal["resolved_question"] == "第二个讲什么"
+        # 当前播放的就是列表里那一条时，改写标题和检索 id 一致
+        same_ordinal = cm.resolve_references(sid, "第二个讲什么", current_video_id="v2")
+        assert same_ordinal["resolved"] is True
+        assert "二号" in same_ordinal["resolved_question"]
         r3 = cm.resolve_references(sid, "最后一个呢")
         assert r3["resolved"] is True
         r4 = cm.resolve_references("", "x")

@@ -6,6 +6,7 @@ from app.services import video_indexing as vi
 from app.tools.rag_tools import RAGTools
 from app.tools.video_qa_retrieval import build_citations
 from app.utils.chat_stream_permit import (
+    _RELEASE_LUA,
     release_stream_permit,
     reset_stream_permits,
     try_acquire_stream_permit,
@@ -82,6 +83,28 @@ def test_acquire_lua_path_mock():
     assert p.acquired
     assert p.token
     mock_r.eval.assert_called()
+    script = mock_r.eval.call_args[0][0]
+    assert "ZREMRANGEBYSCORE" in script
+    assert "ZCARD" in script
+
+
+def test_release_lua_drops_permit_without_token_key():
+    """令牌键过期后仍要按 token 从集合里删掉，不能只在 EXISTS 时才减计数。"""
+    assert "ZREM" in _RELEASE_LUA
+    assert "EXISTS" not in _RELEASE_LUA
+
+
+def test_release_lua_keeps_same_user_queue_slot():
+    """释放许可不按用户 id 删排队位，同一用户还在等时位置要留着。"""
+    assert "qkey" not in _RELEASE_LUA
+    assert "ARGV[2]" not in _RELEASE_LUA
+
+
+def test_acquire_lua_keeps_queue_score_on_retry():
+    """同一次排队重试不刷新分数，队首不会因为前端再次请求被排到队尾。"""
+    from app.utils.chat_stream_permit import _ACQUIRE_LUA
+
+    assert "ZADD', qkey, 'NX'" in _ACQUIRE_LUA
 
 
 def test_acquire_lua_queue_path_mock():

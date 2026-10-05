@@ -1,7 +1,7 @@
 """
 LLM Replay —— 从 fixture 回放固定响应，CI / 演示零 token、零 flaky。
 
-环境变量 VAGENT_LLM_REPLAY=1 或 settings.demo_mode / VAGENT_DEMO_MODE=1 启用。
+VAGENT_LLM_REPLAY=1 或没配 DeepSeek Key 的 demo_mode 启用；有 Key 时走真实 LLM。
 """
 from __future__ import annotations
 
@@ -150,7 +150,7 @@ def replay_video_qa_react_step(
 ) -> Dict[str, Any]:
     """Video QA ReAct：第一步调检索工具，见到 tool 结果后返回最终草稿。"""
     if any(m.get("role") == "tool" for m in messages):
-        text = replay_chat(messages, scenario) or "这是演示模式的视频问答草稿[1]。"
+        text = replay_chat(messages, scenario) or "这是演示模式的视频内回答草稿[1]。"
         return {"tool_call": False, "content": text, "usage": {}}
 
     user_text = _user_text(messages)

@@ -190,3 +190,30 @@ class TestCompactConversation:
         assert result["success"] is True
         # LLM 失败时用 _fallback_summary 兜底，摘要非空
         assert result["summary_length"] > 0
+
+
+def test_build_context_keeps_summary_and_history_grouping():
+    """摘要要进上下文；组历史时 system 摘要变成 system_memory，不能整段丢掉。"""
+    import json as json_mod
+    from unittest.mock import MagicMock, patch
+
+    from app.tools.compact_service import create_compact_boundary, create_compact_summary
+    from app.tools.context_tools import build_context, history_from_context_messages
+
+    msgs = [
+        create_compact_boundary(),
+        create_compact_summary("用户问过视频A的内容"),
+        {"role": "user", "content": "继续"},
+        {"role": "assistant", "content": "好的"},
+    ]
+    client = MagicMock()
+    client.lrange.return_value = [json_mod.dumps(m, ensure_ascii=False) for m in msgs]
+    with patch("app.tools.context_tools._get_redis", return_value=client):
+        ctx = build_context("s1")
+    assert any("视频A" in (m.get("content") or "") for m in ctx)
+    assert not any(str(m.get("content", "")).startswith("trigger=") for m in ctx)
+    history = history_from_context_messages(ctx)
+    assert history[0]["system_memory"]
+    assert "视频A" in history[0]["system_memory"]
+    assert history[-1]["user"] == "继续"
+    assert history[-1]["assistant"] == "好的"

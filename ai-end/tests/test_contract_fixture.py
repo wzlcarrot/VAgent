@@ -14,11 +14,13 @@
 - data: [DONE]  （终止哨兵）
 """
 import json
+from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
+from tests.fake_redis import FakeRedis
 
 
 @pytest.fixture(scope="session")
@@ -30,6 +32,13 @@ def client():
 
 class TestSSEContract:
     """验证真实 stream 输出符合前端 parseSSELine 可消费的契约。"""
+
+    @pytest.fixture(autouse=True)
+    def _fake_session_redis(self):
+        fake = FakeRedis()
+        with patch("app.tools.context_tools._get_redis", return_value=fake), \
+             patch("app.utils.chat_stream_permit._redis", return_value=None):
+            yield
 
     def _stream_lines(self, client):
         do_login(client)
@@ -78,7 +87,7 @@ class TestSSEContract:
 
         assert status_stages, "至少一个 status 事件"
         # 前端 stepConfig 认识这些 stage：routing/retrieval/generating/done
-        known = {"routing", "retrieval", "generating", "done", "clarifying", "parallel"}
+        known = {"routing", "retrieval", "generating", "done", "clarifying", "parallel", "fallback"}
         for s in status_stages:
             assert s in known, f"未知 stage: {s}（前端 WorkflowIndicator 无法映射）"
 

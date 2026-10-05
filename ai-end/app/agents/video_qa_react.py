@@ -1,5 +1,5 @@
 """
-片内视频问答 —— Bounded ReAct 检索（max_steps 可配置）。
+视频内回答 —— Bounded ReAct 检索（max_steps 可配置）。
 
 Agent 在证据不足时可多次调用 search_video_chunks，再交给下游 LLM 生成与 Corrective。
 演示模式下走 llm_replay，仍执行真实检索工具（与生产路径一致，仅 mock LLM）。
@@ -57,7 +57,7 @@ VIDEO_QA_REACT_TOOLS = [
     }
 ]
 
-_REACT_SYSTEM = """你是 ViewHub 片内视频问答 Agent。
+_REACT_SYSTEM = """你是 ViewHub 视频内回答 Agent。
 
 你可以调用工具 search_video_chunks 在当前视频内检索证据。
 规则：

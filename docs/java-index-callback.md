@@ -73,7 +73,7 @@ if (resp.statusCode() != 200 || !resp.body().contains("\"success\":true")) {
 
 ## 产品行为（SLA）
 
-- 未建索引的视频：片内问答返回固定话术「知识库还在构建中」，**不瞎编**
+- 未建索引的视频：视频内回答返回固定话术「知识库还在构建中」，**不瞎编**
 - 目标：**转码完成后 1 分钟内** `is_video_indexed(video_id)=true`
 - Admin「本周质量」：`videos_pending`、`indexed_ratio`、`pending_alert`
 

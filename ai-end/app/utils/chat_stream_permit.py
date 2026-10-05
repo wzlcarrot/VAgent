@@ -10,8 +10,8 @@ from typing import Dict, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
-_GLOBAL_KEY = "vagent:stream:permits:global"
-_USER_PREFIX = "vagent:stream:permits:user:"
+_LIVE_GLOBAL = "vagent:stream:live:global"
+_LIVE_USER_PREFIX = "vagent:stream:live:user:"
 _QUEUE_KEY = "vagent:stream:queue"
 _TOKEN_PREFIX = "vagent:stream:token:"
 _PERMIT_TTL = 600  # 泄漏保护
@@ -21,10 +21,12 @@ _mem_global = 0
 _mem_user: Dict[str, int] = {}
 _mem_token_user: Dict[str, str] = {}
 
-# KEYS: global, user, queue, token
+# KEYS: live global zset, live user zset, queue, token
 # ARGV: gmax, umax, uid, token, now, ttl
-# 注意：queue 的 member 用 uid（而非 uid:token）——同一用户重试时 ZADD
-# 覆盖旧条目，避免"每次重试留一个尸体成员"把排队位次越推越高。
+# 许可是带过期时间的成员，不是会一直被续期的计数器。
+# 进程拿着许可退出后，成员到点就会被清掉，不会因为别人还在请求就一直累加。
+# queue 的 member 用 uid：同一用户只有一个排队位。
+# 重试用 ZADD NX，不改原来的入队时间，避免越重试越靠后。
 _ACQUIRE_LUA = """
 local gkey = KEYS[1]
 local ukey = KEYS[2]
@@ -37,26 +39,29 @@ local token = ARGV[4]
 local now = tonumber(ARGV[5])
 local ttl = tonumber(ARGV[6])
 local member = uid
+local expiry = now + ttl
 
--- 清理过期排队项（超过 TTL）
+redis.call('ZREMRANGEBYSCORE', gkey, '-inf', now)
+redis.call('ZREMRANGEBYSCORE', ukey, '-inf', now)
+
 local stale = redis.call('ZRANGEBYSCORE', qkey, '-inf', now - ttl)
 if #stale > 0 then
   redis.call('ZREM', qkey, unpack(stale))
 end
 
-local g = tonumber(redis.call('GET', gkey) or '0')
-local u = tonumber(redis.call('GET', ukey) or '0')
+local g = redis.call('ZCARD', gkey)
+local u = redis.call('ZCARD', ukey)
 if g < gmax and u < umax then
-  redis.call('INCR', gkey)
+  redis.call('ZADD', gkey, expiry, token)
+  redis.call('ZADD', ukey, expiry, token)
   redis.call('EXPIRE', gkey, ttl)
-  redis.call('INCR', ukey)
   redis.call('EXPIRE', ukey, ttl)
   redis.call('SETEX', tkey, ttl, uid)
   redis.call('ZREM', qkey, member)
   return {1, 0, 0}
 end
 
-redis.call('ZADD', qkey, now, member)
+redis.call('ZADD', qkey, 'NX', now, member)
 redis.call('EXPIRE', qkey, ttl)
 local rank = redis.call('ZRANK', qkey, member)
 local pos = (rank or 0) + 1
@@ -64,23 +69,17 @@ local retry = math.min(30, 2 + pos * 0.5)
 return {0, pos, retry}
 """
 
+# 释放只删这一条流的 token。排队成员是用户 id，同一用户可能还在等下一次重试，
+# 这里不能按用户 id 删排队记录。拿到许可时 acquire 会自己移出队列。
 _RELEASE_LUA = """
 local gkey = KEYS[1]
 local ukey = KEYS[2]
-local qkey = KEYS[3]
-local tkey = KEYS[4]
-local uid = ARGV[1]
-local token = ARGV[2]
-local member = uid
+local tkey = KEYS[3]
+local token = ARGV[1]
 
-redis.call('ZREM', qkey, member)
-if redis.call('EXISTS', tkey) == 1 then
-  redis.call('DEL', tkey)
-  local g = tonumber(redis.call('DECR', gkey) or '0')
-  if g < 0 then redis.call('SET', gkey, 0) end
-  local u = tonumber(redis.call('DECR', ukey) or '0')
-  if u < 0 then redis.call('SET', ukey, 0) end
-end
+redis.call('ZREM', gkey, token)
+redis.call('ZREM', ukey, token)
+redis.call('DEL', tkey)
 return 1
 """
 
@@ -127,8 +126,8 @@ def try_acquire_stream_permit(user_id: str) -> StreamPermit:
             res = r.eval(
                 _ACQUIRE_LUA,
                 4,
-                _GLOBAL_KEY,
-                f"{_USER_PREFIX}{uid}",
+                _LIVE_GLOBAL,
+                f"{_LIVE_USER_PREFIX}{uid}",
                 _QUEUE_KEY,
                 f"{_TOKEN_PREFIX}{token}",
                 global_max,
@@ -143,7 +142,10 @@ def try_acquire_stream_permit(user_id: str) -> StreamPermit:
                 return StreamPermit(acquired=True, token=token)
             pos = int(res[1] or 1)
             retry = float(res[2] or min(30.0, 2.0 + pos * 0.5))
-            g = int(r.get(_GLOBAL_KEY) or 0)
+            try:
+                g = int(r.zcard(_LIVE_GLOBAL) or 0)
+            except (TypeError, ValueError):
+                g = 0
             reason = "global_busy" if g >= global_max else "user_busy"
             return StreamPermit(
                 acquired=False,
@@ -191,12 +193,10 @@ def release_stream_permit(token: str, user_id: Optional[str] = None) -> None:
                     uid = raw.decode("utf-8", errors="replace") if isinstance(raw, bytes) else str(raw)
             r.eval(
                 _RELEASE_LUA,
-                4,
-                _GLOBAL_KEY,
-                f"{_USER_PREFIX}{uid}",
-                _QUEUE_KEY,
+                3,
+                _LIVE_GLOBAL,
+                f"{_LIVE_USER_PREFIX}{uid}",
                 tkey,
-                uid,
                 token,
             )
             return

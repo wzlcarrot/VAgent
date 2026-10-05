@@ -263,6 +263,22 @@ describe('smartChatStream', () => {
     expect(events).toEqual([{ type: 'text', content: 'plain text' }])
   })
 
+  it('频率限制 429 不重试', async () => {
+    const fetchMock = vi.fn(async () => new Response(
+      JSON.stringify({ detail: '请求过于频繁，请稍后再试' }),
+      { status: 429, headers: { 'Content-Type': 'application/json' } },
+    ))
+    vi.stubGlobal('fetch', fetchMock)
+    await expect(
+      (async () => {
+        for await (const _ of smartChatStream('hi')) {
+          /* noop */
+        }
+      })()
+    ).rejects.toThrow('请求过于频繁')
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
   it('401 时抛出异常并派发 auth:unauthorized', async () => {
     const dispatched: string[] = []
     window.addEventListener('auth:unauthorized', () => dispatched.push('unauthorized'))

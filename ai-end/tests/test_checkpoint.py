@@ -122,7 +122,7 @@ class TestCheckpointSave:
             # 不应抛异常
             mgr._do_save(cp)
         assert mock_err.call_count >= 1
-        # 连接仍需归还
+        conn.rollback.assert_called_once()
         pool.putconn.assert_called_once_with(conn)
 
 
@@ -268,6 +268,17 @@ class TestCheckpointRead:
         assert details[0]["status"] == "completed"
         assert details[0]["created_at"] is not None
 
+    def test_delete_session_purges_runtime_memory(self):
+        from app.routers.chat_sessions import _purge_session_runtime
+
+        with patch("app.tools.context_tools.clear_session_memory") as mem, \
+             patch("app.conversation.context_manager.clear_session_context") as ctx, \
+             patch("app.harness.checkpoint.CheckpointManager.clear_session", return_value=True) as cp:
+            _purge_session_runtime("s1")
+        mem.assert_called_once_with("s1")
+        ctx.assert_called_once_with("s1")
+        cp.assert_called_once_with("s1")
+
     def test_clear_session_commits_delete(self):
         from app.harness.checkpoint import CheckpointManager
         mgr = CheckpointManager()
@@ -285,8 +296,124 @@ class TestCheckpointRead:
         assert "DELETE FROM workflow_checkpoints" in cursor.execute.call_args[0][0]
         conn.commit.assert_called_once()
 
+    def test_get_rolls_back_before_returning_connection(self):
+        from app.harness.checkpoint import CheckpointManager
+        mgr = CheckpointManager()
+        pool = MagicMock()
+        conn = MagicMock()
+        cursor = MagicMock()
+        cursor.execute.side_effect = Exception("bad sql")
+        pool.getconn.return_value = conn
+        conn.cursor.return_value = cursor
+        with patch("app.harness.checkpoint.get_global_pool", return_value=pool):
+            assert mgr.get("s1", "chat", "step") is None
+        conn.rollback.assert_called_once()
+        pool.putconn.assert_called_once_with(conn)
+
+    def test_clear_session_rolls_back_before_returning_connection(self):
+        from app.harness.checkpoint import CheckpointManager
+        mgr = CheckpointManager()
+        pool = MagicMock()
+        conn = MagicMock()
+        cursor = MagicMock()
+        cursor.execute.side_effect = Exception("bad sql")
+        pool.getconn.return_value = conn
+        conn.cursor.return_value = cursor
+        with patch("app.harness.checkpoint.get_global_pool", return_value=pool):
+            assert mgr.clear_session("s1") is False
+        conn.rollback.assert_called_once()
+        pool.putconn.assert_called_once_with(conn)
+
+    def test_clear_session_drops_connection_when_rollback_fails(self):
+        from app.harness.checkpoint import CheckpointManager
+        mgr = CheckpointManager()
+        pool = MagicMock()
+        conn = MagicMock()
+        conn.rollback.side_effect = RuntimeError("rollback failed")
+        cursor = MagicMock()
+        cursor.execute.side_effect = Exception("bad sql")
+        pool.getconn.return_value = conn
+        conn.cursor.return_value = cursor
+        with patch("app.harness.checkpoint.get_global_pool", return_value=pool):
+            assert mgr.clear_session("s1") is False
+        pool.putconn.assert_not_called()
+        conn.close.assert_called_once()
+
     def test_clear_session_returns_false_when_pool_unavailable(self):
         from app.harness.checkpoint import CheckpointManager
         mgr = CheckpointManager()
         with patch("app.harness.checkpoint.get_global_pool", return_value=None):
             assert mgr.clear_session("s1") is False
+
+
+def test_resume_uses_latest_workflow_not_video_qa_first():
+    """会话里先视频内回答、后推荐失败时，恢复应回到推荐，而不是先碰到的 video_qa。"""
+    from app.harness.checkpoint import Checkpoint
+    from app.routers.chat import _find_resumable_checkpoint
+
+    latest = Checkpoint(
+        session_id="sid",
+        workflow_type="recommend_workflow",
+        step_name="recall_node",
+        state_snapshot={},
+        status="failed",
+        created_at=300,
+    )
+    completed = Checkpoint(
+        session_id="sid",
+        workflow_type="recommend_workflow",
+        step_name="intent_node",
+        state_snapshot={},
+        status="completed",
+        created_at=200,
+    )
+    with patch("app.harness.checkpoint.CheckpointManager.get_shown_workflow", return_value=None), \
+         patch("app.harness.checkpoint.CheckpointManager.list_recent", return_value=[latest]), \
+         patch("app.harness.checkpoint.CheckpointManager.get_last_completed", return_value=completed) as last_completed, \
+         patch("app.harness.checkpoint.CheckpointManager.list_steps", return_value=["intent_node"]):
+        found = _find_resumable_checkpoint("sid")
+    assert found["last_checkpoint"].workflow_type == "recommend_workflow"
+    last_completed.assert_called_once_with("sid", "recommend_workflow")
+
+
+def test_resume_ignores_later_parallel_chat_fallback():
+    """兜底闲聊的 checkpoint 更晚时，仍恢复用户刚看到的推荐。"""
+    from app.harness.checkpoint import Checkpoint
+    from app.routers.chat import _find_resumable_checkpoint, choose_resumable_workflow
+
+    chat_fallback = Checkpoint(
+        session_id="sid",
+        workflow_type="chat_workflow",
+        step_name="supervisor_node",
+        state_snapshot={"parallel_fallback": True},
+        status="completed",
+        created_at=500,
+    )
+    recommend = Checkpoint(
+        session_id="sid",
+        workflow_type="recommend_workflow",
+        step_name="supervisor_node",
+        state_snapshot={},
+        status="failed",
+        created_at=400,
+    )
+    assert choose_resumable_workflow(None, [chat_fallback, recommend]) == "recommend_workflow"
+    # 闲聊才是这一轮展示给用户的结果时，跟展示记录走
+    assert choose_resumable_workflow("chat_workflow", [chat_fallback, recommend]) == "chat_workflow"
+
+    completed = Checkpoint(
+        session_id="sid",
+        workflow_type="recommend_workflow",
+        step_name="search_node",
+        state_snapshot={},
+        status="completed",
+        created_at=350,
+    )
+    with patch("app.harness.checkpoint.CheckpointManager.get_shown_workflow", return_value="recommend_workflow"), \
+         patch("app.harness.checkpoint.CheckpointManager.list_recent") as recent, \
+         patch("app.harness.checkpoint.CheckpointManager.get_last_completed", return_value=completed) as last_completed, \
+         patch("app.harness.checkpoint.CheckpointManager.list_steps", return_value=["search_node"]):
+        found = _find_resumable_checkpoint("sid")
+    recent.assert_not_called()
+    assert found["last_checkpoint"].workflow_type == "recommend_workflow"
+    last_completed.assert_called_once_with("sid", "recommend_workflow")

@@ -75,6 +75,20 @@ class TestNeedClarification:
             question="推荐一些视频",
         ) is False
 
+    def test_recommend_with_play_history_does_not_ask(self):
+        assert IntentClarifier.need_clarification(
+            intent=WorkflowType.RECOMMEND,
+            user_preference={"play_count": 3, "watched_video_ids": ["v1"]},
+            question="推荐一些视频",
+        ) is False
+
+    def test_recommend_with_likes_does_not_ask(self):
+        assert IntentClarifier.need_clarification(
+            intent=WorkflowType.RECOMMEND,
+            user_preference={"liked_video_ids": ["v1"]},
+            question="推荐一些视频",
+        ) is False
+
     def test_video_qa_no_id_asks(self):
         assert IntentClarifier.need_clarification(
             intent=WorkflowType.VIDEO_QA, video_id=None,
@@ -97,6 +111,15 @@ class TestNeedClarification:
         ) is True
         assert IntentClarifier.need_clarification(
             intent=WorkflowType.CHAT, mentioned_keywords=[], question="在吗",
+        ) is True
+
+    def test_chat_chinese_greeting_not_blocked_by_split_token(self):
+        """中文整句 split() 后是一个词，不能因此让招呼追问失效。"""
+        assert IntentClarifier.need_clarification(
+            intent=WorkflowType.CHAT, mentioned_keywords=["你好"], question="你好",
+        ) is True
+        assert IntentClarifier.need_clarification(
+            intent=WorkflowType.CHAT, mentioned_keywords=["在吗"], question="在吗",
         ) is True
 
     def test_chat_short_question_with_content_not_vague(self):

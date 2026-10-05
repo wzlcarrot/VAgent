@@ -2,6 +2,7 @@ import json
 import logging
 import threading
 import time
+import uuid
 from typing import Dict, List, Optional
 
 from app.config import settings
@@ -103,6 +104,69 @@ def _owner_key(session_id: str) -> str:
     return f"session:{session_id}:owner"
 
 
+def _writers_key(session_id: str) -> str:
+    return f"session:{session_id}:writers"
+
+
+def clear_session_memory(session_id: str) -> None:
+    """删除会话时清掉 Redis 里的消息、摘要和归属。
+
+    只删 chat_history 的话，下一问仍用同一个 session_id 时，
+    build_context 还会把已删对话喂给模型。
+    """
+    if not session_id:
+        return
+    client = _get_redis()
+    if not client:
+        return
+    keys = [
+        _messages_key(session_id),
+        _summary_key(session_id),
+        _owner_key(session_id),
+        _writers_key(session_id),
+        f"session:{session_id}:last_compact",
+    ]
+    try:
+        client.delete(*keys)
+    except Exception as e:
+        logger.warning(f"清理会话短期记忆失败: session={session_id[:8]}: {e}")
+
+
+def begin_session_write(session_id: str) -> str:
+    """记下这一轮生成。删除会话会清掉这个集合，收尾时对不上就不再写回。"""
+    if not session_id:
+        return ""
+    client = _get_redis()
+    if not client:
+        return ""
+    token = uuid.uuid4().hex
+    try:
+        key = _writers_key(session_id)
+        client.sadd(key, token)
+        client.expire(key, settings.context_ttl)
+        return token
+    except Exception as e:
+        logger.warning(f"记录会话写入标记失败: {e}")
+        return ""
+
+
+def session_write_current(session_id: str, token: str) -> bool:
+    """本轮开始时的标记还在，才允许把消息和历史写回去。
+
+    没记上标记（Redis 不可用）时仍允许写，避免正常保存被停掉。
+    """
+    if not token:
+        return True
+    client = _get_redis()
+    if not client:
+        return True
+    try:
+        return bool(client.sismember(_writers_key(session_id), token))
+    except Exception as e:
+        logger.warning(f"检查会话写入标记失败: {e}")
+        return True
+
+
 def ensure_session_owner(user_id: str, session_id: str) -> bool:
     """校验/绑定会话归属，防止用他人 session_id 读取或污染短期记忆。
 
@@ -123,7 +187,13 @@ def ensure_session_owner(user_id: str, session_id: str) -> bool:
         key = _owner_key(session_id)
         if client.set(key, user_id, nx=True, ex=settings.context_ttl):
             return True
-        return client.get(key) == user_id
+        owner = client.get(key)
+        if owner != user_id:
+            return False
+        # 消息列表每次写入都会续期。归属键不续期的话，人一直聊着时归属先过期，
+        # 别人知道 session_id 就能重新绑上，读到还在的短期记忆。
+        client.expire(key, settings.context_ttl)
+        return True
     except RuntimeError:
         raise
     except Exception as e:
@@ -207,6 +277,35 @@ def update_summary(session_id: str, summary: str) -> bool:
     except Exception as e:
         logger.error(f"Redis 更新摘要失败: {e}")
         return False
+
+
+def history_from_context_messages(ctx_messages: List[Dict]) -> List[Dict]:
+    """把 build_context 的消息收成对话轮次。
+
+    system 摘要不能丢掉：压缩后的历史只剩摘要加最近几轮，
+    跳过全部 system 时模型就看不到摘要。
+    """
+    pairs: List[Dict] = []
+    summaries: List[str] = []
+    for msg in ctx_messages or []:
+        if not isinstance(msg, dict):
+            continue
+        role = msg.get("role")
+        content = msg.get("content") or ""
+        if not isinstance(content, str):
+            continue
+        text = content.strip()
+        if role == "system":
+            if text:
+                summaries.append(text)
+            continue
+        if role == "user":
+            pairs.append({"user": content})
+        elif role == "assistant" and pairs:
+            pairs[-1]["assistant"] = content
+    if summaries:
+        pairs.insert(0, {"system_memory": "\n\n".join(summaries)})
+    return pairs
 
 
 def build_context(session_id: str) -> List[Dict[str, str]]:

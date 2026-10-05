@@ -61,6 +61,11 @@ class TestBuildRecommendMarkdown:
         assert "## 1. 无元数据" in md
         assert "作者" not in md
 
+    def test_empty_title_not_none(self):
+        md = _build_recommend_markdown([{"video_id": "v1", "title": None}])
+        assert "## 1. 未知视频" in md
+        assert "None" not in md
+
 
 class TestProfileNode:
     def test_no_user_id(self):
@@ -107,6 +112,12 @@ class TestHasHistoryRouter:
 
     def test_no_history(self):
         assert has_history_router(_state(user_profile={"play_count": 0})) == "summary_node"
+
+    def test_likes_without_play_still_personalized(self):
+        assert has_history_router(_state(user_profile={
+            "play_count": 0,
+            "liked_video_ids": ["v1"],
+        })) == "search_node"
 
 
 class TestSearchNode:
@@ -167,6 +178,18 @@ class TestSearchNode:
         vids = [v["video_id"] for v in result["candidate_videos"]]
         assert vids == ["v_new", "v_seen"]
 
+    def test_empty_video_name_becomes_unknown(self):
+        from app.models import VideoInfo
+        results = [{"video_id": "v1"}]
+        infos = [VideoInfo(videoId="v1", videoName=None)]
+        with patch("app.tools.ranker.dual_recall_and_rerank", return_value=results), \
+             patch("app.agents.workflows.recommend_workflow.VideoTools.get_video_info_batch", return_value=infos), \
+             patch("app.agents.workflows.recommend_workflow.invoke_with_governor", side_effect=lambda *a, **k: a[3]()), \
+             patch("app.tools.memory_tools.MemoryTools.recall_memories", return_value=[]), \
+             patch("app.tools.memory_tools.MemoryTools.get_negative_feedback_video_ids", return_value=[]):
+            result = search_node(_state(top_k=3, user_profile={"favorite_tags": ["AI"]}))
+        assert result["candidate_videos"][0]["title"] == "未知视频"
+
 
 class TestRankCandidateIds:
     def test_demotes_watched_behind_unseen(self):
@@ -205,7 +228,46 @@ class TestReasonNode:
         )
         result = reason_node(state)
         assert "你常看「AI」" in result["reasons"][0]
-        assert "你点过同类" in result["reasons"][0]
+        assert "你点过这个" in result["reasons"][0]
+        assert "你点过同类" not in result["reasons"][0]
+
+    def test_favorite_only_does_not_say_liked(self):
+        state = _state(
+            candidate_videos=[{"video_id": "v1", "title": "t", "tags": "美食", "author": "老王"}],
+            user_profile={"favorite_tags": [], "favorite_video_ids": ["v1"], "liked_video_ids": []},
+            top_k=1,
+        )
+        result = reason_node(state)
+        assert "你收藏过这个" in result["reasons"][0]
+        assert "你点过" not in result["reasons"][0]
+
+    def test_region_reason_only_when_video_category_matches(self):
+        state = _state(
+            candidate_videos=[{
+                "video_id": "v1", "title": "t", "tags": "美食",
+                "category_id": "3", "author": "老王",
+            }],
+            user_profile={"favorite_tags": ["AI"], "favorite_regions": ["1"]},
+            top_k=3,
+        )
+        result = reason_node(state)
+        assert "你常看这个分区" not in result["reasons"][0]
+
+        state["candidate_videos"][0]["category_id"] = "1"
+        matched = reason_node(state)
+        assert "你常看这个分区" in matched["reasons"][0]
+
+    def test_region_reason_uses_parent_when_child_missing(self):
+        state = _state(
+            candidate_videos=[{
+                "video_id": "v1", "title": "t", "tags": "杂谈",
+                "category_id": "", "p_category_id": "8",
+            }],
+            user_profile={"favorite_tags": [], "favorite_regions": ["8"]},
+            top_k=1,
+        )
+        result = reason_node(state)
+        assert "你常看这个分区" in result["reasons"][0]
 
 
 class TestSummaryNode:
@@ -243,12 +305,33 @@ class TestColdStartNode:
         assert result["recommended_videos"][0]["video_id"] == "v1"
         assert "冷启视频" in result["summary"]
 
+    def test_empty_recall_name_not_none(self):
+        results = [{"video_id": "v1", "video_name": None, "content": "介绍"}]
+        with patch("app.tools.ranker.dual_recall_and_rerank", return_value=results), \
+             patch("app.agents.workflows.recommend_workflow.VideoTools.get_video_info_batch", return_value=[]), \
+             patch("app.agents.workflows.recommend_workflow.invoke_with_governor", side_effect=lambda *a, **k: a[3]()):
+            result = cold_start_node(_state(question="推荐"))
+        assert result["recommended_videos"][0]["title"] == "未知视频"
+        assert "None" not in result["summary"]
+
     def test_no_question_falls_back_to_recent(self):
         from app.models import VideoInfo
         recent = [VideoInfo(videoId="r1", videoName="最近视频", tags="科技", nickName="UP", playCount=5)]
         with patch("app.agents.workflows.recommend_workflow.VideoTools.get_recent_videos", return_value=recent):
             result = cold_start_node(_state(question=""))
         assert result["recommended_videos"][0]["video_id"] == "r1"
+
+    def test_cold_start_demotes_not_helpful(self):
+        from app.models import VideoInfo
+        recent = [
+            VideoInfo(videoId="bad", videoName="没用的", nickName="A"),
+            VideoInfo(videoId="ok", videoName="还可以", nickName="B"),
+        ]
+        with patch("app.agents.workflows.recommend_workflow.VideoTools.get_recent_videos", return_value=recent), \
+             patch("app.tools.memory_tools.MemoryTools.get_negative_feedback_video_ids", return_value=["bad"]):
+            result = cold_start_node(_state(question="", top_k=2))
+        ids = [v["video_id"] for v in result["recommended_videos"]]
+        assert ids == ["ok", "bad"]
 
 
 class TestResumeRecommendWorkflow:

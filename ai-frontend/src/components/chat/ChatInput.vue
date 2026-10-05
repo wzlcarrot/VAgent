@@ -26,6 +26,18 @@
         @input="autoResize"
       ></textarea>
       <button
+        v-if="isStreaming"
+        class="send-btn stop-btn"
+        type="button"
+        title="停止生成"
+        @click="handleStop"
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+          <rect x="6" y="6" width="12" height="12" rx="1"></rect>
+        </svg>
+      </button>
+      <button
+        v-else
         class="send-btn"
         :disabled="isDisabled"
         @click="handleSend"
@@ -54,6 +66,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'send', message: string, imageUrls?: string[]): void
+  (e: 'stop'): void
 }>()
 
 const inputText = ref('')
@@ -69,9 +82,11 @@ const toastMessage = ref('')
 // 所以总原始图片大小上限 5MB（对应 base64 ~6.7MB，含 JSON 结构仍 < 8MB）
 const MAX_TOTAL_IMAGE_BYTES = 5 * 1024 * 1024
 
-// 按钮禁用条件：本地未发送中 + 全局流式未进行 + 有内容
+const pendingImageLoads = ref(0)
+let imageLoadGen = 0
+
 const isDisabled = computed(() => {
-  if (isSending.value || props.isStreaming) return true
+  if (isSending.value || pendingImageLoads.value > 0) return true
   return !inputText.value.trim() && previewUrls.value.length === 0
 })
 
@@ -89,6 +104,8 @@ function showToastMsg(msg: string) {
 }
 
 onBeforeUnmount(() => {
+  imageLoadGen++
+  pendingImageLoads.value = 0
   for (const timer of pendingTimers) {
     clearTimeout(timer)
   }
@@ -110,7 +127,8 @@ function triggerUpload() {
 function onFileSelected(e: Event) {
   const files = (e.target as HTMLInputElement).files
   if (!files) return
-  const currentTotal = imageSizes.value.reduce((a, b) => a + b, 0)
+  let runningTotal = imageSizes.value.reduce((a, b) => a + b, 0)
+  const gen = imageLoadGen
   for (const file of Array.from(files)) {
     if (!file.type.startsWith('image/')) {
       showToastMsg(`不支持的文件类型：${file.type || '未知'}`)
@@ -120,15 +138,21 @@ function onFileSelected(e: Event) {
       showToastMsg(`文件过大：${file.name}（超过 5MB 限制）`)
       continue
     }
-    if (currentTotal + file.size > MAX_TOTAL_IMAGE_BYTES) {
+    if (runningTotal + file.size > MAX_TOTAL_IMAGE_BYTES) {
       showToastMsg('图片总大小超过 5MB 限制，请减少图片数量或压缩后重试')
       continue
     }
+    runningTotal += file.size
+    pendingImageLoads.value++
     const reader = new FileReader()
     reader.onload = () => {
-      const dataUrl = reader.result as string
-      previewUrls.value.push(dataUrl)
+      pendingImageLoads.value = Math.max(0, pendingImageLoads.value - 1)
+      if (gen !== imageLoadGen) return
+      previewUrls.value.push(reader.result as string)
       imageSizes.value.push(file.size)
+    }
+    reader.onerror = () => {
+      pendingImageLoads.value = Math.max(0, pendingImageLoads.value - 1)
     }
     reader.readAsDataURL(file)
   }
@@ -143,17 +167,28 @@ function removeImage(i: number) {
 function handleKeydown(e: KeyboardEvent) {
   if (e.key === 'Enter' && !e.shiftKey) {
     e.preventDefault()
+    if (props.isStreaming) return
     handleSend()
   }
 }
 
+function handleStop() {
+  emit('stop')
+}
+
 function handleSend() {
   if (isSending.value) return
+  if (pendingImageLoads.value > 0) {
+    showToastMsg('图片仍在加载，请稍候再发送')
+    return
+  }
   const text = inputText.value.trim()
   const urls = [...previewUrls.value]
   if (!text && urls.length === 0) return
 
   isSending.value = true
+  imageLoadGen++
+  pendingImageLoads.value = 0
   emit('send', text, urls)
   inputText.value = ''
   previewUrls.value = []
@@ -337,6 +372,10 @@ function autoResize() {
 .send-btn:disabled {
   background: var(--color-border);
   cursor: not-allowed;
+}
+
+.stop-btn {
+  background: var(--color-danger, #c45c5c);
 }
 
 .spinner {

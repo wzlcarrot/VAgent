@@ -74,7 +74,7 @@ def main() -> int:
 
     # synonym
     code4, out4 = _run([sys.executable, "scripts/synonym_video_qa_eval.py"])
-    lines.append("## 4. 片内问答护栏（同义 / 硬负例）")
+    lines.append("## 4. 视频内回答护栏（同义 / 硬负例）")
     lines.append("")
     lines.append("```")
     lines.append(out4.strip().split("## Synonym")[-1] and ("## Synonym" + out4.strip().split("## Synonym")[-1]) or out4.strip())

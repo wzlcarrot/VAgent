@@ -19,7 +19,7 @@
     },
     "recommend_workflow": {
       "vector_search": { "max_calls": 5, "timeout_seconds": 10.0, "decision": "allow", "max_result_chars": 3000 },
-      "recommend_videos": { "max_calls": 3, "timeout_seconds": 15.0, "decision": "ask", "max_result_chars": 4000, "inject_user_id": true },
+      "recommend_videos": { "max_calls": 3, "timeout_seconds": 15.0, "decision": "allow", "max_result_chars": 4000, "inject_user_id": true },
       "retrieve_knowledge": { "decision": "forbidden" },
       "search_video_chunks": { "decision": "forbidden" }
     },
@@ -39,7 +39,7 @@
       "vector_search": { "max_calls": 5, "timeout_seconds": 10.0, "decision": "allow", "max_result_chars": 3000 },
       "retrieve_platform_docs": { "max_calls": 5, "timeout_seconds": 8.0, "decision": "allow", "max_result_chars": 3000 },
       "search_video_chunks": { "decision": "forbidden" },
-      "recommend_videos": { "decision": "ask" }
+      "recommend_videos": { "decision": "allow" }
     }
   }
 }

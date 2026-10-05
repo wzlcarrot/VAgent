@@ -29,7 +29,7 @@ VIDEO_QA_STEP_ORDER = [
     "video_info_node", "knowledge_node", "summary_node", "llm_node", "corrective_node", "supervisor_node",
 ]
 
-VIDEO_QA_PROMPT_TEMPLATE = """你是 ViewHub 平台的视频问答助手。基于以下信息回答用户问题。
+VIDEO_QA_PROMPT_TEMPLATE = """你是 ViewHub 平台的视频内回答助手。基于以下信息回答用户问题。
 
 视频信息：
 - 标题：{title}
@@ -77,6 +77,7 @@ class VideoQAState(TypedDict):
     llm_response: str
     answer: str
     workflow_type: str
+    image_urls: list
 
 
 def _save_checkpoint(session_id: str, step_name: str, state: Dict[str, Any],
@@ -122,7 +123,7 @@ def video_info_node(state: VideoQAState) -> dict:
 
     video_info = {
         "video_id": video.videoId,
-        "title": video.videoName,
+        "title": (video.videoName or "").strip(),
         "author": video.nickName,
         "duration": video.duration,
         "tags": video.tags,
@@ -135,6 +136,9 @@ def video_info_node(state: VideoQAState) -> dict:
             "video_info": video_info,
             "video_error": VIDEO_QA_NOT_INDEXED_MSG,
         }
+    # 名称为空但字幕已索引时，用 video_id 占位，避免路由因空标题跳过检索。
+    if not video_info["title"]:
+        video_info["title"] = video_id
 
     return {"video_info": video_info}
 
@@ -230,9 +234,16 @@ def summary_node(state: VideoQAState) -> dict:
 
 
 def _format_history(conversation_history: list, max_rounds: int = 0) -> str:
-    """把最近若干轮对话拼成提示词语境，用于指代消解（不作为事实来源）。"""
+    """把最近若干轮对话拼成提示词语境，用于指代消解（不作为事实来源）。
+
+    system_memory（压缩摘要）不占轮次窗口，始终放在最前，避免长对话压缩后模型只看见最近原文。
+    """
     rounds = max_rounds or settings.context_max_rounds
+    notes = []
     lines = []
+    for turn in conversation_history or []:
+        if isinstance(turn, dict) and turn.get("system_memory"):
+            notes.append(str(turn["system_memory"]))
     for turn in (conversation_history or [])[-rounds:]:
         if not isinstance(turn, dict):
             continue
@@ -240,7 +251,10 @@ def _format_history(conversation_history: list, max_rounds: int = 0) -> str:
             lines.append(f"用户：{turn['user']}")
         if turn.get("assistant"):
             lines.append(f"助手：{turn['assistant']}")
-    return "\n".join(lines) if lines else "（无）"
+    body = "\n".join(lines) if lines else "（无）"
+    if notes:
+        return "\n\n".join(notes) + "\n\n" + body
+    return body
 
 
 def _generate_answer(
@@ -249,6 +263,7 @@ def _generate_answer(
     knowledge: list,
     summary: str,
     conversation_history: list | None = None,
+    image_urls: list | None = None,
 ) -> str:
     knowledge_text = format_evidence_for_prompt(knowledge)
     prompt = VIDEO_QA_PROMPT_TEMPLATE.format(
@@ -266,7 +281,7 @@ def _generate_answer(
             {"role": "system", "content": "你是一个友好的视频平台 AI 助手。"},
             {"role": "user", "content": prompt},
         ]
-        response = LLM_tools.chat_sync(messages, temperature=0.5)
+        response = LLM_tools.chat_sync(messages, temperature=0.5, image_urls=image_urls or None)
     except Exception as e:
         logger.error(f"video_qa LLM 调用失败: {e}")
         response = ""
@@ -296,6 +311,7 @@ def llm_node(state: VideoQAState) -> dict:
     response = _generate_answer(
         question, video_info, knowledge, state.get("summary", ""),
         state.get("conversation_history"),
+        state.get("image_urls"),
     )
     return {"llm_response": response, "answer": response}
 
@@ -373,7 +389,10 @@ def corrective_node(state: VideoQAState) -> dict:
             knowledge = merged
             corrective_applied = True
             if sufficient or is_metadata_friendly_question(question) or knowledge:
-                answer = _generate_answer(question, video_info, knowledge, state.get("summary", ""), history)
+                answer = _generate_answer(
+                    question, video_info, knowledge, state.get("summary", ""), history,
+                    state.get("image_urls"),
+                )
                 # LLM 失败落 FALLBACK 时，对非元数据问法视为证据仍不足
                 if answer == FALLBACK_RESPONSE and not is_metadata_friendly_question(question):
                     answer = VIDEO_QA_INSUFFICIENT_MSG
@@ -452,7 +471,8 @@ video_qa_graph = build_video_qa_graph()
 
 def run_video_qa_workflow(question: str, video_id: str = None,
                           user_id: str = None, session_id: str = None,
-                          conversation_history: list = None) -> Dict[str, Any]:
+                          conversation_history: list = None,
+                          image_urls: list = None) -> Dict[str, Any]:
     initial_state: VideoQAState = {
         "question": question,
         "video_id": video_id,
@@ -473,7 +493,8 @@ def run_video_qa_workflow(question: str, video_id: str = None,
         "summary": "",
         "llm_response": "",
         "answer": "",
-        "workflow_type": WorkflowType.VIDEO_QA
+        "workflow_type": WorkflowType.VIDEO_QA,
+        "image_urls": image_urls or [],
     }
 
     result = video_qa_graph.invoke(initial_state)

@@ -74,6 +74,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'close'): void
+  (e: 'resumed', payload: { sessionId: string; answer: string }): void
 }>()
 
 const checkpoints = ref<CheckpointStep[]>([])
@@ -118,6 +119,7 @@ async function resume() {
         title: `已从断点继续完成（${wfLabel}）`,
         detail: res.answer ? res.answer.replace(/\s+/g, ' ').slice(0, 120) + '…' : '',
       }
+      emit('resumed', { sessionId: props.sessionId, answer: res.answer || '' })
     }
   } catch (e: unknown) {
     const err = e as { response?: { data?: { detail?: string } }; message?: string }

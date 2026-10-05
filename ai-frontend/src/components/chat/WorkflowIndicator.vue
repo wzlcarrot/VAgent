@@ -48,7 +48,7 @@ interface Step {
 }
 
 const WINNER_LABELS: Record<string, string> = {
-  video_qa_workflow: '视频问答',
+  video_qa_workflow: '视频内回答',
   recommend_workflow: '视频推荐',
   user_data_workflow: '个人数据',
   chat_workflow: '平台对话',
@@ -108,6 +108,9 @@ watch(() => props.stage, (newStage) => {
     } else if (!hit) {
       step.status = 'completed'
     }
+  }
+  if (!hit) {
+    currentStepLabel.value = props.label || newStage
   }
 })
 

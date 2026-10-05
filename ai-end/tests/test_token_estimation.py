@@ -76,10 +76,20 @@ class TestMessageModel:
         assert m.content == ""
 
     def test_is_internal_recognition(self):
-        """新格式：is_internal 字段识别 boundary/summary"""
-        boundary = Message(role="system", content="trigger=auto", is_internal=True)
+        """boundary 与 summary 不能都因 is_internal 命中，否则摘要会被当成边界丢掉。"""
+        boundary = Message(role="system", content="trigger=auto", is_internal=True, internal_kind="boundary")
         assert boundary.is_compact_boundary is True
-        assert boundary.is_compact_summary is True
+        assert boundary.is_compact_summary is False
+        summary = Message(role="system", content="历史摘要", is_internal=True, internal_kind="summary")
+        assert summary.is_compact_summary is True
+        assert summary.is_compact_boundary is False
+        # 旧数据没有 internal_kind：trigger= 是边界，其余 is_internal 是摘要
+        legacy_boundary = Message(role="system", content="trigger=auto", is_internal=True)
+        assert legacy_boundary.is_compact_boundary is True
+        assert legacy_boundary.is_compact_summary is False
+        legacy_summary = Message(role="system", content="历史摘要", is_internal=True)
+        assert legacy_summary.is_compact_summary is True
+        assert legacy_summary.is_compact_boundary is False
 
     def test_legacy_string_flag_recognition(self):
         """旧格式：字符串 flag 仍可识别（兼容存量 Redis 数据）"""
@@ -97,14 +107,22 @@ class TestCompactCompatibility:
         assert "__compact_boundary__" not in b.get("content", "")
 
     def test_is_compact_boundary_dual_path(self):
-        """is_compact_boundary 兼容新字段 + 旧字符串 flag"""
-        assert compact_service.is_compact_boundary({"role": "system", "content": "x", "is_internal": True})
+        """is_compact_boundary 兼容 internal_kind、旧 trigger= 内容、旧字符串 flag。"""
+        assert compact_service.is_compact_boundary(
+            {"role": "system", "content": "trigger=auto", "is_internal": True})
+        assert compact_service.is_compact_boundary(
+            {"role": "system", "content": "ignored", "is_internal": True, "internal_kind": "boundary"})
+        assert not compact_service.is_compact_boundary(
+            {"role": "system", "content": "摘要", "is_internal": True, "internal_kind": "summary"})
         assert compact_service.is_compact_boundary(
             {"role": "system", "content": "[__compact_boundary__] trigger=auto"})
         assert not compact_service.is_compact_boundary({"role": "user", "content": "正常消息"})
 
     def test_is_compact_summary_dual_path(self):
-        assert compact_service.is_compact_summary({"role": "system", "content": "摘要", "is_internal": True})
+        assert compact_service.is_compact_summary(
+            {"role": "system", "content": "摘要", "is_internal": True, "internal_kind": "summary"})
+        assert not compact_service.is_compact_summary(
+            {"role": "system", "content": "trigger=auto", "is_internal": True, "internal_kind": "boundary"})
         assert compact_service.is_compact_summary({"role": "system", "content": "[__compact_summary__]\n摘要"})
 
     def test_microcompact_merges_same_role(self):

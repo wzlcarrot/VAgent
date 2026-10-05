@@ -31,11 +31,13 @@ def chat_rate_limited(user_id: str) -> bool:
     if r is not None:
         try:
             key = f"{_CHAT_KEY_PREFIX}{user_id}"
-            count = r.incr(key)
-            # 每次都续期：incr 成功但 expire 偶发失败时，键可能永久无 TTL
-            # 导致该用户被永久限流；每次刷新则下次请求即可自愈。
-            r.expire(key, _CHAT_LIMIT_WINDOW)
-            return int(count) > _CHAT_LIMIT_MAX
+            count = int(r.incr(key))
+            # 只在窗口开始时设置 TTL。每次 INCR 都 EXPIRE 会把 60 秒窗口不断往后推，
+            # 超限后只要还在请求就永远出不了限流。TTL 丢失（expire 曾失败）时再补一次。
+            ttl = r.ttl(key)
+            if count == 1 or ttl is None or int(ttl) < 0:
+                r.expire(key, _CHAT_LIMIT_WINDOW)
+            return count > _CHAT_LIMIT_MAX
         except Exception as e:
             logger.debug("chat rate limit redis failed: %s", e)
     now = time.time()

@@ -55,7 +55,7 @@ def check_output_video_qa(
     answer: str,
     citations: Optional[List[Dict[str, Any]]] = None,
 ) -> GuardDecision:
-    """片内问答：无依据则 rewrite 为拒答文案。"""
+    """视频内回答：无依据则 rewrite 为拒答文案。"""
     text = (answer or "").strip()
     cites = citations or []
     if not text:

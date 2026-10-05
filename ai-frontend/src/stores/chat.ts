@@ -2,8 +2,23 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import type { Message, ChatSession } from '@/types'
 
-const STORAGE_KEY = 'viewhub_sessions'
+const LEGACY_STORAGE_KEY = 'viewhub_sessions'
 const PERSIST_DEBOUNCE_MS = 300 // 流式输出时合并写入
+
+// 按用户分隔。未登录用 anon，避免换账号后仍读到上一用户的共享 key。
+let ownerId: string | null = null
+
+function storageKey(userId: string | null = ownerId): string {
+  return userId ? `${LEGACY_STORAGE_KEY}:${userId}` : `${LEGACY_STORAGE_KEY}:anon`
+}
+
+function discardLegacySharedStore() {
+  try {
+    localStorage.removeItem(LEGACY_STORAGE_KEY)
+  } catch {
+    /* 静默 */
+  }
+}
 
 // 生成 UUID：优先用 crypto.randomUUID（安全上下文），非 HTTPS/IP 直连时降级
 function generateId(): string {
@@ -24,7 +39,7 @@ function generateId(): string {
 }
 
 function loadFromStorage(): ChatSession[] {
-  const stored = localStorage.getItem(STORAGE_KEY)
+  const stored = localStorage.getItem(storageKey())
   if (stored) {
     try {
       return JSON.parse(stored)
@@ -37,7 +52,7 @@ function loadFromStorage(): ChatSession[] {
 
 function saveToStorage(sessions: ChatSession[]) {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(sessions))
+    localStorage.setItem(storageKey(), JSON.stringify(sessions))
   } catch {
     /* localStorage 满或不可用，静默失败 */
   }
@@ -84,7 +99,11 @@ export const useChatStore = defineStore('chat', () => {
     _schedulePersist()
   }
 
-  function loadUserSessions() {
+  function loadUserSessions(userId?: string | null) {
+    // 先把当前用户的内存写回自己的 key，再切换，避免 debounce 把上一用户写进新 key
+    _flushPersistNow()
+    ownerId = userId || null
+    discardLegacySharedStore()
     sessions.value = loadFromStorage()
     currentSessionId.value = sessions.value[0]?.id || null
     messages.value = sessions.value.find(s => s.id === currentSessionId.value)?.messages || []
@@ -185,22 +204,38 @@ export const useChatStore = defineStore('chat', () => {
     currentSessionId.value = null
     messages.value = []
     try {
-      localStorage.removeItem(STORAGE_KEY)
+      localStorage.removeItem(storageKey())
+      discardLegacySharedStore()
     } catch {
       /* 静默 */
     }
+    ownerId = null
   }
 
   function deleteSession(sessionId: string) {
     const index = sessions.value.findIndex((s) => s.id === sessionId)
     if (index !== -1) {
       sessions.value.splice(index, 1)
-      _flushPersistNow()
-      if (currentSessionId.value === sessionId) {
-        currentSessionId.value = sessions.value[0]?.id || null
-        messages.value = sessions.value[0]?.messages || []
+    }
+    // 从历史页打开的会话不在本地列表里。只删列表的话，当前 id 还在，
+    // 界面被历史接口刷空之后，下一问仍会带上这个 sessionId。
+    if (currentSessionId.value === sessionId) {
+      const next = sessions.value[0]
+      if (next) {
+        currentSessionId.value = next.id
+        messages.value = [...(next.messages || [])]
+      } else {
+        currentSessionId.value = null
+        messages.value = []
+        createSession()
+      }
+      if (typeof window !== 'undefined' && currentSessionId.value) {
+        window.dispatchEvent(new CustomEvent('session-switched', {
+          detail: { sessionId: currentSessionId.value },
+        }))
       }
     }
+    _flushPersistNow()
   }
 
   return {

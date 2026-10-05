@@ -30,10 +30,16 @@ def get_global_pool() -> Optional[pool.ThreadedConnectionPool]:
         now = time.time()
         if now - _last_health_check < _health_check_interval:
             return _global_pool
+        conn = None
         try:
             conn = _global_pool.getconn()
-            conn.ping()
+            # psycopg2 连接没有 ping()。用 SELECT 1；失败必须 putconn，否则旧连接泄漏。
+            if getattr(conn, "closed", 1):
+                raise RuntimeError("stale postgres connection")
+            with conn.cursor() as cur:
+                cur.execute("SELECT 1")
             _global_pool.putconn(conn)
+            conn = None
             _last_health_check = now
             return _global_pool
         except pool.PoolError:
@@ -43,6 +49,11 @@ def get_global_pool() -> Optional[pool.ThreadedConnectionPool]:
             _last_health_check = now
             return _global_pool
         except Exception:
+            if conn is not None:
+                try:
+                    _global_pool.putconn(conn, close=True)
+                except Exception:
+                    pass
             _global_pool = None
             _last_health_check = 0.0
 
@@ -57,7 +68,10 @@ def get_global_pool() -> Optional[pool.ThreadedConnectionPool]:
             dbname=settings.pg_database,
             # connect_timeout 秒级：DB 长时间故障时避免连接卡死等待 TCP 超时（可达数十秒）
             connect_timeout=5,
-            options="-c statement_timeout=15000",
+            # 今天/本周用 CURRENT_DATE、date_trunc('week')，跟着会话时区走。
+            # 官方 Postgres 镜像默认 UTC。不固定的话，北京时间 0 点到 8 点会算成昨天，
+            # 周一 8 点前会算到上一周。与 weekly_golden 一样按中国时间。
+            options="-c statement_timeout=15000 -c TimeZone=Asia/Shanghai",
         )
         _last_health_check = time.time()
         _set_pool_metric(settings.db_pool_size)

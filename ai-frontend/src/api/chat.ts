@@ -424,21 +424,25 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
   })
 }
 
-async function parseStreamBusy(response: Response): Promise<{ position: number; retryAfter: number }> {
+async function parseStreamBusy(response: Response): Promise<{ position: number; retryAfter: number; retryable: boolean }> {
   const headerRetry = Number(response.headers.get('Retry-After') || 0)
   let position = 1
   let retryAfter = headerRetry > 0 ? headerRetry : 2
+  let retryable = false
   try {
     const data = await response.json()
     const detail = data?.detail ?? data
     if (detail && typeof detail === 'object') {
-      if (typeof detail.queue_position === 'number') position = detail.queue_position
-      if (typeof detail.retry_after === 'number') retryAfter = detail.retry_after
+      const busy = detail as { error?: string; queue_position?: number; retry_after?: number }
+      // 只有并发排队（stream_busy）才重试。频率限制的 429 再请求会计入限额，不能当排队。
+      retryable = busy.error === 'stream_busy' || typeof busy.queue_position === 'number'
+      if (typeof busy.queue_position === 'number') position = busy.queue_position
+      if (typeof busy.retry_after === 'number') retryAfter = busy.retry_after
     }
   } catch {
     /* ignore */
   }
-  return { position, retryAfter: Math.max(1, Math.min(30, retryAfter)) }
+  return { position, retryAfter: Math.max(1, Math.min(30, retryAfter)), retryable }
 }
 
 export async function* smartChatStream(
@@ -484,7 +488,10 @@ export async function* smartChatStream(
     }
 
     if (response.status === 429 && attempt < maxBusyRetries) {
-      const { position, retryAfter } = await parseStreamBusy(response)
+      const { position, retryAfter, retryable } = await parseStreamBusy(response)
+      if (!retryable) {
+        throw new Error('请求过于频繁，请稍后再试')
+      }
       yield {
         type: 'status',
         stage: 'queued',

@@ -75,20 +75,22 @@ def microcompact_messages(messages: List[Dict]) -> Tuple[List[Dict], int]:
 
 
 def create_compact_boundary(trigger: str = "auto") -> Dict:
-    """compact 边界标记：用 is_internal 结构化字段替代字符串 flag。"""
+    """compact 边界。internal_kind=boundary，build_context 会跳过它。"""
     return Message(
         role="system",
         content=f"trigger={trigger}",
         is_internal=True,
+        internal_kind="boundary",
     ).to_dict()
 
 
 def create_compact_summary(summary_text: str) -> Dict:
-    """compact 摘要标记：is_internal 结构化字段。"""
+    """compact 摘要。internal_kind=summary，要进入模型上下文。"""
     return Message(
         role="system",
         content=summary_text,
         is_internal=True,
+        internal_kind="summary",
     ).to_dict()
 
 

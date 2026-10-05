@@ -69,7 +69,7 @@ ViewHub 是一个视频平台，主要功能包括：
 - 视频功能：上传/播放/弹幕/投币/点赞/收藏/评论
 - 发现系统：搜索（关键词搜索）、个性化推荐、热门榜单、视频分类浏览
 - 个性化：观看历史自动记录、查看收藏和点赞记录
-- AI 智能助手：视频问答、个性化推荐、用户数据查询、平台客服、多轮对话、流式打字机输出
+- AI 智能助手：视频内回答、个性化推荐、用户数据查询、平台客服、多轮对话、流式打字机输出
 
 如果用户询问具体操作，请结合实际情况回答，不知道的可以说"这个功能我暂时不了解"。
 """
@@ -90,6 +90,7 @@ class ChatState(TypedDict, total=False):
     answer: str
     full_response: str
     workflow_type: str
+    parallel_fallback: bool
 
 
 def _is_platform_guide_query(question: str) -> bool:
@@ -330,7 +331,8 @@ def _finalize_chat_result(result: Dict[str, Any], skip_llm: bool) -> Dict[str, A
 
 
 def run_chat_workflow(question: str, conversation_history: List[Dict[str, str]] = None,
-                     session_id: str = "", skip_llm: bool = False) -> Dict[str, Any]:
+                     session_id: str = "", skip_llm: bool = False,
+                     parallel_fallback: bool = False) -> Dict[str, Any]:
     """
     Chat workflow —— 统一由 LangGraph 驱动（parallel_recall → prepare_stream | llm → supervisor）。
 
@@ -364,6 +366,7 @@ def run_chat_workflow(question: str, conversation_history: List[Dict[str, str]] 
         "answer": "",
         "full_response": "",
         "workflow_type": WorkflowType.CHAT,
+        "parallel_fallback": parallel_fallback,
     }
 
     result = chat_graph.invoke(initial_state)

@@ -86,7 +86,7 @@ def main() -> int:
     parser.add_argument("--token", default="", help="已有 JWT")
     parser.add_argument("--email", default="", help="登录邮箱（无 token 时）")
     parser.add_argument("--password", default="", help="登录密码（明文，与服务端 LoginRequest 一致）")
-    parser.add_argument("--video-id", default="", help="片内问答上下文 video_id")
+    parser.add_argument("--video-id", default="", help="视频内回答上下文 video_id")
     parser.add_argument("--questions", default=str(DEFAULT_QUESTIONS), help="问题清单文件")
     parser.add_argument("--sleep", type=float, default=0.5, help="每轮间隔秒数")
     args = parser.parse_args()

@@ -25,12 +25,14 @@ def _llm_circuit_snapshot() -> Dict[str, Any]:
 
 def _stream_permit_snapshot() -> Dict[str, Any]:
     try:
-        from app.utils.chat_stream_permit import _GLOBAL_KEY, _redis
+        import time
+
+        from app.utils.chat_stream_permit import _LIVE_GLOBAL, _redis
 
         r = _redis()
         global_active = 0
         if r is not None:
-            global_active = int(r.get(_GLOBAL_KEY) or 0)
+            global_active = int(r.zcount(_LIVE_GLOBAL, time.time(), "+inf") or 0)
         return {
             "enabled": settings.chat_concurrent_enabled,
             "global_active": global_active,

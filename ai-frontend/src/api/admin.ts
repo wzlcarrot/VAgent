@@ -9,6 +9,14 @@ export async function fetchIndexStats(adminKey: string) {
   return res.data
 }
 
+export async function registerLocalVideo(
+  adminKey: string,
+  payload: { video_id: string; title: string; tags?: string; introduction?: string; body?: string },
+) {
+  const res = await axios.post('/ai/admin/register-video', payload, { headers: adminHeaders(adminKey) })
+  return res.data
+}
+
 export async function indexVideo(videoId: string, adminKey: string) {
   const res = await axios.post(`/ai/admin/index-video/${encodeURIComponent(videoId)}`, null, {
     headers: adminHeaders(adminKey),
@@ -20,6 +28,11 @@ export async function reindexPendingVideos(adminKey: string, limit = 50) {
   const res = await axios.post(`/ai/admin/reindex-pending?limit=${limit}`, null, {
     headers: adminHeaders(adminKey),
   })
+  return res.data
+}
+
+export async function fetchAdminFeatures(adminKey: string) {
+  const res = await axios.get('/ai/admin/features', { headers: adminHeaders(adminKey) })
   return res.data
 }
 

@@ -11,17 +11,21 @@
       </div>
 
       <nav class="tabs">
-        <button type="button" :class="{ active: tab === 'quality' }" @click="tab = 'quality'; loadQuality">本周质量</button>
+        <button type="button" :class="{ active: tab === 'quality' }" @click="tab = 'quality'; loadQuality()">本周质量</button>
         <button type="button" :class="{ active: tab === 'index' }" @click="tab = 'index'">索引</button>
-        <button type="button" :class="{ active: tab === 'ops' }" @click="tab = 'ops'; loadOps">熔断/并发</button>
-        <button type="button" :class="{ active: tab === 'trace' }" @click="tab = 'trace'; loadTraceSessions">Trace</button>
-        <button type="button" :class="{ active: tab === 'golden' }" @click="tab = 'golden'; loadGolden">Weekly Golden</button>
+        <button type="button" :class="{ active: tab === 'ops' }" @click="tab = 'ops'; loadOps()">熔断/并发</button>
+        <button type="button" :class="{ active: tab === 'trace' }" @click="tab = 'trace'; loadTraceSessions()">Trace</button>
+        <button type="button" :class="{ active: tab === 'golden' }" @click="tab = 'golden'; loadGolden()">Weekly Golden</button>
       </nav>
 
       <template v-if="tab === 'quality'">
-        <div class="card actions">
-          <button type="button" :disabled="loading" @click="loadQuality">刷新</button>
-          <span class="meta" v-if="quality?.week">统计周：{{ quality.week }}</span>
+        <div class="card" v-if="features">
+          <h2>能力开关</h2>
+          <ul class="metric-list">
+            <li><span>联网搜索</span><strong>{{ features.web_search_enabled ? '开' : '关' }}</strong></li>
+            <li><span>视频 ASR</span><strong>{{ features.video_asr_enabled ? '开' : '关' }}{{ features.video_asr_importable ? '' : '（依赖未装）' }}</strong></li>
+            <li><span>意图 LoRA</span><strong>{{ features.finetune_intent_enabled ? '开' : '关' }}{{ features.finetune_intent_importable ? '' : '（依赖未装）' }}</strong></li>
+          </ul>
         </div>
         <div class="card" v-if="quality?.metrics">
           <h2>业务质量（7 项）</h2>
@@ -74,6 +78,16 @@
           </ul>
           <p v-if="stats.pending_sample?.length">样例 pending：{{ stats.pending_sample.join(', ') }}</p>
           <p class="meta">联调文档：docs/java-index-callback.md（转码完成必须回调 index-video）</p>
+        </div>
+
+        <div class="card">
+          <h2>本仓登记视频</h2>
+          <p class="meta">写入 video_info 并建索引，不经过 ViewHub 上传回调。</p>
+          <input v-model="regVideoId" placeholder="video_id" />
+          <input v-model="regTitle" placeholder="标题" />
+          <input v-model="regTags" placeholder="标签，逗号分隔" />
+          <textarea v-model="regIntro" rows="3" placeholder="简介 / 文稿（可检索）"></textarea>
+          <button type="button" :disabled="loading || !regVideoId || !regTitle" @click="registerOne">登记并索引</button>
         </div>
 
         <div class="card">
@@ -196,6 +210,7 @@ import { ref, computed, onMounted } from 'vue'
 import AppHeader from '@/components/layout/AppHeader.vue'
 import {
   fetchBusinessQuality,
+  fetchAdminFeatures,
   fetchCompactStats,
   fetchIndexStats,
   fetchLlmCircuit,
@@ -205,6 +220,7 @@ import {
   fetchTraceSummary,
   fetchWeeklyGolden,
   indexVideo,
+  registerLocalVideo,
   reindexPendingVideos,
 } from '@/api/admin'
 
@@ -212,7 +228,12 @@ const adminKey = ref(sessionStorage.getItem('vagent_admin_key') || '')
 const tab = ref<'quality' | 'index' | 'ops' | 'trace' | 'golden'>('quality')
 const stats = ref<Record<string, any> | null>(null)
 const quality = ref<Record<string, any> | null>(null)
+const features = ref<Record<string, any> | null>(null)
 const videoId = ref('')
+const regVideoId = ref('')
+const regTitle = ref('')
+const regTags = ref('')
+const regIntro = ref('')
 const lastResult = ref('')
 const error = ref('')
 const loading = ref(false)
@@ -263,6 +284,11 @@ async function loadQuality() {
   error.value = ''
   try {
     quality.value = await fetchBusinessQuality(adminKey.value)
+    try {
+      features.value = await fetchAdminFeatures(adminKey.value)
+    } catch {
+      features.value = null
+    }
   } catch (e: unknown) {
     error.value = e instanceof Error ? e.message : '加载质量看板失败'
   } finally {
@@ -381,6 +407,28 @@ async function indexOne() {
   }
 }
 
+async function registerOne() {
+  loading.value = true
+  error.value = ''
+  try {
+    lastResult.value = JSON.stringify(
+      await registerLocalVideo(adminKey.value, {
+        video_id: regVideoId.value,
+        title: regTitle.value,
+        tags: regTags.value,
+        introduction: regIntro.value,
+      }),
+      null,
+      2,
+    )
+    await loadStats()
+  } catch (e: unknown) {
+    error.value = e instanceof Error ? e.message : '登记失败'
+  } finally {
+    loading.value = false
+  }
+}
+
 onMounted(() => {
   if (adminKey.value) loadQuality()
 })
@@ -414,7 +462,7 @@ onMounted(() => {
   border-color: #1a1a1a;
 }
 .actions { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
-input, select { width: 100%; padding: 8px; margin: 8px 0; }
+input, select, textarea { width: 100%; padding: 8px; margin: 8px 0; }
 .actions input, .actions select { width: auto; min-width: 160px; margin: 0; }
 button { padding: 8px 16px; cursor: pointer; }
 .linkish {

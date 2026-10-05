@@ -162,7 +162,11 @@ async function handleDelete(sessionId: string) {
   if (!userStore.user?.userId) return
 
   try {
-    await deleteChatSession(sessionId)
+    const deleted = await deleteChatSession(sessionId)
+    if (!deleted) {
+      showToast('删除失败，请重试', 'error')
+      return
+    }
     chatStore.deleteSession(sessionId)
     dbSessions.value = dbSessions.value.filter(s => s.id !== sessionId)
     showToast('对话已删除', 'success')

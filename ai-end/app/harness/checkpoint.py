@@ -24,6 +24,10 @@ from app.tools.db import get_global_pool
 
 logger = logging.getLogger(__name__)
 
+# 本轮实际展示给用户的工作流。不参与步骤恢复，只给历史页定位。
+SHOWN_WORKFLOW_TYPE = "__shown__"
+SHOWN_STEP = "target"
+
 
 def _record_checkpoint_metric(operation: str, status: str) -> None:
     """记录 checkpoint 操作到 Prometheus"""
@@ -108,43 +112,45 @@ class CheckpointManager:
             _record_checkpoint_metric("save", "failed")
 
     def _do_save(self, cp: Checkpoint):
+        pool = None
+        conn = None
+        failed = False
         try:
             pool = get_global_pool()
             if pool is None:
                 logger.warning("CheckpointManager: DB pool 不可用，跳过 checkpoint 写入")
                 return
             conn = pool.getconn()
-            try:
-                cursor = conn.cursor()
-                cursor.execute("""
-                    INSERT INTO workflow_checkpoints
-                        (checkpoint_id, session_id, workflow_type, step_name, state_snapshot, status, error, created_at)
-                    VALUES (%s, %s, %s, %s, %s::jsonb, %s, %s, to_timestamp(%s))
-                    ON CONFLICT (session_id, workflow_type, step_name)
-                    DO UPDATE SET
-                        state_snapshot = EXCLUDED.state_snapshot,
-                        status = EXCLUDED.status,
-                        error = EXCLUDED.error,
-                        created_at = EXCLUDED.created_at,
-                        checkpoint_id = EXCLUDED.checkpoint_id
-                """, (
-                    cp.checkpoint_id,
-                    cp.session_id,
-                    cp.workflow_type,
-                    cp.step_name,
-                    json.dumps(cp.state_snapshot, ensure_ascii=False, default=str),
-                    cp.status,
-                    cp.error,
-                    cp.created_at,
-                ))
-                conn.commit()
-                cursor.close()
-                _record_step_metric(cp.workflow_type, cp.step_name, cp.status)
-                return
-            finally:
-                pool.putconn(conn)
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO workflow_checkpoints
+                    (checkpoint_id, session_id, workflow_type, step_name, state_snapshot, status, error, created_at)
+                VALUES (%s, %s, %s, %s, %s::jsonb, %s, %s, to_timestamp(%s))
+                ON CONFLICT (session_id, workflow_type, step_name)
+                DO UPDATE SET
+                    state_snapshot = EXCLUDED.state_snapshot,
+                    status = EXCLUDED.status,
+                    error = EXCLUDED.error,
+                    created_at = EXCLUDED.created_at,
+                    checkpoint_id = EXCLUDED.checkpoint_id
+            """, (
+                cp.checkpoint_id,
+                cp.session_id,
+                cp.workflow_type,
+                cp.step_name,
+                json.dumps(cp.state_snapshot, ensure_ascii=False, default=str),
+                cp.status,
+                cp.error,
+                cp.created_at,
+            ))
+            conn.commit()
+            cursor.close()
+            _record_step_metric(cp.workflow_type, cp.step_name, cp.status)
         except Exception as e:
+            failed = True
             logger.error(f"Checkpoint 写入失败: {e}")
+        finally:
+            _release_conn(pool, conn, failed=failed)
 
 
 
@@ -154,6 +160,7 @@ class CheckpointManager:
             if pool is None:
                 return None
             conn = pool.getconn()
+            failed = False
             try:
                 cursor = conn.cursor()
                 cursor.execute("""
@@ -177,11 +184,119 @@ class CheckpointManager:
                     error=error,
                     created_at=created_at.timestamp() if created_at else time.time(),
                 )
+            except Exception:
+                failed = True
+                raise
             finally:
-                pool.putconn(conn)
+                _release_conn(pool, conn, failed=failed)
         except Exception as e:
             logger.error(f"Checkpoint 读取失败: {e}")
             return None
+
+    def get_latest(self, session_id: str) -> Optional[Checkpoint]:
+        """该会话最近一条 checkpoint，不限 workflow。恢复时用它决定工作流。"""
+        try:
+            pool = get_global_pool()
+            if pool is None:
+                return None
+            conn = pool.getconn()
+            failed = False
+            try:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT checkpoint_id, workflow_type, step_name, state_snapshot, status, error, created_at
+                    FROM workflow_checkpoints
+                    WHERE session_id = %s
+                    ORDER BY created_at DESC
+                    LIMIT 1
+                """, (session_id,))
+                row = cursor.fetchone()
+                cursor.close()
+                if not row:
+                    return None
+                cp_id, workflow_type, step_name, snapshot, status, error, created_at = row
+                snapshot = snapshot if isinstance(snapshot, dict) else json.loads(snapshot)
+                return Checkpoint(
+                    checkpoint_id=cp_id,
+                    session_id=session_id,
+                    workflow_type=workflow_type,
+                    step_name=step_name,
+                    state_snapshot=snapshot,
+                    status=status,
+                    error=error,
+                    created_at=created_at.timestamp() if created_at else time.time(),
+                )
+            except Exception:
+                failed = True
+                raise
+            finally:
+                _release_conn(pool, conn, failed=failed)
+        except Exception as e:
+            logger.error(f"Checkpoint 最近记录查询失败: {e}")
+            return None
+
+    def list_recent(self, session_id: str, limit: int = 30) -> List[Checkpoint]:
+        """按时间从新到旧返回最近若干条 checkpoint。"""
+        try:
+            pool = get_global_pool()
+            if pool is None:
+                return []
+            conn = pool.getconn()
+            failed = False
+            try:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT checkpoint_id, workflow_type, step_name, state_snapshot, status, error, created_at
+                    FROM workflow_checkpoints
+                    WHERE session_id = %s
+                    ORDER BY created_at DESC
+                    LIMIT %s
+                """, (session_id, limit))
+                rows = cursor.fetchall()
+                cursor.close()
+                found = []
+                for cp_id, workflow_type, step_name, snapshot, status, error, created_at in rows:
+                    snapshot = snapshot if isinstance(snapshot, dict) else json.loads(snapshot)
+                    found.append(Checkpoint(
+                        checkpoint_id=cp_id,
+                        session_id=session_id,
+                        workflow_type=workflow_type,
+                        step_name=step_name,
+                        state_snapshot=snapshot,
+                        status=status,
+                        error=error,
+                        created_at=created_at.timestamp() if created_at else time.time(),
+                    ))
+                return found
+            except Exception:
+                failed = True
+                raise
+            finally:
+                _release_conn(pool, conn, failed=failed)
+        except Exception as e:
+            logger.error(f"Checkpoint 最近记录列表失败: {e}")
+            return []
+
+    def mark_shown_workflow(self, session_id: str, workflow_type: str) -> None:
+        """同步记下这一轮展示给用户的工作流。并行兜底闲聊即使更晚写入，恢复也不跟它走。"""
+        if not session_id or not workflow_type or workflow_type == SHOWN_WORKFLOW_TYPE:
+            return
+        self._do_save(Checkpoint(
+            session_id=session_id,
+            workflow_type=SHOWN_WORKFLOW_TYPE,
+            step_name=SHOWN_STEP,
+            state_snapshot={"workflow_type": workflow_type},
+            status="completed",
+        ))
+
+    def get_shown_workflow(self, session_id: str) -> Optional[str]:
+        cp = self.get(session_id, SHOWN_WORKFLOW_TYPE, SHOWN_STEP)
+        if not cp or not isinstance(cp.state_snapshot, dict):
+            return None
+        workflow_type = cp.state_snapshot.get("workflow_type")
+        if not workflow_type or workflow_type == SHOWN_WORKFLOW_TYPE:
+            return None
+        return str(workflow_type)
 
     def get_last_completed(self, session_id: str, workflow_type: str) -> Optional[Checkpoint]:
         try:
@@ -189,6 +304,7 @@ class CheckpointManager:
             if pool is None:
                 return None
             conn = pool.getconn()
+            failed = False
             try:
                 cursor = conn.cursor()
                 cursor.execute("""
@@ -216,8 +332,11 @@ class CheckpointManager:
                     error=error,
                     created_at=created_at.timestamp() if created_at else time.time(),
                 )
+            except Exception:
+                failed = True
+                raise
             finally:
-                pool.putconn(conn)
+                _release_conn(pool, conn, failed=failed)
         except Exception as e:
             logger.error(f"Checkpoint 查询失败: {e}")
             return None
@@ -228,6 +347,7 @@ class CheckpointManager:
             if pool is None:
                 return []
             conn = pool.getconn()
+            failed = False
             try:
                 cursor = conn.cursor()
                 cursor.execute("""
@@ -238,8 +358,11 @@ class CheckpointManager:
                 result = [row[0] for row in cursor.fetchall()]
                 cursor.close()
                 return result
+            except Exception:
+                failed = True
+                raise
             finally:
-                pool.putconn(conn)
+                _release_conn(pool, conn, failed=failed)
         except Exception:
             return []
 
@@ -250,6 +373,7 @@ class CheckpointManager:
             if pool is None:
                 return []
             conn = pool.getconn()
+            failed = False
             try:
                 cursor = conn.cursor()
                 cursor.execute("""
@@ -267,28 +391,51 @@ class CheckpointManager:
                     }
                     for step_name, status, created_at in rows
                 ]
+            except Exception:
+                failed = True
+                raise
             finally:
-                pool.putconn(conn)
+                _release_conn(pool, conn, failed=failed)
         except Exception:
             return []
 
     def clear_session(self, session_id: str) -> bool:
+        pool = None
+        conn = None
+        failed = False
         try:
             pool = get_global_pool()
             if pool is None:
                 return False
             conn = pool.getconn()
-            try:
-                cursor = conn.cursor()
-                cursor.execute("DELETE FROM workflow_checkpoints WHERE session_id = %s", (session_id,))
-                conn.commit()
-                cursor.close()
-                return True
-            finally:
-                pool.putconn(conn)
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM workflow_checkpoints WHERE session_id = %s", (session_id,))
+            conn.commit()
+            cursor.close()
+            return True
         except Exception as e:
+            failed = True
             logger.error(f"Checkpoint 清理失败: {e}")
             return False
+        finally:
+            _release_conn(pool, conn, failed=failed)
+
+
+def _release_conn(pool, conn, *, failed: bool) -> None:
+    """失败事务先回滚再还池。回滚失败就关掉连接，避免下一次碰到 InFailedSqlTransaction。"""
+    if pool is None or conn is None:
+        return
+    if failed:
+        try:
+            conn.rollback()
+        except Exception as rb_err:
+            logger.error(f"checkpoint rollback 失败，丢弃连接: {rb_err}")
+            try:
+                conn.close()
+            except Exception:
+                pass
+            return
+    pool.putconn(conn)
 
 
 def _record_step_metric(workflow_type: str, step_name: str, status: str) -> None:

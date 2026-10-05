@@ -2,11 +2,13 @@
 管理统计路由
 鉴权：X-Admin-Key header
 """
+import hashlib
 import hmac
 import logging
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.concurrency import run_in_threadpool
+from pydantic import BaseModel, Field
 
 from app.config import settings
 from app.tools.db import get_cursor
@@ -25,7 +27,10 @@ def _verify_admin_key(request: Request) -> None:
         raise HTTPException(status_code=503, detail="admin_api_key 未配置")
 
     provided_key = request.headers.get("X-Admin-Key", "")
-    if not hmac.compare_digest(provided_key, expected_key):
+    # 先哈希再比较：长度不同时 compare_digest 会抛 ValueError 变成 500。
+    provided_digest = hashlib.sha256(provided_key.encode("utf-8")).digest()
+    expected_digest = hashlib.sha256(expected_key.encode("utf-8")).digest()
+    if not hmac.compare_digest(provided_digest, expected_digest):
         client = request.client.host if request.client else "unknown"
         logger.warning(f"admin 鉴权失败: remote={client}")
         raise HTTPException(status_code=403, detail="Forbidden")
@@ -37,6 +42,37 @@ async def admin_business_quality(request: Request):
     _verify_admin_key(request)
     from app.services.business_quality import query_business_quality
     return await run_in_threadpool(query_business_quality)
+
+
+@router.get("/admin/features")
+async def admin_features(request: Request):
+    """ASR / LoRA / 联网搜索是否开启、依赖是否可导入（不把默认关着的能力说成现网）。"""
+    _verify_admin_key(request)
+    from pathlib import Path
+
+    asr_importable = False
+    try:
+        import faster_whisper  # noqa: F401
+        asr_importable = True
+    except Exception:
+        pass
+    lora_importable = False
+    try:
+        import transformers  # noqa: F401
+        lora_importable = True
+    except Exception:
+        pass
+    path = (settings.finetune_intent_model_path or "").strip()
+    from app.runtime_path import describe_default_path
+    return {
+        "default_path": describe_default_path(),
+        "web_search_enabled": settings.web_search_enabled,
+        "video_asr_enabled": settings.video_asr_enabled,
+        "video_asr_importable": asr_importable,
+        "finetune_intent_enabled": settings.finetune_intent_enabled,
+        "finetune_intent_importable": lora_importable,
+        "finetune_intent_path_ok": bool(path) and Path(path).exists(),
+    }
 
 
 @router.get("/admin/stats")
@@ -54,6 +90,30 @@ async def admin_index_video(video_id: str, request: Request):
     if not result.get("success"):
         return {**result, "error": result.get("error", "索引失败")}
     return result
+
+
+class RegisterVideoIn(BaseModel):
+    video_id: str = Field(min_length=1, max_length=64)
+    title: str = Field(min_length=1, max_length=256)
+    tags: str = ""
+    introduction: str = ""
+    body: str = ""
+
+
+@router.post("/admin/register-video")
+async def admin_register_video(request: Request, payload: RegisterVideoIn):
+    """本仓登记标题/简介并索引，不依赖 Java 上传回调。"""
+    _verify_admin_key(request)
+    from app.services.video_indexing import register_local_video
+
+    return await run_in_threadpool(
+        register_local_video,
+        payload.video_id,
+        payload.title,
+        payload.tags,
+        payload.introduction,
+        payload.body,
+    )
 
 
 @router.get("/admin/index-stats")
@@ -135,16 +195,19 @@ async def admin_compact_stats(request: Request, session_id: str = ""):
 async def admin_stream_permits(request: Request):
     """流式并发许可配置与当前占用（Redis 可用时读计数）"""
     _verify_admin_key(request)
-    from app.utils.chat_stream_permit import _GLOBAL_KEY, _USER_PREFIX, _redis
+    from app.utils.chat_stream_permit import _LIVE_GLOBAL, _LIVE_USER_PREFIX, _redis
     r = _redis()
     global_active = 0
     user_active: dict = {}
     if r is not None:
         try:
-            global_active = int(r.get(_GLOBAL_KEY) or 0)
-            for key in r.scan_iter(f"{_USER_PREFIX}*"):
-                uid = key.replace(_USER_PREFIX, "", 1) if isinstance(key, str) else key.decode().replace(_USER_PREFIX, "", 1)
-                user_active[uid] = int(r.get(key) or 0)
+            import time
+            now = time.time()
+            global_active = int(r.zcount(_LIVE_GLOBAL, now, "+inf") or 0)
+            for key in r.scan_iter(f"{_LIVE_USER_PREFIX}*"):
+                raw = key if isinstance(key, str) else key.decode()
+                uid = raw.replace(_LIVE_USER_PREFIX, "", 1)
+                user_active[uid] = int(r.zcount(key, now, "+inf") or 0)
         except Exception as e:
             logger.debug("stream permit stats failed: %s", e)
     return {

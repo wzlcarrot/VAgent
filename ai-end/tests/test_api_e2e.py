@@ -6,10 +6,13 @@
 - 不 patch 模块内部，通过 FastAPI 官方 seam（dependency_overrides / TestClient）驱动
 - 覆盖 401/403/422 等失败路径
 """
+from unittest.mock import patch
+
 import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
+from tests.fake_redis import FakeRedis
 
 
 @pytest.fixture(scope="session")
@@ -34,6 +37,15 @@ class TestAuthE2E:
         r = client.get("/health")
         assert r.status_code == 200
         assert r.json() == {"status": "ok"}
+
+    def test_ready_degraded_is_503(self, client):
+        r = client.get("/ready")
+        if r.status_code == 200:
+            assert r.json()["status"] == "ready"
+        else:
+            assert r.status_code == 503
+            assert r.json()["status"] == "degraded"
+            assert "checks" in r.json()
 
     def test_login_sets_http_only_cookie(self, client):
         resp = _login(client)
@@ -104,6 +116,12 @@ class TestValidationE2E:
         r = client.post("/ai/feedback", json={"session_id": "s1", "feedback": "bad"})
         assert r.status_code == 400
 
+    def test_invalid_session_id_400(self, client):
+        _login(client)
+        r = client.post("/ai/chat/stream", json={"question": "你好", "sessionId": "bad session id!!!"})
+        assert r.status_code == 400
+        assert "会话 ID" in r.json()["detail"]
+
 
 class TestAdminE2E:
     def test_admin_no_key_403(self, client):
@@ -113,6 +131,19 @@ class TestAdminE2E:
     def test_admin_wrong_key_403(self, client):
         r = client.get("/ai/admin/stats", headers={"X-Admin-Key": "wrong"})
         assert r.status_code == 403
+
+    def test_admin_features_requires_key(self, client):
+        r = client.get("/ai/admin/features")
+        assert r.status_code == 403
+        from app.config import settings
+        r = client.get("/ai/admin/features", headers={"X-Admin-Key": settings.admin_api_key})
+        assert r.status_code == 200
+        body = r.json()
+        assert "default_path" in body
+        assert body["default_path"]["video_qa_uses_web"] is False
+        assert body["default_path"]["lock_default_path"] is True
+        assert "web_search_enabled" in body
+        assert "video_asr_enabled" in body
 
     def test_index_video_no_key_403(self, client):
         r = client.post("/ai/admin/index-video/any_video")
@@ -146,6 +177,14 @@ class TestMetricsAuth:
 
 class TestRealFlowE2E:
     """真实业务链路：SSE 流式、分页、越权拦截、反馈写入"""
+
+    @pytest.fixture(autouse=True)
+    def _fake_session_redis(self):
+        """会话归属校验 fail-closed。没有 Redis 时 /ai/chat/stream 会 503。"""
+        fake = FakeRedis()
+        with patch("app.tools.context_tools._get_redis", return_value=fake), \
+             patch("app.utils.chat_stream_permit._redis", return_value=None):
+            yield
 
     def test_chat_stream_returns_sse(self, client):
         _login(client)

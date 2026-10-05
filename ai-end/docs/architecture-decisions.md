@@ -171,7 +171,7 @@ Bounded ReAct（`chat_react.py` / `video_qa_react.py`）原本只有两层防护
 
 ---
 
-## ADR-009：视频问答引入对话记忆（Memory），支持指代消解
+## ADR-009：视频内回答引入对话记忆（Memory），支持指代消解
 
 ### 背景
 

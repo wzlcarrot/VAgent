@@ -98,7 +98,12 @@ def test_bounded_react_stops_early_when_sufficient_by_default():
 def test_demo_mode_keeps_rewrite_enabled():
     from app.config import Settings
 
-    s = Settings(demo_mode=True, video_qa_llm_rewrite=True, video_qa_llm_grounding=True)
+    s = Settings(
+        demo_mode=True,
+        deepseek_api_key="",
+        video_qa_llm_rewrite=True,
+        video_qa_llm_grounding=True,
+    )
     assert s.effective_video_qa_llm_rewrite is True
     assert s.effective_video_qa_llm_grounding is True
     assert s.effective_llm_replay_enabled is True

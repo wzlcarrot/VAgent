@@ -30,9 +30,52 @@ class TestRouter:
         result = self.router.route("你好")
         assert result == "chat_workflow"
 
-    def test_route_recommend_question(self):
-        result = self.router.route("给我推荐一个视频")
-        assert result == "recommend_workflow"
+    def test_route_off_topic_recommend_stays_chat(self):
+        for q in ("推荐一个餐厅", "火锅店推荐", "比特币行情推荐"):
+            assert self.router.route(q) == "chat_workflow", q
+
+    def test_route_help_summarize_current_video(self):
+        result = self.router.route("帮助我总结这个视频", {"video_id": "123"})
+        assert result == "video_qa_workflow"
+
+    def test_route_smalltalk_on_player_stays_chat(self):
+        ctx = {"video_id": "123"}
+        for q in ("随便聊聊", "你好", "在吗"):
+            assert self.router.route(q, ctx) == "chat_workflow", q
+            with patch.object(self.router, "_semantic_scores", return_value={}):
+                d = self.router.hybrid_route_full(q, ctx)
+            assert d.workflow_type == "chat_workflow", q
+
+    def test_route_player_offtopic_stays_chat_even_if_semantic_says_video(self):
+        ctx = {"video_id": "123"}
+        self.router.clear_route_cache()
+        fake_sem = {
+            "video_qa_workflow": 0.99,
+            "chat_workflow": 0.2,
+            "recommend_workflow": 0.1,
+            "user_data_workflow": 0.1,
+        }
+        with patch.object(self.router, "_semantic_scores", return_value=fake_sem):
+            for q in ("今天天气怎么样", "随便说两句", "你吃了吗"):
+                assert self.router.route(q, ctx) == "chat_workflow", q
+                d = self.router.hybrid_route_full(q, ctx)
+                assert d.workflow_type == "chat_workflow", q
+
+    def test_route_player_followup_is_video_qa(self):
+        ctx = {"video_id": "123"}
+        for q in ("这啥意思", "为什么", "然后呢"):
+            assert self.router.route(q, ctx) == "video_qa_workflow", q
+
+    def test_route_video_question_on_player_not_smalltalk(self):
+        assert self.router.route("你好，这个视频讲了什么", {"video_id": "123"}) == "video_qa_workflow"
+
+    def test_route_tail_credit_is_video_qa(self):
+        result = self.router.route("片尾征稿说了啥", {"video_id": "123"})
+        assert result == "video_qa_workflow"
+
+    def test_route_recommend_video_still_hits(self):
+        assert self.router.route("给我推荐一个视频") == "recommend_workflow"
+        assert self.router.route("推荐火锅相关的视频") == "recommend_workflow"
 
     def test_route_chat_question(self):
         result = self.router.route("怎么上传视频")
@@ -110,7 +153,7 @@ class TestRouter:
         assert candidates[0][1] == 1.0
 
     def test_route_id_plus_concrete_question(self):
-        """回归：id号是xxx的视频具体讲什么 必须走片内问答，不能落到 chat。"""
+        """回归：id号是xxx的视频具体讲什么 必须走视频内回答，不能落到 chat。"""
         q = "id号是1dJZCYwEKg的视频具体讲什么"
         result = self.router.route(q, {"video_id": "1dJZCYwEKg"})
         assert result == "video_qa_workflow"
@@ -264,6 +307,20 @@ class TestRouterUserData:
         result = self.router.route("我今天点了多少赞")
         assert result == "user_data_workflow"
 
+    def test_route_user_data_time_queries_without_wo(self):
+        questions = [
+            "今日点赞了多少",
+            "今天点赞了哪些",
+            "这周收藏了哪些",
+            "今日点了多少赞",
+        ]
+        for question in questions:
+            result = self.router.route_candidates(question, {})
+            assert result[0][0] == "user_data_workflow", question
+
+        on_video = self.router.route_candidates("今日看了哪些视频", {"video_id": "v1"})
+        assert on_video[0][0] == "user_data_workflow"
+
     def test_route_user_data_history(self):
         result = self.router.route("我的播放历史")
         assert result == "user_data_workflow"
@@ -328,3 +385,27 @@ class TestSupervisorUserData:
         outputs = {"response": "", "query_result": {}, "intent": {}}
         result = self.supervisor.aggregate(outputs, "user_data_workflow")
         assert "抱歉" in result
+
+    def test_unsupported_query_keeps_explanation(self):
+        explanation = "ViewHub 目前暂不支持查询这类信息。你可以问我点赞、收藏、观看历史、关注列表、投币数等。"
+        outputs = {
+            "response": explanation,
+            "query_result": {"error": "unsupported_query", "summary_text": explanation},
+            "intent": {},
+        }
+        result = self.supervisor.aggregate(outputs, "user_data_workflow")
+        assert result == explanation
+        assert "unsupported_query" not in result
+
+    def test_tool_failure_keeps_summary(self):
+        outputs = {
+            "response": "抱歉，我暂时无法处理这个请求，请稍后重试。",
+            "query_result": {
+                "error": "工具调用失败",
+                "summary_text": "抱歉，我暂时无法处理这个请求，请稍后重试。",
+            },
+            "intent": {},
+        }
+        result = self.supervisor.aggregate(outputs, "user_data_workflow")
+        assert result == "抱歉，我暂时无法处理这个请求，请稍后重试。"
+        assert "工具调用失败" not in result

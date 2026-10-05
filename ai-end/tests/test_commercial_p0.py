@@ -69,11 +69,11 @@ class TestCircuit:
 
 
 class TestPolicyAsk:
-    def test_chat_recommend_is_ask(self):
+    def test_chat_recommend_is_allow(self):
         load_policy(force=True)
         from app.agents.workflows.constants import WorkflowType
         rule = resolve_rule(WorkflowType.CHAT, "recommend_videos")
-        assert rule.decision == "ask"
+        assert rule.decision == "allow"
 
     def test_gate_ask_raises(self):
         from app.harness.tool_governor import ToolGovernor
@@ -84,8 +84,8 @@ class TestPolicyAsk:
             with pytest.raises(ToolApprovalRequired):
                 gov.gate("sid", "chat_workflow", "recommend_videos", {}, lambda: "x")
 
-    def test_recommend_workflow_ask(self):
+    def test_recommend_workflow_allow(self):
         load_policy(force=True)
         from app.agents.workflows.constants import WorkflowType
         rule = resolve_rule(WorkflowType.RECOMMEND, "recommend_videos")
-        assert rule.decision == "ask"
+        assert rule.decision == "allow"

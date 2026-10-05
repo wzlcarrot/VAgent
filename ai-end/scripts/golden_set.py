@@ -29,7 +29,7 @@ _FIXTURE = Path(__file__).resolve().parents[1] / "fixtures" / "routing_golden.js
 
 # 内置种子集（fixture 缺失时回退）；完整大盘以 JSONL 为准。
 _SEED_CASES: List[dict] = [
-    # ── VIDEO_QA（视频问答）──
+    # ── VIDEO_QA（视频内回答）──
     {"q": "这个视频讲了什么", "ctx": {"video_id": VIDEO_ID}, "expected": WorkflowType.VIDEO_QA, "tier": "easy"},
     {"q": "视频的重点是什么", "ctx": {"video_id": VIDEO_ID}, "expected": WorkflowType.VIDEO_QA, "tier": "easy"},
     {"q": "帮我总结这个视频", "ctx": {"video_id": VIDEO_ID}, "expected": WorkflowType.VIDEO_QA, "tier": "easy"},
@@ -91,6 +91,8 @@ _SEED_CASES: List[dict] = [
     {"q": "你是谁", "expected": WorkflowType.CHAT, "tier": "easy"},
     {"q": "你会写代码吗", "expected": WorkflowType.CHAT, "tier": "offtopic"},
     {"q": "推荐一个餐厅给我", "expected": WorkflowType.CHAT, "tier": "offtopic"},
+    {"q": "你会做什么", "expected": WorkflowType.CHAT, "tier": "easy"},
+    {"q": "片尾征稿说了啥", "ctx": {"video_id": VIDEO_ID}, "expected": WorkflowType.VIDEO_QA, "tier": "easy"},
     {"q": "你知道b站吗", "expected": WorkflowType.CHAT, "tier": "offtopic"},
     {"q": "帮我写首诗", "expected": WorkflowType.CHAT, "tier": "offtopic"},
     {"q": "你吃饭了吗", "expected": WorkflowType.CHAT, "tier": "offtopic"},

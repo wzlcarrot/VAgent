@@ -25,10 +25,18 @@ class TestLlmReplay:
         assert out == "去首页注册"
 
     def test_demo_mode_enables_replay(self):
-        with patch("app.config.settings.demo_mode", True):
-            with patch("app.config.settings.llm_replay_enabled", False):
-                from app.harness.llm_replay import replay_enabled
-                assert replay_enabled() is True
+        with patch("app.config.settings.demo_mode", True), \
+             patch("app.config.settings.llm_replay_enabled", False), \
+             patch("app.config.settings.deepseek_api_key", ""):
+            from app.harness.llm_replay import replay_enabled
+            assert replay_enabled() is True
+
+    def test_demo_mode_with_api_key_uses_live_llm(self):
+        with patch("app.config.settings.demo_mode", True), \
+             patch("app.config.settings.llm_replay_enabled", False), \
+             patch("app.config.settings.deepseek_api_key", "sk-live"):
+            from app.harness.llm_replay import replay_enabled
+            assert replay_enabled() is False
 
     def test_replay_chat_when_enabled(self):
         with patch.dict(os.environ, {"VAGENT_LLM_REPLAY": "1"}):
@@ -91,3 +99,35 @@ class TestChatRateLimit:
         for _ in range(30):
             assert chat_rate_limited(uid) is False
         assert chat_rate_limited(uid) is True
+
+    def test_rate_limit_does_not_refresh_window_on_each_hit(self):
+        class _Redis:
+            def __init__(self):
+                self.counts = {}
+                self.ttls = {}
+                self.expire_calls = 0
+
+            def incr(self, key):
+                self.counts[key] = self.counts.get(key, 0) + 1
+                return self.counts[key]
+
+            def expire(self, key, seconds):
+                self.expire_calls += 1
+                self.ttls[key] = seconds
+                return True
+
+            def ttl(self, key):
+                return self.ttls.get(key, -1)
+
+            def delete(self, key):
+                self.counts.pop(key, None)
+                self.ttls.pop(key, None)
+
+        fake = _Redis()
+        uid = "ttl-window-user"
+        with patch("app.routers.chat_rate_limit._redis", return_value=fake):
+            for _ in range(31):
+                chat_rate_limited(uid)
+            assert fake.expire_calls == 1
+            assert chat_rate_limited(uid) is True
+            assert fake.expire_calls == 1

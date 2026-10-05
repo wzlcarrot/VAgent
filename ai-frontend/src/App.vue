@@ -73,10 +73,13 @@ function onConfirmCancel() {
 
 onMounted(() => {
   settingsStore.applyTheme(settingsStore.theme)
-  chatStore.loadUserSessions()
+  userStore.initFromStorage()
+  chatStore.loadUserSessions(userStore.userId || null)
   window.addEventListener('auth:unauthorized', () => {
     // 清除内存+localStorage 登录态，避免 isLoggedIn 仍为 true 导致 login→home 跳转死循环
+    // 同时清掉本地对话，避免未授权后换账号仍显示上一用户的会话
     userStore.logout()
+    chatStore.reset()
     router.push('/login')
   })
 })

@@ -1,5 +1,5 @@
 """
-同义口语片内问答评测：改写命中率 + 证据充足率 + 拒答率。
+同义口语视频内回答评测：改写命中率 + 证据充足率 + 拒答率。
 
 用法:
   cd ai-end && python scripts/synonym_video_qa_eval.py
@@ -125,7 +125,7 @@ def eval_case(case: Dict[str, Any], live: bool) -> Tuple[str, Dict[str, Any]]:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="同义口语片内问答评测")
+    parser = argparse.ArgumentParser(description="同义口语视频内回答评测")
     parser.add_argument("--live", action="store_true", help="使用真实 dual_recall（需向量库）")
     args = parser.parse_args()
 

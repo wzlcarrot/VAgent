@@ -121,7 +121,7 @@ def main() -> int:
     parser.add_argument("--email", default="")
     parser.add_argument("--password", default="")
     parser.add_argument("--token", default="")
-    parser.add_argument("--video-id", default="", help="注入 t05/t06 等片内问答")
+    parser.add_argument("--video-id", default="", help="注入 t05/t06 等视频内回答")
     parser.add_argument("--script", default=str(DEFAULT_SCRIPT))
     parser.add_argument("--sleep", type=float, default=0.4)
     parser.add_argument("--min-accuracy", type=float, default=0.85)

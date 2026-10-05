@@ -9,7 +9,7 @@
   新 AI：✅ 自动关联 last_recommendations[1]
 
 设计：
-- 每次推荐/视频问答结果存入 Redis（key: session_ref:{session_id}）
+- 每次推荐/视频内回答结果存入 Redis（key: session_ref:{session_id}）
 - TTL 跟随 context_ttl（默认 2h）
 - 解析指代词前先尝试规则匹配（不调 LLM），匹配不到保持原 question
 - 同时记录 mentioned_items 用于"刚才那个"类指代
@@ -201,8 +201,22 @@ def update_recommendations(session_id: str, videos: List[Dict[str, Any]]) -> Non
     _save_context(session_id, ctx)
 
 
+def clear_session_context(session_id: str) -> None:
+    """删除会话时清掉推荐/问答指代上下文（Redis 与内存兜底）。"""
+    if not session_id:
+        return
+    r = _get_redis()
+    if r is not None:
+        try:
+            r.delete(_redis_key(session_id))
+        except Exception as e:
+            logger.debug(f"清理 session_ref 失败: {e}")
+    with _memory_lock:
+        _memory_store.pop(session_id, None)
+
+
 def update_video_qa(session_id: str, video_info: Dict[str, Any]) -> None:
-    """视频问答完成后调用，记录当前视频上下文"""
+    """视频内回答完成后调用，记录当前视频上下文"""
     if not session_id or not video_info:
         return
     ctx = _load_context(session_id)
@@ -220,7 +234,11 @@ def update_video_qa(session_id: str, video_info: Dict[str, Any]) -> None:
     _save_context(session_id, ctx)
 
 
-def resolve_references(session_id: str, question: str) -> Dict[str, Any]:
+def resolve_references(
+    session_id: str,
+    question: str,
+    current_video_id: Optional[str] = None,
+) -> Dict[str, Any]:
     """
     解析问题中的指代词，返回：
     {
@@ -253,71 +271,73 @@ def resolve_references(session_id: str, question: str) -> Dict[str, Any]:
             "debug": "no history",
         }
 
+    def _ordinal_result(match: re.Match, video: Dict[str, Any], debug: str) -> Dict[str, Any]:
+        # 播放页已带当前 videoId，检索不会改用推荐项。
+        # 这时把「第二个」改成推荐标题，提示词和检索就不是同一支视频。
+        if _pronoun_binds_current_video(current_video_id, video.get("video_id")):
+            return {
+                "resolved": False,
+                "resolved_question": question,
+                "referenced_video": None,
+                "reference_type": None,
+                "debug": "ordinal kept: playback video differs from recommendation",
+            }
+        resolved = question[:match.start()] + f"《{video.get('title', '未知')}》" + question[match.end():]
+        return {
+            "resolved": True,
+            "resolved_question": resolved,
+            "referenced_video": video,
+            "reference_type": "ordinal",
+            "debug": debug,
+        }
+
     # 1. 序数词：第二个 / 第 N 个 / 最后一个
     pos_match = _POS_PATTERN.search(question)
     if pos_match:
         text = pos_match.group(1)
         idx = _parse_ordinal_from_pos(text)
         if idx is not None and 0 < idx <= len(last_recs):
-            video = last_recs[idx - 1]
-            resolved = question[:pos_match.start()] + f"《{video.get('title', '未知')}》" + question[pos_match.end():]
-            return {
-                "resolved": True,
-                "resolved_question": resolved,
-                "referenced_video": video,
-                "reference_type": "ordinal",
-                "debug": f"pos '{text}' → recs[{idx-1}]",
-            }
+            return _ordinal_result(pos_match, last_recs[idx - 1], f"pos '{text}' → recs[{idx-1}]")
         # 倒数第N个
         if idx is not None and idx < 0:
             real_idx = len(last_recs) + idx + 1
             if 0 < real_idx <= len(last_recs):
-                video = last_recs[real_idx - 1]
-                resolved = question[:pos_match.start()] + f"《{video.get('title', '未知')}》" + question[pos_match.end():]
-                return {
-                    "resolved": True,
-                    "resolved_question": resolved,
-                    "referenced_video": video,
-                    "reference_type": "ordinal",
-                    "debug": f"pos '{text}' → recs[{real_idx-1}]",
-                }
+                return _ordinal_result(pos_match, last_recs[real_idx - 1], f"pos '{text}' → recs[{real_idx-1}]")
 
     # 2. 通用序数词：第N个
     ordinal_match = _ORDINAL_PATTERN.search(question)
     if ordinal_match:
         n = _parse_ordinal(ordinal_match.group(1))
         if n and 0 < n <= len(last_recs):
-            video = last_recs[n - 1]
-            resolved = question[:ordinal_match.start()] + f"《{video.get('title', '未知')}》" + question[ordinal_match.end():]
-            return {
-                "resolved": True,
-                "resolved_question": resolved,
-                "referenced_video": video,
-                "reference_type": "ordinal",
-                "debug": f"ordinal 第{n} → recs[{n-1}]",
-            }
+            return _ordinal_result(ordinal_match, last_recs[n - 1], f"ordinal 第{n} → recs[{n-1}]")
 
     # 3. 代词：这个视频 / 那个视频 / 刚才那个
     pronoun_match = _PRONOUN_PATTERN.search(question)
     if pronoun_match:
+        pronoun = pronoun_match.group(1)
+        target = None
+        ref_type = None
+        debug = ""
         if last_qa and last_qa.get("video_id"):
-            resolved = question[:pronoun_match.start()] + f"《{last_qa.get('title', '未知')}》" + question[pronoun_match.end():]
+            target = last_qa
+            ref_type = "last_video_qa"
+            debug = "pronoun → last_video_qa"
+        elif last_recs:
+            target = last_recs[0]
+            ref_type = "pronoun"
+            debug = "pronoun → recs[0]"
+        # 播放页已带当前视频：这个/那个/刚才那个都指当前 video_id。
+        # 改写成上一支标题后，提示词是旧视频，检索 id 仍是新视频。
+        if target and _pronoun_binds_current_video(current_video_id, target.get("video_id")):
+            target = None
+        if target:
+            resolved = question[:pronoun_match.start()] + f"《{target.get('title', '未知')}》" + question[pronoun_match.end():]
             return {
                 "resolved": True,
                 "resolved_question": resolved,
-                "referenced_video": last_qa,
-                "reference_type": "last_video_qa",
-                "debug": "pronoun → last_video_qa",
-            }
-        if last_recs:
-            video = last_recs[0]
-            resolved = question[:pronoun_match.start()] + f"《{video.get('title', '未知')}》" + question[pronoun_match.end():]
-            return {
-                "resolved": True,
-                "resolved_question": resolved,
-                "referenced_video": video,
-                "reference_type": "pronoun",
-                "debug": "pronoun → recs[0]",
+                "referenced_video": target,
+                "reference_type": ref_type,
+                "debug": debug,
             }
 
     return {
@@ -329,6 +349,14 @@ def resolve_references(session_id: str, question: str) -> Dict[str, Any]:
     }
 
 
+def _pronoun_binds_current_video(current_video_id: Optional[str], target_video_id: Any) -> bool:
+    """当前播放视频和指代目标不是同一支时，代词保持原句。近指和远指都一样。"""
+    current = (current_video_id or "").strip()
+    if not current:
+        return False
+    return str(target_video_id or "") != current
+
+
 def _parse_ordinal_from_pos(text: str) -> Optional[int]:
     """'第二个' → 2, '最后一个' → -1, '倒数第二个' → -2"""
     mapping = {
@@ -338,13 +366,18 @@ def _parse_ordinal_from_pos(text: str) -> Optional[int]:
     return mapping.get(text)
 
 
-def get_context_for_query(session_id: str, question: str) -> Dict[str, Any]:
+def get_context_for_query(
+    session_id: str,
+    question: str,
+    current_video_id: Optional[str] = None,
+) -> Dict[str, Any]:
     """
     高阶 API：返回解析后的查询上下文。
     调用方应使用 resolved_question 作为下游 LLM/检索的输入，
     并把 referenced_video 注入到 system prompt。
+    current_video_id 是播放页当前视频；有值且和指代目标不是同一支时，代词和序数词都保持原句。
     """
-    resolution = resolve_references(session_id, question)
+    resolution = resolve_references(session_id, question, current_video_id=current_video_id)
     ctx = _load_context(session_id)
     return {
         "question": question,

@@ -16,7 +16,7 @@ from fastapi.responses import JSONResponse
 
 from app.config import settings
 from app.models import AuthResponse, LoginRequest
-from app.routers._shared import AUTH_COOKIE_NAME, TOKEN_TTL, _token_delete, _token_set
+from app.routers._shared import AUTH_COOKIE_NAME, _token_delete, _token_set, get_token_ttl
 
 logger = logging.getLogger(__name__)
 
@@ -132,7 +132,7 @@ def _auth_cookie_kwargs(expiry: float) -> dict:
         "samesite": "lax",
         "secure": settings.cookie_secure,
         "path": "/",
-        "max_age": int(TOKEN_TTL),
+        "max_age": int(get_token_ttl()),
         "expires": time.strftime("%a, %d %b %Y %H:%M:%S GMT", time.gmtime(expiry)),
     }
 
@@ -151,7 +151,7 @@ async def login(request: LoginRequest, req: Request):
                 pass
             raise HTTPException(status_code=429, detail="尝试过于频繁，请稍后再试")
 
-        expiry = time.time() + TOKEN_TTL
+        expiry = time.time() + get_token_ttl()
 
         test_account = _get_test_account()
         if test_account and request.email == test_account["email"] and _verify_password(request.password, test_account["password_md5"]):

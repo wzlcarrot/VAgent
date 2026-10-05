@@ -128,6 +128,55 @@ def test_run_workflow_requires_ids():
     assert r3["answer"] == ""
 
 
+def test_video_qa_with_id_passes_image_urls():
+    seen = {}
+
+    def fake_qa(question, video_id=None, user_id=None, session_id=None,
+                conversation_history=None, image_urls=None):
+        seen["video_id"] = video_id
+        seen["image_urls"] = image_urls
+        return {"answer": "讲的是分区", "video_info": {}, "knowledge": [], "citations": []}
+
+    with patch("app.routers.chat_pipeline.run_video_qa_workflow", fake_qa):
+        result = asyncio.run(run_workflow_to_result(
+            WorkflowType.VIDEO_QA, "这个讲什么", "v9",
+            image_urls=["http://img/a.png"],
+        ))
+    assert result["answer"] == "讲的是分区"
+    assert result["workflow_type"] == WorkflowType.VIDEO_QA
+    assert seen["video_id"] == "v9"
+    assert seen["image_urls"] == ["http://img/a.png"]
+
+
+def test_parallel_forwards_image_urls():
+    calls = []
+
+    async def fake_run(wf, *args, **kwargs):
+        calls.append((wf, kwargs.get("image_urls")))
+        return {
+            "workflow_type": wf,
+            "answer": "视频答案" if wf == WorkflowType.VIDEO_QA else "闲聊",
+            "confidence": 0.9,
+            "recommended_videos": [],
+            "reasons": [],
+            "citations": [],
+        }
+
+    async def collect():
+        events = []
+        async for event in parallel_agent_pipeline(
+            WorkflowType.VIDEO_QA, "这个讲什么", video_id="v9",
+            image_urls=["http://img/a.png"],
+        ):
+            events.append(event)
+        return events
+
+    with patch("app.routers.chat_pipeline.run_workflow_to_result", side_effect=fake_run):
+        asyncio.run(collect())
+    video_calls = [urls for wf, urls in calls if wf == WorkflowType.VIDEO_QA]
+    assert video_calls == [["http://img/a.png"]]
+
+
 def test_pipeline_chat_text():
     async def collect():
         events = []
@@ -347,5 +396,50 @@ def test_search_chat_db_snippet():
         results = search_chat_db("u", "hello", 5)
     assert results[0]["session_id"] == "s1"
     assert results[0]["matched_in"] in ("question", "answer")
+
+
+def test_search_chat_db_rolls_back_before_returning_connection():
+    from unittest.mock import MagicMock
+
+    from app.routers.chat_sessions import search_chat_db
+
+    cursor = MagicMock()
+    cursor.execute.side_effect = RuntimeError("db down")
+    conn = MagicMock()
+    conn.cursor.return_value = cursor
+    pool = MagicMock()
+    pool.getconn.return_value = conn
+    with patch("app.routers.chat_sessions.get_global_pool", return_value=pool):
+        try:
+            search_chat_db("u", "hello", 5)
+        except RuntimeError:
+            pass
+        else:
+            raise AssertionError("expected RuntimeError")
+    conn.rollback.assert_called_once()
+    pool.putconn.assert_called_once_with(conn)
+
+
+def test_search_chat_db_discards_connection_when_rollback_fails():
+    from unittest.mock import MagicMock
+
+    from app.routers.chat_sessions import search_chat_db
+
+    cursor = MagicMock()
+    cursor.execute.side_effect = RuntimeError("db down")
+    conn = MagicMock()
+    conn.cursor.return_value = cursor
+    conn.rollback.side_effect = RuntimeError("rollback failed")
+    pool = MagicMock()
+    pool.getconn.return_value = conn
+    with patch("app.routers.chat_sessions.get_global_pool", return_value=pool):
+        try:
+            search_chat_db("u", "hello", 5)
+        except RuntimeError as exc:
+            assert "db down" in str(exc)
+        else:
+            raise AssertionError("expected RuntimeError")
+    conn.close.assert_called_once()
+    pool.putconn.assert_not_called()
 
 

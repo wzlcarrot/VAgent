@@ -239,6 +239,7 @@ async def run_workflow_to_result(
     session_id: str = None, recommend_count: int = 5,
     route_decision: Any = None,
     cancel_event=None,
+    image_urls: list = None,
 ) -> dict:
     try:
         record_workflow_request(wf_type)
@@ -255,6 +256,7 @@ async def run_workflow_to_result(
             result = await run_sync_in_executor(
                 run_video_qa_workflow, question, video_id, user_id, session_id,
                 conversation_history=conversation_history or [],
+                image_urls=image_urls or None,
                 timeout=WORKFLOW_TIMEOUT, cancel_event=cancel_event,
             )
             return {
@@ -288,9 +290,12 @@ async def run_workflow_to_result(
                 timeout=WORKFLOW_TIMEOUT, cancel_event=cancel_event,
             )
             return {"workflow_type": wf_type, "answer": result.get("answer", ""), "confidence": conf, "recommended_videos": [], "reasons": []}
+        # 路由不是闲聊时，这条闲聊只是并行兜底。checkpoint 要标出来，避免恢复跟到更晚的闲聊。
+        is_fallback = route_decision is not None and wf_type != route_decision.workflow_type
         result = await run_sync_in_executor(
             run_chat_workflow, question, conversation_history or [], session_id, True,
             timeout=WORKFLOW_TIMEOUT, cancel_event=cancel_event,
+            parallel_fallback=is_fallback,
         )
         return {
             "workflow_type": WorkflowType.CHAT, "answer": result.get("answer", ""), "confidence": conf,
@@ -329,41 +334,47 @@ async def parallel_agent_pipeline(
             route_decision.method,
         )
     yield status_event("routing", "分析意图")
-    eligible = [workflow_type]
-    if workflow_type != WorkflowType.CHAT:
-        eligible.append(WorkflowType.CHAT)
-    evt = _trace_and_sse("workflow_dispatch", workflows=eligible)
+    recommend_count = parse_recommend_count(question)
+    dispatch = [workflow_type]
+    evt = _trace_and_sse("workflow_dispatch", workflows=dispatch)
     if evt:
         yield evt
-    yield status_event("parallel", "主流程与兜底并行执行")
-    recommend_count = parse_recommend_count(question)
-    tasks = [
-        run_workflow_to_result(
-            wf, question, video_id, user_id, conversation_history, session_id, recommend_count, route_decision,
-            cancel_event,
-        )
-        for wf in eligible
-    ]
+    yield status_event("generating", "执行主流程")
 
     from app.harness.llm_progress import reset_llm_progress_queue, set_llm_progress_queue
     from app.harness.tool_progress import reset_tool_progress_queue, set_tool_progress_queue
 
-    progress_q: queue.Queue = queue.Queue()
-    progress_token = set_tool_progress_queue(progress_q)
-    llm_token = set_llm_progress_queue(progress_q)
+    async def _run_wfs(wfs: list) -> list:
+        tasks = [
+            run_workflow_to_result(
+                wf, question, video_id, user_id, conversation_history, session_id, recommend_count, route_decision,
+                cancel_event, image_urls=image_urls,
+            )
+            for wf in wfs
+        ]
+        progress_q: queue.Queue = queue.Queue()
+        progress_token = set_tool_progress_queue(progress_q)
+        llm_token = set_llm_progress_queue(progress_q)
 
-    async def _gather_workflows():
-        return await asyncio.gather(*tasks, return_exceptions=True)
+        async def _gather_workflows():
+            return await asyncio.gather(*tasks, return_exceptions=True)
 
-    gather_task = asyncio.create_task(_gather_workflows())
-    try:
-        while not gather_task.done():
-            if cancel_event is not None and cancel_event.is_set():
-                gather_task.cancel()
-                from app.utils.task_cancel import abort_running_io
-                abort_running_io(cancel_event)
-                yield status_event("done", "已取消")
-                return
+        gather_task = asyncio.create_task(_gather_workflows())
+        try:
+            while not gather_task.done():
+                if cancel_event is not None and cancel_event.is_set():
+                    gather_task.cancel()
+                    from app.utils.task_cancel import abort_running_io
+                    abort_running_io(cancel_event)
+                    return
+                while True:
+                    try:
+                        tool_evt = progress_q.get_nowait()
+                        if tool_evt:
+                            yield tool_evt
+                    except queue.Empty:
+                        break
+                await asyncio.sleep(0.03)
             while True:
                 try:
                     tool_evt = progress_q.get_nowait()
@@ -371,27 +382,58 @@ async def parallel_agent_pipeline(
                         yield tool_evt
                 except queue.Empty:
                     break
-            await asyncio.sleep(0.03)
-        while True:
-            try:
-                tool_evt = progress_q.get_nowait()
-                if tool_evt:
-                    yield tool_evt
-            except queue.Empty:
-                break
-        raw_results = gather_task.result()
-    finally:
-        reset_tool_progress_queue(progress_token)
-        reset_llm_progress_queue(llm_token)
+            yield gather_task.result()
+        finally:
+            reset_tool_progress_queue(progress_token)
+            reset_llm_progress_queue(llm_token)
+
+    raw_results = None
+    async for item in _run_wfs([workflow_type]):
+        if isinstance(item, list) or item is None:
+            raw_results = item
+        else:
+            yield item
+    if raw_results is None:
+        yield status_event("done", "已取消")
+        return
 
     results = [r for r in raw_results if isinstance(r, dict)]
+    supervisor = Supervisor()
+    main_ok = any(
+        r.get("workflow_type") == workflow_type and supervisor.answer_usable(r.get("answer") or "", r)
+        for r in results
+    )
+    if workflow_type != WorkflowType.CHAT and not main_ok:
+        fb_evt = _trace_and_sse("workflow_dispatch", workflows=[WorkflowType.CHAT])
+        if fb_evt:
+            yield fb_evt
+        yield status_event("fallback", "主流程无有效结果，启用闲聊兜底")
+        extra_raw = None
+        async for item in _run_wfs([WorkflowType.CHAT]):
+            if isinstance(item, list) or item is None:
+                extra_raw = item
+            else:
+                yield item
+        if extra_raw is None:
+            yield status_event("done", "已取消")
+            return
+        results.extend(r for r in extra_raw if isinstance(r, dict))
+
     if not results:
         yield text_event(ALL_AGENTS_FAILED_MSG)
         yield status_event("done", "完成")
         return
-    supervisor = Supervisor()
     results_tuples = [(r["workflow_type"], r["answer"], r["confidence"]) for r in results]
     winner_type, winner_text, winner_conf = supervisor.arbitrate(results_tuples)
+    if session_id and winner_type:
+        try:
+            from app.agents.workflows import run_sync_in_executor
+            from app.harness.checkpoint import CheckpointManager
+            await run_sync_in_executor(
+                CheckpointManager().mark_shown_workflow, session_id, winner_type,
+            )
+        except Exception as e:
+            logger.warning(f"记录本轮展示工作流失败(不影响响应): {e}")
 
     final_method = route_decision.method if route_decision is not None else "unknown"
     if route_decision is not None and winner_type != route_decision.workflow_type:
@@ -471,22 +513,38 @@ async def parallel_agent_pipeline(
         yield status_event("done", "完成")
         return
     yield status_event("generating", "生成回答")
+    # 闲聊的历史在 llm_messages 里，图片附在这组已经准备好的消息上。
+    # 视频内回答在生成回答时就已经看过图，这里直接下发那一版。
+    # 推荐名单和个人数据次数先原样下发。有图时再让模型只补充和图片有关的说明，
+    # 不拿模型输出替换已经发出的原文。
     if winner_type == WorkflowType.CHAT:
         chat_result = next((r for r in results if r["workflow_type"] == WorkflowType.CHAT), None)
-        if image_urls:
+        if chat_result and chat_result.get("llm_messages"):
             from app.tools.llm_tools import LLM_tools as LT
-            vision_messages = [
-                {"role": "system", "content": "你是一个能看懂图片的 AI 助手。根据用户的问题和图片内容，给出简洁有用的回答。"},
-                {"role": "user", "content": f"用户问题：{question}\n\n参考信息：{winner_text}"},
-            ]
-            async for chunk in LT.stream_chat(vision_messages, image_urls=image_urls):
-                yield text_event(chunk)
-        elif chat_result and chat_result.get("llm_messages"):
-            from app.tools.llm_tools import LLM_tools as LT
-            async for chunk in LT.stream_chat(chat_result["llm_messages"]):
+            async for chunk in LT.stream_chat(
+                chat_result["llm_messages"],
+                image_urls=image_urls or None,
+            ):
                 yield text_event(chunk)
         else:
             yield text_event(winner_text)
     else:
         yield text_event(winner_text)
+        if image_urls and winner_type in (WorkflowType.RECOMMEND, WorkflowType.USER_DATA):
+            from app.tools.llm_tools import LLM_tools as LT
+            image_messages = [
+                {
+                    "role": "system",
+                    "content": (
+                        "用户上传了图片。推荐名单和个人数据次数已经展示过了，"
+                        "不要重复，也不要改写那些视频名称、顺序和次数。"
+                        "只根据图片补充一两句和用户问题相关的说明。"
+                        "图片和问题看不出关系时，直接说看不出关联。"
+                    ),
+                },
+                {"role": "user", "content": f"用户问题：{question}\n\n已经展示的回答：\n{winner_text}"},
+            ]
+            yield text_event("\n\n")
+            async for chunk in LT.stream_chat(image_messages, image_urls=image_urls):
+                yield text_event(chunk)
     yield status_event("done", "完成")

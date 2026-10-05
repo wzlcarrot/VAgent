@@ -1,9 +1,11 @@
 # VAgent 业务评测指标
 
+**门禁只看 [`ci_metrics.md`](ci_metrics.md)。** 本页表格里带 **live** 或未进 `.github/workflows/ci.yml` 的数字（含路由 80.7%、ReAct 工具 95.7%）是本机实测，run-to-run 会漂，**不是 CI 门禁**。
+
 - 生成时间（UTC）：2026-09-02（本机 `golden_set.py --no-llm` 等脚本实测）
 - 场景：ViewHub 视频助手（问答 / 推荐 / 个人数据 / 闲聊）
 
-## 规模摘要
+## 规模摘要（live / 本机，非正式门禁）
 
 | 项 | 规模 / 结果 |
 |----|-------------|
@@ -15,8 +17,8 @@
 | 双路共识子集 | **99.0%**（100/101） |
 | 行为门禁 `behavior_golden_set.py` | **22/22** |
 | SSE 离线回归 | **23/23** |
-| 片内问答护栏 `synonym_video_qa_eval.py` | **22/22**（命中 14/14，硬负例拒答 8/8） |
-| ReAct 评测集 `fixtures/react_eval_cases.jsonl` | **161**（视频问答 78 / 平台问答 47 / 闲聊 36） |
+| 视频内回答护栏 `synonym_video_qa_eval.py` | **22/22**（命中 14/14，硬负例拒答 8/8） |
+| ReAct 评测集 `fixtures/react_eval_cases.jsonl` | **161**（视频内回答 78 / 平台问答 47 / 闲聊 36） |
 | ReAct 工具选择准确率（live） | **95.7%**（132/138） |
 | ReAct 平均步数（live） | **1.73** |
 | 语义重试评测集 `fixtures/semantic_retry_cases.jsonl` | **30**（20 常规 + 10 首轮难命中） |
@@ -34,7 +36,7 @@
 ## ReAct Agent 评测（工具选择 / 步数）
 
 - 评测脚本：`scripts/eval_react_metrics.py`（真实 Router + 真实 ReAct 循环，检索后端 mock，摆脱 DB 依赖）
-- 评测集：`fixtures/react_eval_cases.jsonl`（**161** 例：视频问答 78 / 平台问答 47 / 闲聊跑题 36）
+- 评测集：`fixtures/react_eval_cases.jsonl`（**161** 例：视频内回答 78 / 平台问答 47 / 闲聊跑题 36）
 - 测量口径：工具选择准确率在「路由正确 + 属于 ReAct workflow」的样本上统计（分母 138）
 - 实测（2026-09-17，live 真实 LLM `deepseek-chat`，连跑两次取第二次）：
 
